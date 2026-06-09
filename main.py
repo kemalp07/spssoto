@@ -22,6 +22,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import httpx
+from urllib.parse import quote_plus
+from bs4 import BeautifulSoup
 from config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL, CUTOFF_MODEL, BULGU_MODEL
 
 app = FastAPI(title="StatAI - Akademik Analiz API")
@@ -2091,49 +2093,154 @@ async def import_spss_tables_endpoint(req: SpssTableRequest):
     })
 
 
-@app.post("/scale-info")
-async def get_scale_info(req: ScaleInfoRequest):
-    """AI ile ölçek bilgilerini çek — web search yok, training data'dan."""
-    if not ANTHROPIC_API_KEY or not req.scale_names:
-        return {"scales": {}}
+def _toad_slug(scale_name: str) -> str:
+    slug = scale_name.strip()
+    for src, dst in [
+        ("Ş", "s"), ("ş", "s"), ("İ", "i"), ("ı", "i"), ("Ğ", "g"), ("ğ", "g"),
+        ("Ü", "u"), ("ü", "u"), ("Ö", "o"), ("ö", "o"), ("Ç", "c"), ("ç", "c"),
+    ]:
+        slug = slug.replace(src, dst)
+    slug = slug.lower()
+    slug = re.sub(r"[^a-z0-9\-]", "-", slug).strip("-")
+    return slug
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    scale_list = ", ".join(req.scale_names)
 
+async def search_toad(scale_name: str) -> dict:
+    """toad.halileksi.net'te ölçek ara."""
+    try:
+        url = f"https://toad.halileksi.net/olcek/{_toad_slug(scale_name)}/"
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(url, follow_redirects=True)
+            if r.status_code != 200:
+                return {}
+
+            soup = BeautifulSoup(r.text, "html.parser")
+            result: Dict[str, Any] = {}
+
+            h1 = soup.find("h1")
+            if h1:
+                result["full_name"] = h1.get_text(strip=True)
+
+            content = soup.get_text()
+
+            m = re.search(r"(\d+)\s*madde", content, re.IGNORECASE)
+            if m:
+                result["item_count"] = int(m.group(1))
+
+            m = re.search(
+                r"puan aral[ıi][gğ][ıi]\s*[:\-]?\s*(\d+)\s*[\-–]\s*(\d+)",
+                content,
+                re.IGNORECASE,
+            )
+            if m:
+                result["min_score"] = int(m.group(1))
+                result["max_score"] = int(m.group(2))
+
+            m = re.search(r"(\d+)['\s]li?\s*Likert", content, re.IGNORECASE)
+            if m:
+                result["likert"] = f"{m.group(1)}'li Likert"
+
+            m = re.search(r"kesim\s*(?:noktası|puan[ıi])\s*[:\-]?\s*(\d+)", content, re.IGNORECASE)
+            if not m:
+                m = re.search(r"sınır\s*de[gğ]er\s*[:\-]?\s*(\d+)", content, re.IGNORECASE)
+            if m:
+                result["cutoff"] = int(m.group(1))
+
+            return result if len(result) >= 2 else {}
+    except Exception:
+        return {}
+
+
+async def search_dergipark(scale_name: str) -> dict:
+    """DergiPark'ta ölçek ara."""
+    try:
+        query = f"{scale_name} ölçek geçerlilik güvenilirlik"
+        url = f"https://dergipark.org.tr/tr/search?q={quote_plus(query)}&section=article"
+
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                return {}
+
+            soup = BeautifulSoup(r.text, "html.parser")
+            article_link = soup.select_one("a.article-title, h3.title a")
+            if not article_link:
+                return {}
+
+            article_url = article_link.get("href", "")
+            if not article_url.startswith("http"):
+                article_url = "https://dergipark.org.tr" + article_url
+
+            r2 = await client.get(article_url)
+            if r2.status_code != 200:
+                return {}
+
+            content = BeautifulSoup(r2.text, "html.parser").get_text()
+            result: Dict[str, Any] = {}
+
+            m = re.search(r"(\d+)\s*madde", content, re.IGNORECASE)
+            if m:
+                result["item_count"] = int(m.group(1))
+
+            m = re.search(r"(\d+)\s*[\-–]\s*(\d+)\s*aras[ıi]nda\s*puan", content, re.IGNORECASE)
+            if m:
+                result["min_score"] = int(m.group(1))
+                result["max_score"] = int(m.group(2))
+
+            m = re.search(r"kesim\s*(?:noktası|puan[ıi])\s*[:\-]?\s*(\d+)", content, re.IGNORECASE)
+            if m:
+                result["cutoff"] = int(m.group(1))
+
+            return result if len(result) >= 2 else {}
+    except Exception:
+        return {}
+
+
+def get_scale_info_ai(scale_name: str, research_topic: str, client: anthropic.Anthropic) -> dict:
+    """AI training data'dan ölçek bilgisi al (fallback)."""
     msg = client.messages.create(
         model=ANTHROPIC_MODEL,
-        max_tokens=600,
-        system="""Sen akademik ölçek uzmanısın. Verilen ölçekler hakkında bilgi ver.
-SADECE JSON döndür, başka hiçbir şey yazma:
-{
-  "OYŞTÖ": {
-    "full_name": "Online Yemek Siparişlerine Yönelik Tutum Ölçeği",
-    "item_count": 15,
-    "min_score": 15,
-    "max_score": 75,
-    "cutoff": null,
-    "likert": "5'li Likert",
-    "note": "Yüksek puan olumlu tutumu gösterir"
-  }
-}
-Bilmediğin alanları null yap. Türkiye'de kullanılan Türkçe uyarlamalara öncelik ver.""",
+        max_tokens=200,
+        system="""Türk akademik ölçek uzmanısın. SADECE JSON döndür:
+{"full_name":"...","item_count":15,"min_score":15,"max_score":75,"cutoff":null,"likert":"5'li Likert","note":"..."}
+Bilmediğin alanları null yap.""",
         messages=[{
             "role": "user",
-            "content": (
-                f"Araştırma konusu: {req.research_topic}\n\n"
-                f"Şu ölçekler hakkında bilgi ver: {scale_list}"
-            ),
+            "content": f"Araştırma: {research_topic}\nÖlçek: {scale_name}",
         }],
     )
-
     text = msg.content[0].text.strip()
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         try:
-            return {"scales": json.loads(match.group())}
+            return json.loads(match.group())
         except Exception:
             pass
-    return {"scales": {}}
+    return {}
+
+
+@app.post("/scale-info")
+async def get_scale_info(req: ScaleInfoRequest):
+    """TOAD → DergiPark → AI sırasıyla ölçek bilgisi ara."""
+    if not req.scale_names:
+        return {"scales": {}}
+
+    scales_result: Dict[str, dict] = {}
+    ai_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+
+    for scale_name in req.scale_names:
+        result = await search_toad(scale_name)
+
+        if not result:
+            result = await search_dergipark(scale_name)
+
+        if not result and ai_client:
+            result = get_scale_info_ai(scale_name, req.research_topic, ai_client)
+
+        if result:
+            scales_result[scale_name] = result
+
+    return {"scales": scales_result}
 
 
 @app.post("/research/cutoffs")

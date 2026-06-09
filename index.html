@@ -156,7 +156,53 @@
   .empty { text-align: center; padding: 60px; color: var(--muted); }
   .empty .icon { font-size: 48px; margin-bottom: 12px; }
 
-  #page2, #page3, #page4 { display: none; }
+  #wizardContainer { min-height: calc(100vh - 57px); display: flex; flex-direction: column; }
+  #slideContainer { flex: 1; overflow: hidden; position: relative; min-height: 520px; }
+
+  .wizard-slide {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 20px;
+    overflow-y: auto;
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease;
+  }
+  .wizard-slide.slide-enter-right { transform: translateX(100%); opacity: 0; }
+  .wizard-slide.slide-enter-left { transform: translateX(-100%); opacity: 0; }
+  .wizard-slide.slide-active { transform: translateX(0); opacity: 1; }
+  .wizard-slide.slide-exit-left { transform: translateX(-100%); opacity: 0; }
+  .wizard-slide.slide-exit-right { transform: translateX(100%); opacity: 0; }
+
+  .wizard-card {
+    width: 100%;
+    max-width: 720px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+  }
+  .wizard-title { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+  .wizard-subtitle { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
+  .wizard-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .step-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: all 0.2s;
+  }
+  .step-dot.active { background: var(--accent); width: 24px; border-radius: 4px; }
+  .step-dot.done { background: #10b981; }
   .plan-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -204,173 +250,14 @@
   <div class="badge">BETA</div>
 </header>
 
-<div class="container">
-
-  <!-- ADIM 1: Upload -->
-  <div id="page1">
-    <div style="text-align:center; margin-bottom:32px">
-      <h1 style="font-size:28px;font-weight:700;margin-bottom:8px">Akademik Analiz Aracı</h1>
-      <p style="color:var(--muted);font-size:16px">Excel veya CSV yükle → Otomatik analiz → APA 7 bulgular</p>
-    </div>
-
-    <div style="background:rgba(37,99,235,0.06); border:1px solid rgba(37,99,235,0.2); border-radius:12px; padding:20px 24px; margin-bottom:24px;">
-      <div style="font-size:15px; font-weight:700; margin-bottom:12px;">📋 Dosyanızı yüklemeden önce</div>
-      <div style="font-size:13px; color:var(--muted); line-height:1.8;">
-        <div style="margin-bottom:8px;">
-          <strong style="color:var(--text);">SPSS'den doğru export için:</strong>
-        </div>
-        <div>1. <strong>File → Export → CSV</strong> yolunu izleyin</div>
-        <div>2. <strong>"Save value labels where defined instead of data values"</strong> seçeneğini işaretleyin</div>
-        <div>3. CSV olarak kaydedin</div>
-        <div style="margin-top:10px; padding:10px 14px; background:rgba(210,153,34,0.08); border:1px solid rgba(210,153,34,0.3); border-radius:8px; color:var(--warn);">
-          ⚠️ Bu seçenek işaretlenmezse gruplar "1, 2, 3" olarak görünür, gerçek isimler değil.
-        </div>
-        <div style="margin-top:16px;">
-          <strong style="color:var(--text);">Eksik veri kodları (SPSS):</strong>
-          <p style="margin:6px 0 8px; font-size:12px;">Tanımsız/geçersiz değer kodlarını virgülle girin. Frekans tablolarında "Kayıp Veri" olarak gösterilir.</p>
-          <input type="text" id="missingValueCodes" value="99"
-            placeholder="99, 98, 999"
-            style="width:100%; max-width:320px; padding:8px 12px; font-size:13px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:8px; font-family:'JetBrains Mono',monospace;" />
-        </div>
-      </div>
-    </div>
-
-    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
-      <div class="icon">📊</div>
-      <h2>Veri dosyanı yükle</h2>
-      <p>Sürükle bırak veya tıkla</p>
-      <div class="formats">
-        <span class="format-badge">.xlsx</span>
-        <span class="format-badge">.xls</span>
-        <span class="format-badge">.csv</span>
-      </div>
-    </div>
-    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFile(this.files[0])" />
-
-    <div id="researchTopicBox" style="display:none; margin-top:24px;">
-      <div class="panel">
-        <div class="panel-title">🔬 Araştırma Konusu</div>
-        <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
-          Kısa bir açıklama yazın — AI hangi değişkenlerin analiz için önemli olduğunu belirlesin.
-        </p>
-        <textarea id="researchTopic"
-          placeholder="örn: Sağlık bilimleri öğrencilerinin online yemek siparişi tutumu, gece yeme davranışı ve sağlıklı beslenme tutumu arasındaki ilişki"
-          style="width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:12px; border-radius:8px; font-size:14px; font-family:inherit; resize:vertical; min-height:80px;"
-        ></textarea>
-        <div style="margin-top:16px;">
-          <div style="font-size:14px; font-weight:600; margin-bottom:8px;">
-            📝 Değişken Etiketleri <span style="font-weight:400; color:var(--muted); font-size:12px">(opsiyonel — boş bırakırsanız sütun isimleri kullanılır)</span>
-          </div>
-          <p style="color:var(--muted); font-size:12px; margin-bottom:10px;">
-            Sütun isimlerini okunabilir Türkçe isimlerle değiştirin. örn: OYS_TOPLAM → OYŞTÖ Toplam Puanı
-          </p>
-          <div id="labelInputGrid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;"></div>
-        </div>
-        <div id="cutoffApprovalBox" style="display:none; margin-top:16px; padding:14px; background:rgba(210,153,34,0.06); border:1px solid rgba(210,153,34,0.25); border-radius:8px;">
-          <div style="font-size:14px; font-weight:700; margin-bottom:8px;">📏 Kesim Noktası Onayı (Aşama 1)</div>
-          <p style="color:var(--muted); font-size:12px; margin-bottom:12px;">Literatürden bulunan risk eşiklerini kontrol edin, gerekirse düzenleyin ve onaylayın.</p>
-          <div id="cutoffList"></div>
-          <div style="margin-top:12px;">
-            <button class="btn btn-success btn-sm" onclick="confirmCutoffsAndContinue()">✅ Onayla ve Devam Et</button>
-          </div>
-        </div>
-        <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
-          <button class="btn btn-ghost btn-sm" onclick="skipResearchTopic()">Atla, manuel seç</button>
-          <button class="btn btn-primary" id="btnTopicAnalyze" onclick="analyzeWithTopic()">🤖 AI ile Analiz Et</button>
-        </div>
-      </div>
-    </div>
-
-    <div style="text-align:center; margin-top:24px">
-      <button class="btn btn-ghost" onclick="loadSampleData()">🧪 Örnek veri ile dene</button>
+<div id="wizardContainer">
+  <div id="wizardProgress" style="display:none; padding:16px 24px; background:var(--surface); border-bottom:1px solid var(--border);">
+    <div style="display:flex; align-items:center; gap:8px; max-width:800px; margin:0 auto;">
+      <div id="progressSteps" style="display:flex; align-items:center; gap:4px; flex:1;"></div>
+      <div id="progressLabel" style="font-size:12px; color:var(--muted); white-space:nowrap;"></div>
     </div>
   </div>
-
-  <!-- ADIM 2: Sütun tipi onayı -->
-  <div id="page2">
-    <div class="info-bar">
-      📁 <span id="fileInfo"></span>
-    </div>
-    <div id="missingWarnBar" style="display:none" class="warn-bar"></div>
-    <div id="cronbachInfo" style="display:none; margin-bottom:16px;"></div>
-    <div class="panel">
-      <div class="panel-title">👥 Gruplandırma Değişkenleri</div>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
-        Cinsiyet, bölüm, medeni durum gibi demografik değişkenler
-      </p>
-      <div class="checkbox-grid" id="catGrid"></div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title">📊 Analiz Değişkenleri</div>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
-        Ölçek toplam puanları, risk grupları, BKİ kategorisi gibi sonuç değişkenleri
-      </p>
-      <div class="checkbox-grid" id="contGrid"></div>
-    </div>
-
-    <div id="cronbachPanel" style="display:none" class="panel">
-      <div class="panel-title">🔢 Cronbach Alfa — Ölçek Güvenilirliği</div>
-
-      <div style="background:rgba(37,99,235,0.08); border:1px solid rgba(37,99,235,0.2); border-radius:8px; padding:14px; margin-bottom:16px; font-size:13px; line-height:1.7;">
-        <div style="font-weight:700; margin-bottom:6px;">📊 SPSS'de nasıl yapılır?</div>
-        <div style="color:var(--muted)">
-          Analyze → Scale → <strong>Reliability Analysis</strong> →
-          Maddeleri "Items" kutusuna taşı → Statistics → <strong>Scale if item deleted</strong> işaretle → OK
-        </div>
-      </div>
-
-      <div style="background:rgba(210,153,34,0.08); border:1px solid rgba(210,153,34,0.3); border-radius:8px; padding:12px; margin-bottom:16px; font-size:13px; color:var(--warn);">
-        ⚠️ <strong>Ters puanlanan maddeler:</strong> Orijinal maddeyi (oys_4) değil, düzeltilmiş versiyonunu (oys_4_ters) seçin.
-      </div>
-
-      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
-        Bir ölçeğe ait maddeleri seçin ve hesapla'ya basın.
-      </p>
-
-      <div class="checkbox-grid" id="itemGrid"></div>
-      <div class="actions" style="margin-top:12px">
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('cronbachPanel').style.display='none'">Kapat</button>
-        <button class="btn btn-primary" onclick="runCronbach()">Hesapla</button>
-      </div>
-      <div id="cronbachResult" style="margin-top:12px"></div>
-    </div>
-
-    <div class="actions">
-      <button class="btn btn-ghost" onclick="resetUpload()">← Başa Dön</button>
-      <button class="btn btn-ghost" onclick="showCronbachPanel()">🔢 Cronbach Alfa</button>
-      <button class="btn btn-success btn-lg" id="btnPlan" onclick="loadAnalysisPlan()" disabled>📋 Analiz Planı →</button>
-    </div>
-  </div>
-
-  <!-- ADIM 3: Analiz Planı -->
-  <div id="page4">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-      <div>
-        <div style="font-size:20px;font-weight:700">Analiz Planı</div>
-        <div style="font-size:13px;color:var(--muted);margin-top:4px">Yapılacak testleri onaylayın veya istediğinizi kapatın</div>
-      </div>
-      <div style="display:flex;gap:10px">
-        <button class="btn btn-ghost" onclick="showPage(2)">← Geri</button>
-        <button class="btn btn-success btn-lg" onclick="runAnalysisFromPlan()">🔬 Analiz Et</button>
-      </div>
-    </div>
-    <div id="planContainer"></div>
-  </div>
-
-  <!-- ADIM 4: Sonuçlar -->
-  <div id="page3">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
-      <div style="font-size:20px;font-weight:700">Analiz Sonuçları</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-ghost" onclick="showPage(2)">← Geri</button>
-        <button class="btn btn-primary" onclick="generateAllBulgu()">✨ Tüm Bulguları Yaz</button>
-        <button class="btn btn-success" id="btnWord" onclick="downloadWord()" disabled>📄 Word İndir</button>
-      </div>
-    </div>
-    <div id="resultsContainer"></div>
-  </div>
-
+  <div id="slideContainer"></div>
 </div>
 
 <div id="labelWarningModal">
@@ -414,6 +301,15 @@ let analysisPlan = [];
 let approvedCutoffs = [];
 let researchTopicText = "";
 let scaleInfo = {};
+let currentStep = 0;
+let variablesDataReady = false;
+let lastRecommendations = {};
+let wizardFormState = { scaleNames: "", topic: "", scaleInfoHtml: "" };
+let fileInfoText = "";
+
+const STEPS = ["upload", "scales", "topic", "cutoffs", "variables", "plan", "results"];
+const STEP_LABELS = ["Dosya", "Ölçekler", "Konu", "Kesim", "Değişkenler", "Plan", "Sonuçlar"];
+const STEP_ICONS = ["📁", "📋", "🎯", "✂️", "🔢", "📊", "✅"];
 
 const EXCLUDE_PATTERNS = [
   /^(anket_no|id|no|sira|num|serial)$/i,
@@ -433,6 +329,13 @@ const OUTCOME_CAT_PATTERNS = [
   /yas_grubu/i, /risk_grup/i, /risk_binary/i, /oys_grup/i,
   /gya_risk/i,
 ];
+
+const REQUIRED_LABEL_PATTERNS = [
+  /^bolum$/i, /cinsiyet/i, /^dbf_/i, /vki/i,
+  /_toplam$/i, /_kategori$/i, /_grup/i, /_binary/i, /yas_grubu/i,
+];
+
+const ITEM_COL_PATTERN = /^[a-zA-Z]+_\d+(_ters|_T)?$/i;
 
 const OUTCOME_CONT_PATTERNS = [
   /_toplam$/i,
@@ -468,6 +371,10 @@ function isNumericValue(v) {
 
 function escAttr(s) {
   return String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function escHtml(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function colDomId(type, col) {
@@ -540,6 +447,7 @@ const STATUS_BADGE = {
 function renderSelectionGrids(groupingCols, outcomeCols, recommendations = {}) {
   const catGrid = document.getElementById("catGrid");
   const contGrid = document.getElementById("contGrid");
+  if (!catGrid || !contGrid) return;
 
   catGrid.innerHTML = groupingCols.length ? groupingCols.map(col => {
     const rec = recommendations[col] || {};
@@ -597,31 +505,64 @@ function collectUserLabelsFromInputs() {
   });
 }
 
+function isRequiredLabelCol(col) {
+  return REQUIRED_LABEL_PATTERNS.some(p => p.test(col));
+}
+
 function renderLabelInputs(allCols) {
   const grid = document.getElementById("labelInputGrid");
   if (!grid) return;
 
-  const ITEM_PATTERN = /^[a-zA-Z]+_\d+(_ters|_T)?$/i;
-  const visibleCols = allCols.filter(col => !ITEM_PATTERN.test(col));
+  const visibleCols = allCols.filter(col => !ITEM_COL_PATTERN.test(col));
 
   grid.innerHTML = visibleCols.map(col => {
     const id = labelInputId(col);
     const c = escAttr(col);
     const val = escAttr(userLabels[col] || col);
+    const isRequired = isRequiredLabelCol(col);
+    const ph = isRequired ? "Zorunlu — Türkçe isim girin" : col;
     return `
       <div style="display:flex; align-items:center; gap:8px;">
-        <span style="font-size:12px; color:var(--muted); font-family:'JetBrains Mono',monospace; min-width:120px; flex-shrink:0;">${col}</span>
+        <span style="font-size:12px; color:${isRequired ? "var(--accent)" : "var(--muted)"};
+              font-family:'JetBrains Mono',monospace; min-width:130px; flex-shrink:0;">
+          ${col}${isRequired ? ' <span style="color:#ef4444">*</span>' : ""}
+        </span>
         <input
           type="text"
           id="${id}"
           data-col="${c}"
-          placeholder="${c}"
+          data-required="${isRequired ? "1" : "0"}"
+          placeholder="${escAttr(ph)}"
           value="${val}"
-          style="flex:1; padding:6px 10px; font-size:12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px; font-family:inherit;"
+          style="flex:1; padding:6px 10px; font-size:12px;
+                 background:var(--bg);
+                 border:1px solid ${isRequired ? "rgba(37,99,235,0.4)" : "var(--border)"};
+                 color:var(--text); border-radius:6px; font-family:inherit;"
           onchange="updateUserLabel(this)"
+          ${isRequired ? "required" : ""}
         />
       </div>`;
   }).join("");
+
+  const note = document.createElement("div");
+  note.style.cssText = "font-size:11px; color:var(--muted); margin-top:8px; grid-column:1/-1;";
+  note.innerHTML = '<span style="color:#ef4444">*</span> işaretli alanlar zorunludur';
+  grid.appendChild(note);
+}
+
+function checkRequiredLabels() {
+  collectUserLabelsFromInputs();
+  const allCols = [...selectedCat, ...selectedCont];
+  const missing = allCols
+    .filter(col => !ITEM_COL_PATTERN.test(col))
+    .filter(col => isRequiredLabelCol(col))
+    .filter(col => !userLabels[col] || userLabels[col] === col);
+
+  if (missing.length > 0) {
+    alert(`Lütfen şu değişkenler için Türkçe isim girin:\n${missing.join(", ")}`);
+    return false;
+  }
+  return true;
 }
 
 function toggleCol(type, col, checked) {
@@ -669,20 +610,420 @@ function showLabelWarning(suspicious) {
 
 function closeLabelWarning(goBack) {
   document.getElementById("labelWarningModal").classList.remove("open");
-  if (goBack) showPage(1);
+  if (goBack) resetWizard();
 }
 
 function proceedWithNumbers() {
   closeLabelWarning(false);
-  showPage(2);
+}
+
+// ── Wizard Engine ─────────────────────────────────────────────────────────────
+
+function saveWizardFormState() {
+  const si = document.getElementById("scaleNamesInput");
+  const topic = document.getElementById("researchTopic");
+  const result = document.getElementById("scaleInfoResult");
+  if (si) wizardFormState.scaleNames = si.value;
+  if (topic) wizardFormState.topic = topic.value;
+  if (result) wizardFormState.scaleInfoHtml = result.innerHTML;
+}
+
+function suggestedScaleNames() {
+  if (wizardFormState.scaleNames) return wizardFormState.scaleNames;
+  if (!pendingJson?.length) return "";
+  const prefixes = Object.keys(pendingJson[0])
+    .filter(c => /_TOPLAM$/i.test(c))
+    .map(c => c.split("_")[0].toUpperCase());
+  return prefixes.length ? [...new Set(prefixes)].join(", ") : "";
+}
+
+function updateScaleCutoff(key, value) {
+  if (scaleInfo[key]) scaleInfo[key].cutoff = parseInt(value, 10);
+}
+
+function hasCutoffData() {
+  if (Object.values(scaleInfo).some(s => s && s.cutoff != null)) return true;
+  return approvedCutoffs.some(c => c.has_cutoff);
+}
+
+function initUploadZoneDragDrop() {
+  const zone = document.getElementById("uploadZone");
+  if (!zone || zone.dataset.dragBound) return;
+  zone.dataset.dragBound = "1";
+  zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", e => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    handleFile(e.dataTransfer.files[0]);
+  });
+}
+
+function renderUploadStep() {
+  return `
+    <div class="wizard-card" style="text-align:center; max-width:600px;">
+      <div style="font-size:48px; margin-bottom:16px;">📊</div>
+      <div class="wizard-title">StatAI'ya Hoş Geldiniz</div>
+      <div class="wizard-subtitle">Excel veya CSV dosyanızı yükleyin, gerisini biz halledelim</div>
+      <div id="uploadZone" class="upload-zone" onclick="document.getElementById('fileInput').click()"
+           style="margin:0 0 20px; cursor:pointer;">
+        <div class="icon">📁</div>
+        <h2>Veri dosyanı yükle</h2>
+        <p>Sürükle bırak veya tıkla</p>
+        <div class="formats">
+          <span class="format-badge">.xlsx</span>
+          <span class="format-badge">.xls</span>
+          <span class="format-badge">.csv</span>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFile(this.files[0])" style="display:none" />
+      <div style="padding:12px 16px; background:rgba(37,99,235,0.06); border:1px solid rgba(37,99,235,0.2); border-radius:8px; text-align:left; font-size:13px;">
+        <strong>SPSS'den export için:</strong> File → Export → CSV →
+        <em>"Save value labels where defined"</em> seçeneğini işaretle
+      </div>
+      <div style="margin-top:12px; text-align:left;">
+        <strong style="font-size:13px;">Eksik veri kodları:</strong>
+        <input type="text" id="missingValueCodes" value="99" placeholder="99, 998, 999"
+          style="margin-left:8px; padding:5px 10px; font-size:12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px; width:140px;" />
+      </div>
+    </div>`;
+}
+
+function renderScalesStep() {
+  const names = suggestedScaleNames();
+  return `
+    <div class="wizard-card">
+      <div class="wizard-title">📋 Kullandığınız ölçekler</div>
+      <div class="wizard-subtitle">Araştırmanızda kullandığınız ölçek/anket isimlerini yazın. Her birini virgülle ayırın.</div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <input type="text" id="scaleNamesInput" value="${escHtml(names)}"
+          placeholder="örn: OYŞTÖ, Gece Yeme Anketi, SBİTO"
+          style="flex:1; min-width:200px; padding:10px 14px; font-size:14px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:8px;" />
+        <button class="btn btn-primary" onclick="fetchScaleInfoFromInput()" id="btnFetchScales">🔍 Getir</button>
+      </div>
+      <div id="scaleInfoResult" style="margin-top:16px;">${wizardFormState.scaleInfoHtml}</div>
+      <div class="wizard-nav">
+        <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
+        <div style="font-size:12px; color:var(--muted);">Ölçek yoksa boş bırakabilirsiniz</div>
+        <button class="btn btn-success" onclick="nextStep()">Devam →</button>
+      </div>
+    </div>`;
+}
+
+function renderTopicStep() {
+  const topic = wizardFormState.topic || researchTopicText;
+  return `
+    <div class="wizard-card">
+      <div class="wizard-title">🎯 Araştırma konusu</div>
+      <div class="wizard-subtitle">Bir iki cümleyle araştırmanızı özetleyin. AI değişkenleri sınıflandırırken kullanacak.</div>
+      <textarea id="researchTopic" rows="3"
+        placeholder="örn: Sağlık bilimleri öğrencilerinin online yemek siparişi tutumu ile gece yeme davranışı ilişkisi"
+        style="width:100%; padding:12px 14px; font-size:14px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:8px; resize:vertical; box-sizing:border-box;">${escHtml(topic)}</textarea>
+      <div class="wizard-nav">
+        <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
+        <button class="btn btn-success" onclick="nextStep()">Devam →</button>
+      </div>
+    </div>`;
+}
+
+function renderCutoffsStep() {
+  const cutoffKeys = Object.keys(scaleInfo).filter(k => scaleInfo[k]?.cutoff != null);
+  const litCutoffs = approvedCutoffs.filter(c => c.has_cutoff);
+  if (!cutoffKeys.length && !litCutoffs.length) return renderTopicStep();
+
+  return `
+    <div class="wizard-card">
+      <div class="wizard-title">✂️ Kesim Noktaları</div>
+      <div class="wizard-subtitle">Literatürden bulunan kesim/risk eşiklerini kontrol edin.</div>
+      ${cutoffKeys.map(k => `
+        <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:10px;">
+          <div style="font-weight:700; margin-bottom:8px;">${escHtml(scaleInfo[k].full_name || k)}</div>
+          <div style="display:flex; gap:12px; align-items:center;">
+            <label style="font-size:13px; color:var(--muted);">Kesim puanı:</label>
+            <input type="number" value="${scaleInfo[k].cutoff}" data-key="${escHtml(k)}"
+              onchange="updateScaleCutoff(this.dataset.key, this.value)"
+              style="width:80px; padding:6px 10px; font-size:14px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px;" />
+          </div>
+        </div>`).join("")}
+      ${litCutoffs.map((c, i) => `
+        <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:10px;">
+          <div style="font-weight:700; margin-bottom:8px;">${escAttr(c.label || c.code)}</div>
+          <textarea id="cutoff_range_${i}" rows="2" style="width:100%; padding:8px; font-size:12px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px;">${escAttr(c.cutoff_ranges || "")}</textarea>
+          <input type="hidden" id="cutoff_code_${i}" value="${escAttr(c.code)}" />
+          <input type="hidden" id="cutoff_label_${i}" value="${escAttr(c.label || c.code)}" />
+        </div>`).join("")}
+      <div class="wizard-nav">
+        <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
+        <button class="btn btn-success" onclick="nextStep()">Onayla →</button>
+      </div>
+    </div>`;
+}
+
+function renderVariablesStep() {
+  return `
+    <div class="wizard-card" style="max-width:900px;">
+      <div class="wizard-title">🔢 Değişkenler</div>
+      <div class="wizard-subtitle">Hangi sütunları analiz edeceğinizi seçin ve Türkçe isimlerini yazın.</div>
+      <div id="selectionGridsContainer"></div>
+      <div style="margin-top:20px;">
+        <div style="font-size:14px; font-weight:600; margin-bottom:12px;">
+          📝 Değişken etiketleri <span style="font-size:12px; font-weight:400; color:var(--muted);">(* zorunlu)</span>
+        </div>
+        <div id="labelInputGrid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;"></div>
+      </div>
+      <div class="wizard-nav">
+        <button class="btn btn-ghost" onclick="resetWizard()">← Başa Dön</button>
+        <button class="btn btn-success" onclick="nextStep()">Analiz Planı →</button>
+      </div>
+    </div>`;
+}
+
+function renderPlanStep() {
+  return `
+    <div class="wizard-card" style="max-width:900px;">
+      <div class="wizard-title">📊 Analiz Planı</div>
+      <div class="wizard-subtitle">Yapılacak testleri onaylayın veya istediğinizi kapatın.</div>
+      <div id="planContainer"><div class="empty"><div class="icon">⏳</div><p>Plan hazırlanıyor...</p></div></div>
+      <div class="wizard-nav">
+        <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
+        <button class="btn btn-success btn-lg" onclick="runAnalysisFromPlan()">🔬 Analiz Et</button>
+      </div>
+    </div>`;
+}
+
+function renderResultsStep() {
+  return `
+    <div class="wizard-card" style="max-width:960px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+        <div class="wizard-title" style="margin:0;">✅ Analiz Sonuçları</div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
+          <button class="btn btn-primary" onclick="generateAllBulgu()">✨ Tüm Bulguları Yaz</button>
+          <button class="btn btn-success" id="btnWord" onclick="downloadWord()">📄 Word İndir</button>
+        </div>
+      </div>
+      <div id="resultsContainer"></div>
+    </div>`;
+}
+
+function renderStep(step) {
+  switch (STEPS[step]) {
+    case "upload": return renderUploadStep();
+    case "scales": return renderScalesStep();
+    case "topic": return renderTopicStep();
+    case "cutoffs": return renderCutoffsStep();
+    case "variables": return renderVariablesStep();
+    case "plan": return renderPlanStep();
+    case "results": return renderResultsStep();
+    default: return "";
+  }
+}
+
+function updateProgress() {
+  const bar = document.getElementById("wizardProgress");
+  const stepsEl = document.getElementById("progressSteps");
+  const label = document.getElementById("progressLabel");
+  if (!bar || !stepsEl || !label) return;
+
+  if (currentStep === 0) {
+    bar.style.display = "none";
+    return;
+  }
+  bar.style.display = "block";
+  stepsEl.innerHTML = STEPS.map((_, i) => {
+    let cls = "step-dot";
+    if (i < currentStep) cls += " done";
+    else if (i === currentStep) cls += " active";
+    return `<div class="${cls}" title="${STEP_LABELS[i]}"></div>`;
+  }).join("");
+  label.textContent = `${STEP_ICONS[currentStep]} ${STEP_LABELS[currentStep]} · ${currentStep}/${STEPS.length - 1}`;
+}
+
+function initStep(step) {
+  const name = STEPS[step];
+  if (name === "upload") initUploadZoneDragDrop();
+
+  if (name === "variables") {
+    setTimeout(() => {
+      const container = document.getElementById("selectionGridsContainer");
+      if (!container) return;
+      if (!variablesDataReady) {
+        container.innerHTML = '<p style="color:var(--muted);font-size:13px">Veriler yükleniyor...</p>';
+        return;
+      }
+      container.innerHTML = `
+        <div class="info-bar">📁 <span id="fileInfo">${escAttr(fileInfoText)}</span></div>
+        <div id="missingWarnBar" style="display:none" class="warn-bar"></div>
+        <div id="cronbachInfo" style="display:none; margin-bottom:16px;"></div>
+        <div class="panel">
+          <div class="panel-title">👥 Gruplandırma Değişkenleri</div>
+          <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Cinsiyet, bölüm, medeni durum gibi demografik değişkenler</p>
+          <div class="checkbox-grid" id="catGrid"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">📊 Analiz Değişkenleri</div>
+          <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Ölçek toplam puanları, risk grupları, BKİ kategorisi gibi sonuç değişkenleri</p>
+          <div class="checkbox-grid" id="contGrid"></div>
+        </div>`;
+      if (detectedScales.length) {
+        const info = document.getElementById("cronbachInfo");
+        if (info) {
+          info.style.display = "block";
+          info.innerHTML = `
+            <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2); border-radius:8px; padding:12px 16px; font-size:13px; color:#34d399;">
+              ✅ ${detectedScales.length} ölçek tespit edildi:
+              <strong>${detectedScales.map(s => s.name).join(", ")}</strong>
+            </div>`;
+        }
+      }
+      renderSelectionGrids(catColumns, contColumns, lastRecommendations);
+      renderLabelInputs([...catColumns, ...contColumns]);
+      applyScaleInfoToLabels();
+      renderMissingWarnings();
+    }, 50);
+  }
+
+  if (name === "plan") {
+    setTimeout(() => loadAnalysisPlan(), 50);
+  }
+
+  if (name === "results") {
+    setTimeout(() => {
+      renderResults();
+      const btnWord = document.getElementById("btnWord");
+      if (btnWord) btnWord.disabled = !analysisResults.length;
+    }, 50);
+  }
+}
+
+function goToStep(targetStep, direction = "forward") {
+  saveWizardFormState();
+  const container = document.getElementById("slideContainer");
+  if (!container) return;
+
+  const oldSlide = container.querySelector(".slide-active");
+  const isForward = direction === "forward";
+
+  if (!oldSlide) {
+    const slide = document.createElement("div");
+    slide.className = "wizard-slide slide-active";
+    slide.id = `slide_${STEPS[targetStep]}`;
+    slide.innerHTML = renderStep(targetStep);
+    container.appendChild(slide);
+    currentStep = targetStep;
+    updateProgress();
+    initStep(targetStep);
+    return;
+  }
+
+  const newSlide = document.createElement("div");
+  newSlide.className = `wizard-slide ${isForward ? "slide-enter-right" : "slide-enter-left"}`;
+  newSlide.id = `slide_${STEPS[targetStep]}`;
+  newSlide.innerHTML = renderStep(targetStep);
+  container.appendChild(newSlide);
+
+  requestAnimationFrame(() => {
+    oldSlide.classList.remove("slide-active");
+    oldSlide.classList.add(isForward ? "slide-exit-left" : "slide-exit-right");
+    setTimeout(() => oldSlide.remove(), 350);
+    newSlide.classList.remove("slide-enter-right", "slide-enter-left");
+    newSlide.classList.add("slide-active");
+  });
+
+  currentStep = targetStep;
+  updateProgress();
+  initStep(targetStep);
+}
+
+function validateStep(step) {
+  const name = STEPS[step];
+
+  if (name === "topic") {
+    const topic = document.getElementById("researchTopic")?.value.trim();
+    if (!topic) {
+      alert("Lütfen araştırma konusunu yazın.");
+      return false;
+    }
+    researchTopicText = topic;
+    wizardFormState.topic = topic;
+  }
+
+  if (name === "cutoffs" && approvedCutoffs.length) {
+    approvedCutoffs = collectApprovedCutoffsFromForm();
+  }
+
+  if (name === "variables") {
+    if (!selectedCat.size && !selectedCont.size) {
+      alert("En az bir değişken seçmelisiniz.");
+      return false;
+    }
+    if (!checkRequiredLabels()) return false;
+    collectUserLabelsFromInputs();
+  }
+
+  return true;
+}
+
+async function nextStep() {
+  if (!validateStep(currentStep)) return;
+
+  let next = currentStep + 1;
+
+  if (STEPS[currentStep] === "topic") {
+    ensurePendingUserLabels();
+    applyScaleInfoToLabels();
+    await loadCutoffsForTopic(researchTopicText);
+    if (STEPS[next] === "cutoffs" && !hasCutoffData()) next++;
+  }
+
+  if (STEPS[next] === "cutoffs" && !hasCutoffData()) next++;
+
+  if (STEPS[next] === "variables" && !variablesDataReady) {
+    await loadData(pendingJson, pendingFileName, researchTopicText);
+  }
+
+  if (next < STEPS.length) goToStep(next, "forward");
+}
+
+function prevStep() {
+  let prev = currentStep - 1;
+  if (STEPS[prev] === "cutoffs" && !hasCutoffData()) prev--;
+  if (prev >= 0) goToStep(prev, "backward");
+}
+
+function resetWizard() {
+  parsedData = [];
+  columns = [];
+  catColumns = [];
+  contColumns = [];
+  excludeColumns = [];
+  selectedCat = new Set();
+  selectedCont = new Set();
+  selectedItems = new Set();
+  detectedScales = [];
+  userLabels = {};
+  scaleInfo = {};
+  analysisPlan = [];
+  analysisResults = [];
+  analysisMeta = {};
+  bulgular = {};
+  missingData = [];
+  cronbachResults = [];
+  pendingJson = null;
+  pendingFileName = "";
+  approvedCutoffs = [];
+  researchTopicText = "";
+  variablesDataReady = false;
+  lastRecommendations = {};
+  wizardFormState = { scaleNames: "", topic: "", scaleInfoHtml: "" };
+  fileInfoText = "";
+  document.getElementById("labelWarningModal")?.classList.remove("open");
+  const container = document.getElementById("slideContainer");
+  if (container) container.innerHTML = "";
+  goToStep(0, "backward");
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────────
-
-const zone = document.getElementById("uploadZone");
-zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag"); });
-zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
-zone.addEventListener("drop", e => { e.preventDefault(); zone.classList.remove("drag"); handleFile(e.dataTransfer.files[0]); });
 
 function handleFile(file) {
   if (!file) return;
@@ -711,110 +1052,36 @@ function handleFile(file) {
     );
     userLabels = {};
     uploadCols.forEach(col => { userLabels[col] = col; });
-    renderLabelInputs(uploadCols);
 
-    document.getElementById("researchTopicBox").style.display = "block";
-    document.getElementById("researchTopicBox").scrollIntoView({ behavior: "smooth" });
+    const prefixes = Object.keys(json[0])
+      .filter(c => /_TOPLAM$/i.test(c))
+      .map(c => c.split("_")[0].toUpperCase());
+    wizardFormState.scaleNames = prefixes.length ? [...new Set(prefixes)].join(", ") : "";
+    wizardFormState.scaleInfoHtml = "";
+    wizardFormState.topic = "";
+    approvedCutoffs = [];
+    scaleInfo = {};
 
     const uploadZone = document.getElementById("uploadZone");
-    uploadZone.innerHTML = `
-      <div style="font-size:32px">✅</div>
-      <div style="font-weight:700; font-size:16px; margin:8px 0 4px">${escAttr(file.name)}</div>
-      <div style="font-size:12px; color:var(--muted)">${(file.size / 1024).toFixed(0)} KB · Yüklendi</div>
-      <div style="margin-top:10px; font-size:12px; color:var(--accent); cursor:pointer; text-decoration:underline"
-           onclick="event.stopPropagation(); resetUpload()">Farklı dosya yükle</div>
-    `;
-    uploadZone.style.cursor = "default";
-    uploadZone.onclick = null;
+    if (uploadZone) {
+      uploadZone.innerHTML = `
+        <div style="font-size:32px">✅</div>
+        <div style="font-weight:700; font-size:16px; margin:8px 0 4px">${escHtml(file.name)}</div>
+        <div style="font-size:12px; color:var(--muted)">${(file.size / 1024).toFixed(0)} KB · Yüklendi</div>
+        <div style="margin-top:10px; font-size:12px; color:var(--accent); cursor:pointer; text-decoration:underline"
+             onclick="event.stopPropagation(); resetWizard()">Farklı dosya yükle</div>`;
+      uploadZone.style.cursor = "default";
+      uploadZone.onclick = null;
+    }
+
+    setTimeout(() => goToStep(1, "forward"), 600);
   };
   reader.readAsBinaryString(file);
-}
-
-function resetUpload() {
-  parsedData = [];
-  columns = [];
-  catColumns = [];
-  contColumns = [];
-  excludeColumns = [];
-  selectedCat = new Set();
-  selectedCont = new Set();
-  selectedItems = new Set();
-  detectedScales = [];
-  userLabels = {};
-  scaleInfo = {};
-  analysisPlan = [];
-  pendingJson = null;
-  pendingFileName = "";
-  approvedCutoffs = [];
-  researchTopicText = "";
-  analysisResults = [];
-  analysisMeta = {};
-  bulgular = {};
-  missingData = [];
-  cronbachResults = [];
-
-  const uploadZone = document.getElementById("uploadZone");
-  uploadZone.innerHTML = `
-    <div class="icon">📊</div>
-    <h2>Veri dosyanı yükle</h2>
-    <p>Sürükle bırak veya tıkla</p>
-    <div class="formats">
-      <span class="format-badge">.xlsx</span>
-      <span class="format-badge">.xls</span>
-      <span class="format-badge">.csv</span>
-    </div>
-  `;
-  uploadZone.style.cursor = "pointer";
-  uploadZone.onclick = () => document.getElementById("fileInput").click();
-
-  document.getElementById("fileInput").value = "";
-
-  document.getElementById("researchTopicBox").style.display = "none";
-  document.getElementById("researchTopic").value = "";
-  document.getElementById("cutoffApprovalBox").style.display = "none";
-  document.getElementById("cronbachInfo").style.display = "none";
-  document.getElementById("cronbachInfo").innerHTML = "";
-  document.getElementById("cronbachPanel").style.display = "none";
-  document.getElementById("cronbachResult").innerHTML = "";
-  document.getElementById("labelInputGrid").innerHTML = "";
-  document.getElementById("labelWarningModal").classList.remove("open");
-  document.getElementById("btnWord").disabled = true;
-  setAnalysisPlanEnabled(false);
-  showPage(1);
-}
-
-function skipResearchTopic() {
-  collectUserLabelsFromInputs();
-  approvedCutoffs = [];
-  researchTopicText = "";
-  loadData(pendingJson, pendingFileName, null);
 }
 
 function getOutcomeScaleColumns() {
   if (!pendingJson || !pendingJson.length) return [];
   return Object.keys(pendingJson[0]).filter(c => /_TOPLAM$/i.test(c));
-}
-
-function renderCutoffApproval(cutoffs) {
-  const box = document.getElementById("cutoffApprovalBox");
-  const list = document.getElementById("cutoffList");
-  if (!cutoffs.length) {
-    box.style.display = "none";
-    return;
-  }
-  approvedCutoffs = cutoffs.map(c => ({ ...c }));
-  box.style.display = "block";
-  list.innerHTML = cutoffs.map((c, i) => `
-    <div style="margin-bottom:12px; padding:10px; background:var(--bg); border:1px solid var(--border); border-radius:8px;">
-      <div style="font-weight:600; font-size:13px; margin-bottom:6px;">${escAttr(c.label || c.code)}</div>
-      <label style="font-size:11px; color:var(--muted);">Kesim / risk aralığı</label>
-      <textarea id="cutoff_range_${i}" rows="2" style="width:100%; margin-top:4px; padding:8px; font-size:12px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px;">${escAttr(c.cutoff_ranges || "")}</textarea>
-      <label style="font-size:11px; color:var(--muted); margin-top:6px; display:block;">Atıf</label>
-      <input type="text" id="cutoff_cite_${i}" value="${escAttr(c.citation || "")}" style="width:100%; margin-top:4px; padding:8px; font-size:12px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px;" />
-      <input type="hidden" id="cutoff_code_${i}" value="${escAttr(c.code)}" />
-      <input type="hidden" id="cutoff_label_${i}" value="${escAttr(c.label || c.code)}" />
-    </div>
-  `).join("");
 }
 
 function collectApprovedCutoffsFromForm() {
@@ -824,19 +1091,13 @@ function collectApprovedCutoffsFromForm() {
     scale_name: c.scale_name || c.label,
     has_cutoff: c.has_cutoff,
     cutoff_ranges: document.getElementById(`cutoff_range_${i}`)?.value?.trim() || c.cutoff_ranges,
-    citation: document.getElementById(`cutoff_cite_${i}`)?.value?.trim() || c.citation,
+    citation: c.citation || "",
   }));
 }
 
-async function loadCutoffsForApproval(topic) {
-  collectUserLabelsFromInputs();
+async function loadCutoffsForTopic(topic) {
   const scaleCols = getOutcomeScaleColumns();
   if (!scaleCols.length) return false;
-
-  const btn = document.getElementById("btnTopicAnalyze");
-  const prev = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = "Kesim noktaları aranıyor...";
 
   try {
     const scales = scaleCols.map(code => ({
@@ -848,48 +1109,88 @@ async function loadCutoffsForApproval(topic) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ scales, research_topic: topic }),
     });
-    if (!res.ok) throw new Error("Kesim noktası araması başarısız");
+    if (!res.ok) return false;
     const json = await res.json();
-    renderCutoffApproval(json.cutoffs || []);
-    return (json.cutoffs || []).length > 0;
+    approvedCutoffs = (json.cutoffs || []).map(c => ({ ...c }));
+    return approvedCutoffs.some(c => c.has_cutoff);
   } catch (e) {
     console.warn(e);
     return false;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = prev;
   }
 }
 
-function confirmCutoffsAndContinue() {
-  approvedCutoffs = collectApprovedCutoffsFromForm();
-  collectUserLabelsFromInputs();
-  loadData(pendingJson, pendingFileName, researchTopicText);
+function ensurePendingUserLabels() {
+  if (!pendingJson?.length) return;
+  Object.keys(pendingJson[0])
+    .filter(col => !EXCLUDE_PATTERNS.some(p => p.test(col)))
+    .forEach(col => {
+      if (!userLabels[col]) userLabels[col] = col;
+    });
 }
 
-async function analyzeWithTopic() {
-  collectUserLabelsFromInputs();
-  const topic = document.getElementById("researchTopic").value.trim();
-  if (!topic) return loadData(pendingJson, pendingFileName, null);
-  researchTopicText = topic;
-  const hasCutoffs = await loadCutoffsForApproval(topic);
-  if (!hasCutoffs) loadData(pendingJson, pendingFileName, topic);
-}
+async function fetchScaleInfoFromInput() {
+  const input = document.getElementById("scaleNamesInput").value.trim();
+  if (!input) return alert("Lütfen ölçek isimlerini girin.");
 
-function setAnalysisPlanEnabled(enabled) {
-  const btn = document.getElementById("btnPlan");
-  if (btn) btn.disabled = !enabled;
+  const resultDiv = document.getElementById("scaleInfoResult");
+  resultDiv.innerHTML = `<div style="color:var(--muted); font-size:13px;">⏳ Ölçek bilgileri getiriliyor...</div>`;
+
+  const scaleNames = input.split(",").map(s => s.trim()).filter(Boolean);
+
+  try {
+    const res = await fetch(`${API}/scale-info`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        research_topic: document.getElementById("researchTopic")?.value || "",
+        scale_names: scaleNames,
+      }),
+    });
+    if (!res.ok) throw new Error("API hatası");
+    const data = await res.json();
+    scaleInfo = data.scales || {};
+
+    if (!Object.keys(scaleInfo).length) {
+      resultDiv.innerHTML = `<div style="color:var(--warn);">⚠️ Ölçek bilgisi bulunamadı. İsimler doğru mu?</div>`;
+      return;
+    }
+
+    resultDiv.innerHTML = `
+      <div style="font-size:13px; font-weight:600; margin-bottom:10px; color:var(--accent);">
+        ✅ ${Object.keys(scaleInfo).length} ölçek bulundu — bilgileri kontrol edin:
+      </div>
+      ${Object.entries(scaleInfo).map(([name, info]) => `
+        <div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:8px;">
+          <div style="font-weight:700; margin-bottom:4px;">${escHtml(name)}</div>
+          <div style="font-size:12px; color:var(--muted); line-height:1.8;">
+            ${info.full_name ? `<span>📖 ${escHtml(info.full_name)}</span><br>` : ""}
+            ${info.item_count ? `<span>📝 ${info.item_count} madde</span> · ` : ""}
+            ${(info.min_score != null && info.max_score != null) ? `<span>📊 Teorik aralık: ${info.min_score}–${info.max_score}</span> · ` : ""}
+            ${info.likert ? `<span>🔢 ${escHtml(info.likert)}</span>` : ""}
+            ${info.note ? `<br><span style="color:var(--text);">💡 ${escHtml(info.note)}</span>` : ""}
+          </div>
+        </div>
+      `).join("")}
+      <div style="font-size:12px; color:var(--muted); margin-top:8px;">
+        Bilgiler yanlışsa ölçek isimlerini düzeltin ve tekrar deneyin.
+      </div>
+    `;
+
+    ensurePendingUserLabels();
+    applyScaleInfoToLabels();
+    wizardFormState.scaleInfoHtml = resultDiv.innerHTML;
+  } catch (e) {
+    resultDiv.innerHTML = `<div style="color:var(--danger);">❌ Hata: ${escHtml(e.message)}</div>`;
+  }
 }
 
 async function loadData(json, fileName, researchTopic) {
-  setAnalysisPlanEnabled(false);
+  variablesDataReady = false;
   columns = Object.keys(json[0]);
   parsedData = normalizeDataDecimals(json);
   cronbachResults = [];
   detectedScales = [];
   selectedItems = new Set();
-  document.getElementById("cronbachInfo").style.display = "none";
-
   const nonItemColumns = columns.filter(col =>
     !EXCLUDE_PATTERNS.some(p => p.test(col))
   );
@@ -904,12 +1205,7 @@ async function loadData(json, fileName, researchTopic) {
     )].slice(0, 4);
   });
 
-  document.getElementById("researchTopicBox").style.display = "none";
-  document.getElementById("fileInfo").textContent =
-    researchTopic ? `${fileName} · AI analiz ediyor...` : `${fileName} · Sütunlar analiz ediliyor...`;
-  document.getElementById("catGrid").innerHTML = '<p style="color:var(--muted);font-size:13px">Yükleniyor...</p>';
-  document.getElementById("contGrid").innerHTML = "";
-  showPage(2);
+  fileInfoText = researchTopic ? `${fileName} · AI analiz ediyor...` : `${fileName} · Sütunlar analiz ediliyor...`;
 
   let groupingCols, outcomeCols, excludeCols;
 
@@ -966,20 +1262,12 @@ async function loadData(json, fileName, researchTopic) {
     if (res.ok) {
       const data = await res.json();
       detectedScales = data.scales || [];
-      if (detectedScales.length > 0) {
-        document.getElementById("cronbachInfo").style.display = "block";
-        document.getElementById("cronbachInfo").innerHTML = `
-          <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2); border-radius:8px; padding:12px 16px; font-size:13px; color:#34d399;">
-            ✅ ${detectedScales.length} ölçek tespit edildi:
-            <strong>${detectedScales.map(s => s.name).join(", ")}</strong>
-            — Cronbach alfa analizi otomatik yapılacak
-          </div>`;
-      }
     }
   } catch (e) {
     detectedScales = [];
   }
 
+  lastRecommendations = recommendations;
   catColumns = groupingCols;
   contColumns = outcomeCols;
   excludeColumns = excludeCols;
@@ -991,25 +1279,20 @@ async function loadData(json, fileName, researchTopic) {
   computeMissingData([...groupingCols, ...outcomeCols]);
 
   const visible = groupingCols.length + outcomeCols.length;
-  document.getElementById("fileInfo").textContent =
-    `${fileName} · ${json.length} satır · ${visible} analiz sütunu (${excludeCols.length} madde gizlendi)`;
-
-  renderSelectionGrids(groupingCols, outcomeCols, recommendations);
+  fileInfoText = `${fileName} · ${json.length} satır · ${visible} analiz sütunu (${excludeCols.length} madde gizlendi)`;
 
   const allAnalysisCols = [...groupingCols, ...outcomeCols];
   const savedLabels = { ...userLabels };
   allAnalysisCols.forEach(col => {
     userLabels[col] = savedLabels[col] || col;
   });
-  renderLabelInputs(allAnalysisCols);
-
-  renderMissingWarnings();
+  applyScaleInfoToLabels();
+  variablesDataReady = true;
 
   const suspicious = checkNumericLabels(groupingCols, parsedData);
   if (suspicious.length > 0) {
     showLabelWarning(suspicious);
   }
-  setAnalysisPlanEnabled(true);
 }
 
 const ITEM_PATTERNS = [/^[a-z]+_\d+(_ters)?$/i, /^[A-Z]+_\d+(_T)?$/];
@@ -1109,34 +1392,6 @@ function renderMissingWarnings() {
   `${m.column} (%${m.missing_pct})`).join(", ");
 }
 
-function loadSampleData() {
-  const cinsiyet = ["Kadın", "Erkek"];
-  const egitim = ["Lisans", "Yüksek Lisans", "Doktora"];
-  const grup = ["Deney", "Kontrol"];
-  const json = [];
-  for (let i = 1; i <= 50; i++) {
-    const c = cinsiyet[i % 2];
-    const e = egitim[i % 3];
-    const g = grup[i % 2];
-    const yas = 22 + Math.floor(Math.random() * 15);
-    const motivasyon = Math.round((3.2 + (g === "Deney" ? 0.8 : 0) + (Math.random() - 0.5)) * 10) / 10;
-    const basari = Math.round((65 + (g === "Deney" ? 8 : 0) + (motivasyon - 3) * 5 + (Math.random() - 0.5) * 10) * 10) / 10;
-    const stres = Math.round((3.5 - (g === "Deney" ? 0.5 : 0) + (Math.random() - 0.5)) * 10) / 10;
-  json.push({
-      ID: i,
-      Cinsiyet: c,
-      Egitim: e,
-      Grup: g,
-      Yas: yas,
-      Motivasyon: motivasyon,
-      Basari: basari,
-      Stres: stres,
-      ...(i % 7 === 0 ? { Stres: "" } : {}),
-    });
-  }
-  loadData(json, "ornek_veri.xlsx", null).catch(() => {});
-}
-
 // ── Analiz ────────────────────────────────────────────────────────────────────
 
 function buildVariables() {
@@ -1230,38 +1485,14 @@ function applyScaleInfoToLabels() {
   });
 }
 
-async function fetchScaleInfo() {
-  if (!detectedScales.length || !researchTopicText) return;
-  try {
-    const res = await fetch(`${API}/scale-info`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        research_topic: researchTopicText,
-        scale_names: detectedScales.map(s => s.name),
-      }),
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    scaleInfo = data.scales || {};
-    applyScaleInfoToLabels();
-  } catch (e) {
-    console.error("Scale info hatası:", e);
-  }
-}
-
 async function loadAnalysisPlan() {
-  if (document.getElementById("btnPlan")?.disabled) return;
-  if (!selectedCat.size && !selectedCont.size) return alert("En az bir değişken seçmelisiniz.");
-
-  await fetchScaleInfo();
+  const planEl = document.getElementById("planContainer");
+  if (!planEl) return;
 
   const variables = buildVariables();
   const data = buildData(variables);
 
-  document.getElementById("planContainer").innerHTML =
-    '<div class="empty"><div class="icon">⏳</div><p>Plan hazırlanıyor...</p></div>';
-  showPage(4);
+  planEl.innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Plan hazırlanıyor...</p></div>';
 
   try {
     const res = await fetch(`${API}/plan`, {
@@ -1326,13 +1557,12 @@ async function runAnalysisFromPlan() {
 async function runAnalysis(activeTypes = null) {
   if (!selectedCat.size && !selectedCont.size) return alert("En az bir değişken seçmelisiniz.");
 
-  await fetchScaleInfo();
-
-  showPage(3);
   bulgular = {};
   analysisMeta = {};
-  document.getElementById("btnWord").disabled = true;
-  document.getElementById("resultsContainer").innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Analiz yapılıyor...</p></div>';
+  const planEl = document.getElementById("planContainer");
+  if (planEl) {
+    planEl.innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Analiz yapılıyor...</p></div>';
+  }
 
   const variables = buildVariables();
   const data = buildData(variables);
@@ -1395,14 +1625,18 @@ async function runAnalysis(activeTypes = null) {
       }
     }
 
+    goToStep(6, "forward");
     renderResults();
-    document.getElementById("btnWord").disabled = !analysisResults.length;
+    const btnWord = document.getElementById("btnWord");
+    if (btnWord) btnWord.disabled = !analysisResults.length;
   } catch(e) {
-    document.getElementById("resultsContainer").innerHTML = `
+    const errHtml = `
       <div class="empty">
         <div class="icon">⚠️</div>
         <p>Backend bağlantısı kurulamadı.<br><code style="font-size:12px">baslat.bat</code> çalışıyor mu?</p>
       </div>`;
+    const target = document.getElementById("planContainer") || document.getElementById("resultsContainer");
+    if (target) target.innerHTML = errHtml;
   }
 }
 
@@ -1454,6 +1688,7 @@ function renderApaTable(r) {
 
 function renderResults() {
   const el = document.getElementById("resultsContainer");
+  if (!el) return;
   if (!analysisResults.length) {
     el.innerHTML = '<div class="empty"><div class="icon">📭</div><p>Sonuç bulunamadı</p></div>';
     return;
@@ -1548,12 +1783,7 @@ async function downloadWord() {
   }
 }
 
-function showPage(n) {
-  [1, 2, 3, 4].forEach(i => {
-    const el = document.getElementById("page" + i);
-    if (el) el.style.display = i === n ? "block" : "none";
-  });
-}
+goToStep(0, "forward");
 
 </script>
 </body>
