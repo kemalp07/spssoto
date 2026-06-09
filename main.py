@@ -89,6 +89,152 @@ class CronbachBatchRequest(BaseModel):
     scales: List[dict]
     data: List[DataRow]
 
+class SpssTableRequest(BaseModel):
+    content: str
+
+# ── SPSS Tablo → Markdown ─────────────────────────────────────────────────────
+
+STAT_COL_RE = re.compile(r"χ|chi|anova|\bf\s*\(|^p$|^p\s", re.I)
+
+
+def _flatten_columns(columns) -> List[str]:
+    if isinstance(columns, pd.MultiIndex):
+        out = []
+        for i, col in enumerate(columns):
+            parts = [str(p).strip() for p in col if str(p).strip() not in ("", "nan", "None")]
+            out.append(" ".join(parts) if parts else f"col_{i}")
+        return out
+    return [str(c).strip() if str(c).strip() else f"col_{i}" for i, c in enumerate(columns)]
+
+
+def _is_blank(val) -> bool:
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return True
+    s = str(val).strip()
+    return s in ("", "nan", "None", "NaN", ",")
+
+
+def _clean_stat_value(val) -> str:
+    if _is_blank(val):
+        return ""
+    s = str(val).strip()
+    m = re.search(r"=\s*(.+)$", s)
+    return m.group(1).strip() if m else s
+
+
+def _is_stat_column(col_name: str) -> bool:
+    return bool(STAT_COL_RE.search(str(col_name)))
+
+
+def _clean_spss_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df.columns = _flatten_columns(df.columns)
+
+    # Yinelenen sütun başlıklarını benzersizleştir
+    seen: Dict[str, int] = {}
+    new_cols = []
+    for col in df.columns:
+        base = str(col)
+        if base not in seen:
+            seen[base] = 0
+            new_cols.append(base)
+        else:
+            seen[base] += 1
+            new_cols.append(f"{base}_{seen[base]}")
+    df.columns = new_cols
+
+    # Hayalet / tamamen boş sütunları kaldır
+    keep = []
+    for col in df.columns:
+        if any(not _is_blank(v) for v in df[col]):
+            keep.append(col)
+    if keep:
+        df = df[keep]
+
+    # Birleştirilmiş hücreleri dağıt (forward fill)
+    df = df.ffill(axis=0)
+
+    # Test istatistikleri (χ², p, F) — genelde Toplam satırında; tüm satırlara yay
+    for col in df.columns:
+        if _is_stat_column(col):
+            series = df[col].apply(_clean_stat_value)
+            series = series.replace("", np.nan)
+            df[col] = series.ffill().bfill()
+
+    # İlk sütun: boş kategori → Kayıp Veri
+    if len(df.columns):
+        first = df.columns[0]
+        for idx in df.index:
+            if _is_blank(df.at[idx, first]):
+                rest = df.loc[idx, df.columns[1:]]
+                if any(not _is_blank(v) for v in rest):
+                    df.at[idx, first] = "Kayıp Veri"
+
+    # Post-hoc (I)/(J) grupları — (I) birleştirilmişse forward fill
+    for col in df.columns:
+        cl = str(col).lower()
+        if "(i)" in cl or cl.startswith("i grup") or cl == "i":
+            df[col] = df[col].ffill()
+
+    # Tamamen boş satırları kaldır
+    mask = df.apply(lambda row: all(_is_blank(v) for v in row), axis=1)
+    df = df[~mask].reset_index(drop=True)
+
+    return df
+
+
+def _dataframe_to_markdown(df: pd.DataFrame) -> str:
+    cols = [str(c) for c in df.columns]
+    lines = [
+        "| " + " | ".join(cols) + " |",
+        "| " + " | ".join([":---"] * len(cols)) + " |",
+    ]
+    for _, row in df.iterrows():
+        cells = [str(v).strip() if not _is_blank(v) else "" for v in row]
+        if len(cells) != len(cols):
+            continue
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def convert_spss_table(content: str) -> str:
+    content = content.strip()
+    if not content:
+        raise ValueError("Boş içerik")
+
+    if "<table" in content.lower():
+        dfs = pd.read_html(io.StringIO(content))
+    else:
+        sep = "\t" if content.count("\t") > content.count(",") else ","
+        try:
+            dfs = [pd.read_csv(io.StringIO(content), sep=sep, engine="python", on_bad_lines="skip")]
+        except Exception:
+            dfs = pd.read_html(io.StringIO(content))
+
+    parts = []
+    for df in dfs:
+        if df is None or df.empty:
+            continue
+        cleaned = _clean_spss_dataframe(df)
+        if not cleaned.empty:
+            parts.append(_dataframe_to_markdown(cleaned))
+
+    if not parts:
+        raise ValueError("Tablo ayrıştırılamadı")
+    return "\n\n".join(parts)
+
+
+SPSS_CONVERT_SYSTEM = """Sen SPSS çıktı dönüştürme uzmanısın. Ham metin, HTML veya kopyala-yapıştır formatındaki SPSS analiz çıktılarını (çapraz tablolar, ANOVA, Ki-Kare, t-Testi vb.) sıfır veri kaybıyla kusursuz Markdown tablosuna dönüştür.
+
+KATI KURALLAR:
+1. BİRLEŞTİRİLMİŞ HÜCRELER: χ², p, F değerlerini TÜM satırlara forward fill ile çoğalt.
+2. HAYALET SÜTUNLAR: Boş sütunları ve sütun kaymalarını düzelt; header ile satır sütun sayısı eşit olsun.
+3. KAYIP VERİ: İsimsiz ama frekanslı satırları "Kayıp Veri" olarak adlandır.
+4. POST-HOC: (I) grubu birleştirilmişse altındaki (J) satırlarına (I) adını yaz.
+
+SADECE temizlenmiş Markdown tablolarını döndür. Yorum yapma."""
+
+
 # ── APA Yardımcıları ─────────────────────────────────────────────────────────
 
 class TableCounter:
@@ -1020,13 +1166,21 @@ def build_word_document(results: List[dict], bulgular: Optional[Dict[str, str]] 
     return buffer.getvalue()
 
 BULGU_SYSTEM = (
+    "AKADEMİK BULGULAR (RESULTS) PRENSİBİ:\n"
+    "- Bu program sadece ve sadece bir \"Bulgular (Results)\" metni üretmektedir; "
+    "\"Tartışma (Discussion)\" metni YAZMAMAKTADIR.\n"
+    "- Bulgular bölümünün görevi sadece tablodaki matematiksel verileri objektif olarak yazıya dökmektir.\n"
+    "- Değişken isimlerini (OYS_TOPLAM, SBITO_TOPLAM vb.) tablodaki orijinal kodlarıyla aynen bırakın. "
+    "Bu kısaltmaların ne anlama geldiğine dair hiçbir yorumsal tahmin, adlandırma veya genişletme yapmayın.\n"
+    "- Tabloda olmayan hiçbir kelimeyi, kavramı veya teorik açıklamayı metne dahil etmeyin. "
+    "Sadece sayılar ve kodlar konuşsun.\n\n"
     "Sen akademik bir istatistik uzmanısın. Verilen analiz tablosunu APA 7 formatında, Türkçe, "
     "2-4 cümlelik bulgular paragrafı olarak yaz.\n\n"
     "Kurallar:\n"
     "- p değerlerini APA 7 ile yaz: p = .023, p < .001 (sıfır olmadan)\n"
     "- İstatistikleri parantez içinde ver: [F(3, 296) = 3.090; p = .027]\n"
-    "- Anlamlı bulguları vurgula, anlamlı olmayanları da belirt\n"
-    "- Cohen's d veya η² varsa etki büyüklüğünü yorumla (küçük/orta/büyük)\n"
+    "- Anlamlı ve anlamsız sonuçları tablodaki değerlere göre nesnel bildir\n"
+    "- Cohen's d veya η² tabloda varsa yalnızca sayısal değeri ve APA etiketini yaz (küçük/orta/büyük)\n"
     "- Türkçe akademik dil kullan\n"
     "- Sadece bulguyu yaz, başlık veya açıklama ekleme"
 )
@@ -1041,6 +1195,24 @@ def _prepare_analysis_df(df: pd.DataFrame, variables: List[Variable]) -> pd.Data
             if pd.notna(max_val) and max_val > 1000:
                 df[v.name] = pd.to_numeric(df[v.name], errors="coerce")
     return df
+
+
+@app.post("/convert-spss-table")
+async def convert_spss_table_endpoint(req: SpssTableRequest):
+    try:
+        markdown = convert_spss_table(req.content)
+        return {"markdown": markdown, "method": "pandas"}
+    except Exception as pandas_err:
+        if not ANTHROPIC_API_KEY:
+            raise HTTPException(status_code=400, detail=str(pandas_err))
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        msg = client.messages.create(
+            model=ANTHROPIC_MODEL,
+            max_tokens=4000,
+            system=SPSS_CONVERT_SYSTEM,
+            messages=[{"role": "user", "content": req.content}],
+        )
+        return {"markdown": msg.content[0].text.strip(), "method": "ai", "pandas_error": str(pandas_err)}
 
 
 @app.post("/plan")

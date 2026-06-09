@@ -280,6 +280,21 @@
       <div id="cronbachResult" style="margin-top:12px"></div>
     </div>
 
+    <div class="panel">
+      <div class="panel-title">📋 SPSS Tablo Dönüştürücü</div>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
+        SPSS'ten kopyaladığınız tabloyu yapıştırın (Ctrl+V). HTML veya metin formatında çalışır.
+      </p>
+      <textarea id="spssPasteInput" placeholder="SPSS çıktısını buraya yapıştırın..."
+        style="width:100%;min-height:100px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:12px;border-radius:8px;font-size:12px;font-family:'JetBrains Mono',monospace;resize:vertical;"
+      ></textarea>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn btn-primary btn-sm" onclick="convertSpssTable()">Markdown'a Dönüştür</button>
+        <button class="btn btn-ghost btn-sm" onclick="copySpssMarkdown()">Kopyala</button>
+      </div>
+      <pre id="spssMarkdownOutput" style="display:none;margin-top:12px;padding:14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:12px;overflow-x:auto;white-space:pre-wrap;"></pre>
+    </div>
+
     <div class="actions">
       <button class="btn btn-ghost" onclick="reset()">← Başa Dön</button>
       <button class="btn btn-ghost" onclick="showCronbachPanel()">🔢 Cronbach Alfa</button>
@@ -923,6 +938,37 @@ function loadSampleData() {
   loadData(json, "ornek_veri.xlsx", null).catch(() => {});
 }
 
+// ── SPSS Tablo Dönüştürücü ────────────────────────────────────────────────────
+
+let lastSpssMarkdown = "";
+
+async function convertSpssTable() {
+  const content = document.getElementById("spssPasteInput").value.trim();
+  if (!content) return alert("Önce SPSS tablosunu yapıştırın.");
+  const out = document.getElementById("spssMarkdownOutput");
+  out.style.display = "block";
+  out.textContent = "Dönüştürülüyor...";
+
+  try {
+    const res = await fetch(`${API}/convert-spss-table`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) throw new Error("Dönüştürme hatası");
+    const json = await res.json();
+    lastSpssMarkdown = json.markdown || "";
+    out.textContent = lastSpssMarkdown + (json.method === "ai" ? "\n\n(AI yedek dönüştürme kullanıldı)" : "");
+  } catch (e) {
+    out.textContent = "Hata: " + e.message;
+  }
+}
+
+function copySpssMarkdown() {
+  if (!lastSpssMarkdown) return alert("Önce dönüştürün.");
+  navigator.clipboard.writeText(lastSpssMarkdown).then(() => alert("Markdown kopyalandı."));
+}
+
 // ── Analiz ────────────────────────────────────────────────────────────────────
 
 function buildVariables() {
@@ -1260,6 +1306,10 @@ function reset() {
   document.getElementById("researchTopic").value = "";
   const labelGrid = document.getElementById("labelInputGrid");
   if (labelGrid) labelGrid.innerHTML = "";
+  document.getElementById("spssPasteInput").value = "";
+  document.getElementById("spssMarkdownOutput").style.display = "none";
+  document.getElementById("spssMarkdownOutput").textContent = "";
+  lastSpssMarkdown = "";
   showPage(1);
 }
 </script>
