@@ -337,7 +337,7 @@
     </div>
 
     <div class="actions">
-      <button class="btn btn-ghost" onclick="reset()">← Başa Dön</button>
+      <button class="btn btn-ghost" onclick="resetUpload()">← Başa Dön</button>
       <button class="btn btn-ghost" onclick="showCronbachPanel()">🔢 Cronbach Alfa</button>
       <button class="btn btn-success btn-lg" id="btnPlan" onclick="loadAnalysisPlan()" disabled>📋 Analiz Planı →</button>
     </div>
@@ -413,6 +413,7 @@ let userLabels = {};
 let analysisPlan = [];
 let approvedCutoffs = [];
 let researchTopicText = "";
+let scaleInfo = {};
 
 const EXCLUDE_PATTERNS = [
   /^(anket_no|id|no|sira|num|serial)$/i,
@@ -600,7 +601,10 @@ function renderLabelInputs(allCols) {
   const grid = document.getElementById("labelInputGrid");
   if (!grid) return;
 
-  grid.innerHTML = allCols.map(col => {
+  const ITEM_PATTERN = /^[a-zA-Z]+_\d+(_ters|_T)?$/i;
+  const visibleCols = allCols.filter(col => !ITEM_PATTERN.test(col));
+
+  grid.innerHTML = visibleCols.map(col => {
     const id = labelInputId(col);
     const c = escAttr(col);
     const val = escAttr(userLabels[col] || col);
@@ -711,8 +715,72 @@ function handleFile(file) {
 
     document.getElementById("researchTopicBox").style.display = "block";
     document.getElementById("researchTopicBox").scrollIntoView({ behavior: "smooth" });
+
+    const uploadZone = document.getElementById("uploadZone");
+    uploadZone.innerHTML = `
+      <div style="font-size:32px">✅</div>
+      <div style="font-weight:700; font-size:16px; margin:8px 0 4px">${escAttr(file.name)}</div>
+      <div style="font-size:12px; color:var(--muted)">${(file.size / 1024).toFixed(0)} KB · Yüklendi</div>
+      <div style="margin-top:10px; font-size:12px; color:var(--accent); cursor:pointer; text-decoration:underline"
+           onclick="event.stopPropagation(); resetUpload()">Farklı dosya yükle</div>
+    `;
+    uploadZone.style.cursor = "default";
+    uploadZone.onclick = null;
   };
   reader.readAsBinaryString(file);
+}
+
+function resetUpload() {
+  parsedData = [];
+  columns = [];
+  catColumns = [];
+  contColumns = [];
+  excludeColumns = [];
+  selectedCat = new Set();
+  selectedCont = new Set();
+  selectedItems = new Set();
+  detectedScales = [];
+  userLabels = {};
+  scaleInfo = {};
+  analysisPlan = [];
+  pendingJson = null;
+  pendingFileName = "";
+  approvedCutoffs = [];
+  researchTopicText = "";
+  analysisResults = [];
+  analysisMeta = {};
+  bulgular = {};
+  missingData = [];
+  cronbachResults = [];
+
+  const uploadZone = document.getElementById("uploadZone");
+  uploadZone.innerHTML = `
+    <div class="icon">📊</div>
+    <h2>Veri dosyanı yükle</h2>
+    <p>Sürükle bırak veya tıkla</p>
+    <div class="formats">
+      <span class="format-badge">.xlsx</span>
+      <span class="format-badge">.xls</span>
+      <span class="format-badge">.csv</span>
+    </div>
+  `;
+  uploadZone.style.cursor = "pointer";
+  uploadZone.onclick = () => document.getElementById("fileInput").click();
+
+  document.getElementById("fileInput").value = "";
+
+  document.getElementById("researchTopicBox").style.display = "none";
+  document.getElementById("researchTopic").value = "";
+  document.getElementById("cutoffApprovalBox").style.display = "none";
+  document.getElementById("cronbachInfo").style.display = "none";
+  document.getElementById("cronbachInfo").innerHTML = "";
+  document.getElementById("cronbachPanel").style.display = "none";
+  document.getElementById("cronbachResult").innerHTML = "";
+  document.getElementById("labelInputGrid").innerHTML = "";
+  document.getElementById("labelWarningModal").classList.remove("open");
+  document.getElementById("btnWord").disabled = true;
+  setAnalysisPlanEnabled(false);
+  showPage(1);
 }
 
 function skipResearchTopic() {
@@ -1136,9 +1204,57 @@ function updatePlanTotalBar() {
   bar.innerHTML = `📋 Toplam <strong>${totalTests}</strong> tablo oluşturulacak`;
 }
 
+function normalizeScaleKey(s) {
+  return String(s).toUpperCase()
+    .replace(/Ö/g, "O").replace(/Ş/g, "S").replace(/İ/g, "I")
+    .replace(/Ü/g, "U").replace(/Ğ/g, "G").replace(/Ç/g, "C");
+}
+
+function colMatchesScale(col, shortName) {
+  const colU = col.toUpperCase();
+  if (!colU.includes("TOPLAM")) return false;
+  const normShort = normalizeScaleKey(shortName).substring(0, 3);
+  const prefix = normalizeScaleKey(colU.split("_")[0]).substring(0, 3);
+  return prefix === normShort;
+}
+
+function applyScaleInfoToLabels() {
+  if (!scaleInfo || !Object.keys(scaleInfo).length) return;
+  Object.entries(scaleInfo).forEach(([shortName, info]) => {
+    if (!info?.full_name) return;
+    const matchCol = Object.keys(userLabels).find(col => colMatchesScale(col, shortName));
+    if (!matchCol) return;
+    userLabels[matchCol] = info.full_name;
+    const input = document.getElementById(labelInputId(matchCol));
+    if (input) input.value = info.full_name;
+  });
+}
+
+async function fetchScaleInfo() {
+  if (!detectedScales.length || !researchTopicText) return;
+  try {
+    const res = await fetch(`${API}/scale-info`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        research_topic: researchTopicText,
+        scale_names: detectedScales.map(s => s.name),
+      }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    scaleInfo = data.scales || {};
+    applyScaleInfoToLabels();
+  } catch (e) {
+    console.error("Scale info hatası:", e);
+  }
+}
+
 async function loadAnalysisPlan() {
   if (document.getElementById("btnPlan")?.disabled) return;
   if (!selectedCat.size && !selectedCont.size) return alert("En az bir değişken seçmelisiniz.");
+
+  await fetchScaleInfo();
 
   const variables = buildVariables();
   const data = buildData(variables);
@@ -1210,6 +1326,8 @@ async function runAnalysisFromPlan() {
 async function runAnalysis(activeTypes = null) {
   if (!selectedCat.size && !selectedCont.size) return alert("En az bir değişken seçmelisiniz.");
 
+  await fetchScaleInfo();
+
   showPage(3);
   bulgular = {};
   analysisMeta = {};
@@ -1219,7 +1337,12 @@ async function runAnalysis(activeTypes = null) {
   const variables = buildVariables();
   const data = buildData(variables);
 
-  const payload = { variables, data, missing_codes: getMissingCodes() };
+  const payload = {
+    variables,
+    data,
+    missing_codes: getMissingCodes(),
+    scale_info: scaleInfo,
+  };
   if (activeTypes && activeTypes.size) {
     payload.active_types = [...activeTypes];
   }
@@ -1383,6 +1506,7 @@ async function generateBulgu(i) {
         research_topic: researchTopicText || analysisMeta.research_topic || "",
         label_map: userLabels,
         approved_cutoffs: approvedCutoffs,
+        scale_info: scaleInfo,
       })
     });
     if (!res.ok) {
@@ -1431,31 +1555,6 @@ function showPage(n) {
   });
 }
 
-function reset() {
-  parsedData = []; columns = [];
-  catColumns = []; contColumns = []; excludeColumns = [];
-  selectedCat = new Set(); selectedCont = new Set();
-  selectedItems = new Set(); cronbachResults = [];
-  detectedScales = [];
-  pendingJson = null; pendingFileName = "";
-  userLabels = {};
-  analysisPlan = [];
-  analysisResults = []; analysisMeta = {};
-  approvedCutoffs = []; researchTopicText = "";
-  missingData = []; bulgular = {};
-  document.getElementById("btnWord").disabled = true;
-  setAnalysisPlanEnabled(false);
-  document.getElementById("labelWarningModal").classList.remove("open");
-  document.getElementById("cronbachPanel").style.display = "none";
-  document.getElementById("cronbachResult").innerHTML = "";
-  document.getElementById("cronbachInfo").style.display = "none";
-  document.getElementById("cronbachInfo").innerHTML = "";
-  document.getElementById("researchTopicBox").style.display = "none";
-  document.getElementById("researchTopic").value = "";
-  const labelGrid = document.getElementById("labelInputGrid");
-  if (labelGrid) labelGrid.innerHTML = "";
-  showPage(1);
-}
 </script>
 </body>
 </html>

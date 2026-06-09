@@ -53,6 +53,7 @@ class AnalysisRequest(BaseModel):
     data: List[DataRow]
     active_types: Optional[List[str]] = None
     missing_codes: Optional[List[str]] = None
+    scale_info: Optional[dict] = None
 
 class PlanRequest(BaseModel):
     variables: List[Variable]
@@ -75,6 +76,12 @@ class BulguRequest(BaseModel):
     research_topic: Optional[str] = None
     label_map: Optional[Dict[str, str]] = None
     approved_cutoffs: Optional[List[dict]] = None
+    scale_info: Optional[dict] = None
+
+
+class ScaleInfoRequest(BaseModel):
+    research_topic: str
+    scale_names: List[str]
 
 class WordExportRequest(BaseModel):
     results: List[dict]
@@ -578,6 +585,55 @@ def normalize_variable_labels(variables: List[Variable]) -> List[Variable]:
         for v in variables
     ]
 
+
+def _normalize_scale_key(s: str) -> str:
+    tr = str(s).upper()
+    for src, dst in [("Ö", "O"), ("Ş", "S"), ("İ", "I"), ("Ü", "U"), ("Ğ", "G"), ("Ç", "C")]:
+        tr = tr.replace(src, dst)
+    return tr
+
+
+def resolve_scale_info(variable: Variable, scale_info: Optional[dict]) -> Optional[dict]:
+    if not scale_info:
+        return None
+    if variable.label in scale_info:
+        return scale_info[variable.label]
+    if variable.name in scale_info:
+        return scale_info[variable.name]
+    name_upper = variable.name.upper()
+    name_prefix = _normalize_scale_key(name_upper.split("_")[0])[:4]
+    for short_name, info in scale_info.items():
+        if not isinstance(info, dict):
+            continue
+        short_norm = _normalize_scale_key(short_name)[:4]
+        full = info.get("full_name") or ""
+        if full and variable.label == full:
+            return info
+        if name_prefix and short_norm and (
+            name_prefix.startswith(short_norm[:3])
+            or short_norm.startswith(name_prefix[:3])
+        ):
+            if "TOPLAM" in name_upper or variable.role == "outcome":
+                return info
+    return None
+
+
+def apply_scale_info_to_variables(
+    variables: List[Variable], scale_info: Optional[dict]
+) -> List[Variable]:
+    if not scale_info:
+        return variables
+    out: List[Variable] = []
+    for v in variables:
+        si = resolve_scale_info(v, scale_info)
+        if si and si.get("min_score") is not None and si.get("max_score") is not None:
+            v = v.model_copy(update={
+                "scale_min": float(si["min_score"]),
+                "scale_max": float(si["max_score"]),
+            })
+        out.append(v)
+    return out
+
 def cohens_d_interpretation(d: float) -> str:
     ad = abs(d)
     if ad < 0.20:
@@ -887,6 +943,7 @@ def build_bulgu_user_message(
     research_topic: Optional[str] = None,
     label_map: Optional[Dict[str, str]] = None,
     approved_cutoffs: Optional[List[dict]] = None,
+    scale_info: Optional[dict] = None,
 ) -> str:
     parts = []
     if research_topic:
@@ -901,6 +958,11 @@ def build_bulgu_user_message(
             "3. Onaylanmış Kesim Noktaları: "
             + json.dumps(approved_cutoffs, ensure_ascii=False)
         )
+    if scale_info:
+        parts.append(
+            "4. Ölçek Bilgileri (Teorik Aralık / Kesim / Not): "
+            + json.dumps(scale_info, ensure_ascii=False)
+        )
     parts.append("Analiz Tablosu (JSON):\n" + json.dumps(result, ensure_ascii=False))
     return "\n\n".join(parts)
 
@@ -910,6 +972,7 @@ def _generate_bulgu_text(
     research_topic: Optional[str] = None,
     label_map: Optional[Dict[str, str]] = None,
     approved_cutoffs: Optional[List[dict]] = None,
+    scale_info: Optional[dict] = None,
 ) -> str:
     if not ANTHROPIC_API_KEY:
         return ""
@@ -921,7 +984,7 @@ def _generate_bulgu_text(
         messages=[{
             "role": "user",
             "content": build_bulgu_user_message(
-                result, research_topic, label_map, approved_cutoffs
+                result, research_topic, label_map, approved_cutoffs, scale_info
             ),
         }],
     )
@@ -1033,7 +1096,12 @@ def build_intro(n_total: int) -> str:
 
 # ── Tablo Üreticileri ─────────────────────────────────────────────────────────
 
-def table_descriptive(tc: TableCounter, variables: List[Variable], df: pd.DataFrame) -> Optional[dict]:
+def table_descriptive(
+    tc: TableCounter,
+    variables: List[Variable],
+    df: pd.DataFrame,
+    scale_info: Optional[dict] = None,
+) -> Optional[dict]:
     rows = []
     for v in variables:
         if v.name not in df.columns:
@@ -1042,7 +1110,10 @@ def table_descriptive(tc: TableCounter, variables: List[Variable], df: pd.DataFr
         if len(s) == 0:
             continue
         theory = "—"
-        if v.scale_min is not None and v.scale_max is not None:
+        si = resolve_scale_info(v, scale_info)
+        if si and si.get("min_score") is not None and si.get("max_score") is not None:
+            theory = f"{fmt_num(si['min_score'])} – {fmt_num(si['max_score'])}"
+        elif v.scale_min is not None and v.scale_max is not None:
             theory = f"{fmt_num(v.scale_min)} – {fmt_num(v.scale_max)}"
         rows.append([
             v.label, str(len(s)),
@@ -1531,6 +1602,7 @@ def run_analyze(
     df: pd.DataFrame,
     variables: List[Variable],
     active_types: Optional[List[str]] = None,
+    scale_info: Optional[dict] = None,
 ) -> Tuple[List[dict], dict]:
     def enabled(test_key: str) -> bool:
         if active_types is None:
@@ -1571,7 +1643,7 @@ def run_analyze(
     # 1. Tanımlayıcı
     if enabled("descriptive"):
         try:
-            r = table_descriptive(tc, outcome_cont, df)
+            r = table_descriptive(tc, outcome_cont, df, scale_info)
             if r:
                 results.append(r)
         except Exception:
@@ -2019,6 +2091,51 @@ async def import_spss_tables_endpoint(req: SpssTableRequest):
     })
 
 
+@app.post("/scale-info")
+async def get_scale_info(req: ScaleInfoRequest):
+    """AI ile ölçek bilgilerini çek — web search yok, training data'dan."""
+    if not ANTHROPIC_API_KEY or not req.scale_names:
+        return {"scales": {}}
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    scale_list = ", ".join(req.scale_names)
+
+    msg = client.messages.create(
+        model=ANTHROPIC_MODEL,
+        max_tokens=600,
+        system="""Sen akademik ölçek uzmanısın. Verilen ölçekler hakkında bilgi ver.
+SADECE JSON döndür, başka hiçbir şey yazma:
+{
+  "OYŞTÖ": {
+    "full_name": "Online Yemek Siparişlerine Yönelik Tutum Ölçeği",
+    "item_count": 15,
+    "min_score": 15,
+    "max_score": 75,
+    "cutoff": null,
+    "likert": "5'li Likert",
+    "note": "Yüksek puan olumlu tutumu gösterir"
+  }
+}
+Bilmediğin alanları null yap. Türkiye'de kullanılan Türkçe uyarlamalara öncelik ver.""",
+        messages=[{
+            "role": "user",
+            "content": (
+                f"Araştırma konusu: {req.research_topic}\n\n"
+                f"Şu ölçekler hakkında bilgi ver: {scale_list}"
+            ),
+        }],
+    )
+
+    text = msg.content[0].text.strip()
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            return {"scales": json.loads(match.group())}
+        except Exception:
+            pass
+    return {"scales": {}}
+
+
 @app.post("/research/cutoffs")
 async def research_cutoffs(req: CutoffRequest):
     """Aşama 1: Literatür snippet'lerinden kesim noktası öner."""
@@ -2063,9 +2180,10 @@ async def analyze(req: AnalysisRequest):
     rows = [r.values for r in req.data]
     df = pd.DataFrame(rows)
     variables = normalize_variable_labels(req.variables)
+    variables = apply_scale_info_to_variables(variables, req.scale_info)
     df = _prepare_analysis_df(df, variables, req.missing_codes)
     missing_data = missing_data_report(df, variables)
-    results, meta = run_analyze(df, variables, req.active_types)
+    results, meta = run_analyze(df, variables, req.active_types, req.scale_info)
     return sanitize({"results": results, "missing_data": missing_data, "meta": meta})
 
 
@@ -2359,6 +2477,7 @@ async def ai_bulgu(req: BulguRequest):
         req.research_topic,
         req.label_map,
         req.approved_cutoffs,
+        req.scale_info,
     )
     return {"bulgu": text}
 
