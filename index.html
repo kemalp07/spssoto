@@ -312,13 +312,14 @@ const EXCLUDE_PATTERNS = [
 ];
 
 const GROUPING_PATTERNS = [
-  /bolum/i, /cinsiyet/i, /_md$/i, /_ed$/i, /_gd$/i,
-  /(_kh|_ik|_sk|_ak)$/i,
+  /^bolum$/i, /cinsiyet/i, /^dbf_md$/i, /^dbf_ed$/i, /^dbf_gd$/i,
+  /^(dbf_kh|dbf_ik|dbf_sk|dbf_ak)$/i,
 ];
 
 const OUTCOME_CAT_PATTERNS = [
   /kategori/i, /_grup/i, /_binary/i,
   /yas_grubu/i, /risk_grup/i, /risk_binary/i, /oys_grup/i,
+  /gya_risk/i,
 ];
 
 const OUTCOME_CONT_PATTERNS = [
@@ -928,11 +929,24 @@ async function runAnalysis() {
 
     if (detectedScales.length > 0) {
       try {
+        const scalesToSend = detectedScales.map(scale => {
+          const prefix = scale.items[0]?.split("_")[0]?.toUpperCase();
+          const matchingCol = Object.keys(userLabels).find(col =>
+            col.toUpperCase().startsWith(prefix) && col.includes("TOPLAM")
+          );
+          return {
+            ...scale,
+            name: (matchingCol && userLabels[matchingCol] !== matchingCol)
+              ? userLabels[matchingCol]
+              : scale.name,
+          };
+        });
+
         const cbRes = await fetch(`${API}/analyze/cronbach-batch`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            scales: detectedScales,
+            scales: scalesToSend,
             data: parsedData.map(row => ({ values: row })),
           }),
         });

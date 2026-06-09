@@ -188,7 +188,6 @@ def normalize_continuous_columns(df: pd.DataFrame, variables: List[Variable]) ->
         df[v.name] = (
             df[v.name].astype(str)
             .str.strip()
-            .str.replace(r"\.(?=\d{3})", "", regex=True)
             .str.replace(",", ".", regex=False)
         )
         df[v.name] = pd.to_numeric(df[v.name], errors="coerce")
