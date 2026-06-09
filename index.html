@@ -173,6 +173,15 @@
           placeholder="örn: Sağlık bilimleri öğrencilerinin online yemek siparişi tutumu, gece yeme davranışı ve sağlıklı beslenme tutumu arasındaki ilişki"
           style="width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:12px; border-radius:8px; font-size:14px; font-family:inherit; resize:vertical; min-height:80px;"
         ></textarea>
+        <div style="margin-top:16px;">
+          <div style="font-size:14px; font-weight:600; margin-bottom:8px;">
+            📝 Değişken Etiketleri <span style="font-weight:400; color:var(--muted); font-size:12px">(opsiyonel — boş bırakırsanız sütun isimleri kullanılır)</span>
+          </div>
+          <p style="color:var(--muted); font-size:12px; margin-bottom:10px;">
+            Sütun isimlerini okunabilir Türkçe isimlerle değiştirin. örn: OYS_TOPLAM → OYŞTÖ Toplam Puanı
+          </p>
+          <div id="labelInputGrid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;"></div>
+        </div>
         <div style="margin-top:12px; display:flex; gap:10px;">
           <button class="btn btn-ghost btn-sm" onclick="skipResearchTopic()">Atla, manuel seç</button>
           <button class="btn btn-primary" onclick="analyzeWithTopic()">🤖 AI ile Analiz Et</button>
@@ -293,6 +302,7 @@ let cronbachResults = [];
 let detectedScales = [];
 let pendingJson = null;
 let pendingFileName = "";
+let userLabels = {};
 
 const EXCLUDE_PATTERNS = [
   /^(anket_no|id|no|sira|num|serial)$/i,
@@ -459,6 +469,45 @@ function renderSelectionGrids(groupingCols, outcomeCols, recommendations = {}) {
   }).join("") : '<p style="color:var(--muted);font-size:13px">Analiz değişkeni bulunamadı.</p>';
 }
 
+function labelInputId(col) {
+  return `label_${col.replace(/[^a-zA-Z0-9]/g, "_")}`;
+}
+
+function updateUserLabel(input) {
+  const col = input.dataset.col;
+  userLabels[col] = input.value.trim() || col;
+}
+
+function collectUserLabelsFromInputs() {
+  document.querySelectorAll("#labelInputGrid input[data-col]").forEach(input => {
+    userLabels[input.dataset.col] = input.value.trim() || input.dataset.col;
+  });
+}
+
+function renderLabelInputs(allCols) {
+  const grid = document.getElementById("labelInputGrid");
+  if (!grid) return;
+
+  grid.innerHTML = allCols.map(col => {
+    const id = labelInputId(col);
+    const c = escAttr(col);
+    const val = escAttr(userLabels[col] || col);
+    return `
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:12px; color:var(--muted); font-family:'JetBrains Mono',monospace; min-width:120px; flex-shrink:0;">${col}</span>
+        <input
+          type="text"
+          id="${id}"
+          data-col="${c}"
+          placeholder="${c}"
+          value="${val}"
+          style="flex:1; padding:6px 10px; font-size:12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px; font-family:inherit;"
+          onchange="updateUserLabel(this)"
+        />
+      </div>`;
+  }).join("");
+}
+
 function toggleCol(type, col, checked) {
   const set = type === "cat" ? selectedCat : selectedCont;
   const el = document.getElementById(colDomId(type, col));
@@ -523,13 +572,30 @@ function handleFile(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
-    const wb = XLSX.read(e.target.result, { type: "binary" });
+    let wb;
+    if (file.name.endsWith(".csv")) {
+      wb = XLSX.read(e.target.result, { type: "binary", FS: ";" });
+      const wsTry = wb.Sheets[wb.SheetNames[0]];
+      const jsonTry = XLSX.utils.sheet_to_json(wsTry, { defval: "", raw: false });
+      if (jsonTry.length > 0 && Object.keys(jsonTry[0]).length === 1) {
+        wb = XLSX.read(e.target.result, { type: "binary", FS: "," });
+      }
+    } else {
+      wb = XLSX.read(e.target.result, { type: "binary" });
+    }
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
+    const json = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
     if (!json.length) return alert("Dosya boş görünüyor.");
 
     pendingJson = json;
     pendingFileName = file.name;
+
+    const uploadCols = Object.keys(json[0]).filter(col =>
+      !EXCLUDE_PATTERNS.some(p => p.test(col))
+    );
+    userLabels = {};
+    uploadCols.forEach(col => { userLabels[col] = col; });
+    renderLabelInputs(uploadCols);
 
     document.getElementById("researchTopicBox").style.display = "block";
     document.getElementById("researchTopicBox").scrollIntoView({ behavior: "smooth" });
@@ -538,10 +604,12 @@ function handleFile(file) {
 }
 
 function skipResearchTopic() {
+  collectUserLabelsFromInputs();
   loadData(pendingJson, pendingFileName, null);
 }
 
 async function analyzeWithTopic() {
+  collectUserLabelsFromInputs();
   const topic = document.getElementById("researchTopic").value.trim();
   if (!topic) return loadData(pendingJson, pendingFileName, null);
   loadData(pendingJson, pendingFileName, topic);
@@ -660,6 +728,14 @@ async function loadData(json, fileName, researchTopic) {
     `${fileName} · ${json.length} satır · ${visible} analiz sütunu (${excludeCols.length} madde gizlendi)`;
 
   renderSelectionGrids(groupingCols, outcomeCols, recommendations);
+
+  const allAnalysisCols = [...groupingCols, ...outcomeCols];
+  const savedLabels = { ...userLabels };
+  allAnalysisCols.forEach(col => {
+    userLabels[col] = savedLabels[col] || col;
+  });
+  renderLabelInputs(allAnalysisCols);
+
   renderMissingWarnings();
 
   const suspicious = checkNumericLabels(groupingCols, parsedData);
@@ -804,9 +880,13 @@ async function runAnalysis() {
   document.getElementById("btnWord").disabled = true;
   document.getElementById("resultsContainer").innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Analiz yapılıyor...</p></div>';
 
+  collectUserLabelsFromInputs();
+
   const variables = [
     ...[...selectedCat].map(col => ({
-      name: col, label: col, type: "categorical",
+      name: col,
+      label: userLabels[col] || col,
+      type: "categorical",
       role: "grouping", included: true
     })),
     ...[...selectedCont].map(col => {
@@ -816,7 +896,8 @@ async function runAnalysis() {
       const hasWideRange = isNumeric && vals.some(v => parseFloat(String(v).replace(",", ".")) > 10);
 
       return {
-        name: col, label: col,
+        name: col,
+        label: userLabels[col] || col,
         type: (isNumeric && hasWideRange) ? "continuous" : "categorical",
         role: "outcome", included: true
       };
@@ -991,6 +1072,7 @@ function reset() {
   selectedItems = new Set(); cronbachResults = [];
   detectedScales = [];
   pendingJson = null; pendingFileName = "";
+  userLabels = {};
   analysisResults = []; analysisMeta = {};
   missingData = []; bulgular = {};
   document.getElementById("btnWord").disabled = true;
@@ -1001,6 +1083,8 @@ function reset() {
   document.getElementById("cronbachInfo").innerHTML = "";
   document.getElementById("researchTopicBox").style.display = "none";
   document.getElementById("researchTopic").value = "";
+  const labelGrid = document.getElementById("labelInputGrid");
+  if (labelGrid) labelGrid.innerHTML = "";
   showPage(1);
 }
 </script>
