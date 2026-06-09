@@ -69,6 +69,7 @@
   .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
   .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
   .btn-lg { padding: 14px 28px; font-size: 16px; }
+  .btn-sm { padding: 6px 14px; font-size: 13px; }
 
   .result-card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
   .result-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
@@ -176,12 +177,26 @@
 
     <div id="cronbachPanel" style="display:none" class="panel">
       <div class="panel-title">🔢 Cronbach Alfa — Ölçek Güvenilirliği</div>
+
+      <div style="background:rgba(37,99,235,0.08); border:1px solid rgba(37,99,235,0.2); border-radius:8px; padding:14px; margin-bottom:16px; font-size:13px; line-height:1.7;">
+        <div style="font-weight:700; margin-bottom:6px;">📊 SPSS'de nasıl yapılır?</div>
+        <div style="color:var(--muted)">
+          Analyze → Scale → <strong>Reliability Analysis</strong> →
+          Maddeleri "Items" kutusuna taşı → Statistics → <strong>Scale if item deleted</strong> işaretle → OK
+        </div>
+      </div>
+
+      <div style="background:rgba(210,153,34,0.08); border:1px solid rgba(210,153,34,0.3); border-radius:8px; padding:12px; margin-bottom:16px; font-size:13px; color:var(--warn);">
+        ⚠️ <strong>Ters puanlanan maddeler:</strong> Orijinal maddeyi (oys_4) değil, düzeltilmiş versiyonunu (oys_4_ters) seçin.
+      </div>
+
       <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
-        Bir ölçeğin maddelerini seçin (oys_1...oys_15 gibi). Madde sütunları burada görünür.
+        Bir ölçeğe ait maddeleri seçin ve hesapla'ya basın.
       </p>
+
       <div class="checkbox-grid" id="itemGrid"></div>
       <div class="actions" style="margin-top:12px">
-        <button class="btn btn-ghost" onclick="document.getElementById('cronbachPanel').style.display='none'">Kapat</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('cronbachPanel').style.display='none'">Kapat</button>
         <button class="btn btn-primary" onclick="runCronbach()">Hesapla</button>
       </div>
       <div id="cronbachResult" style="margin-top:12px"></div>

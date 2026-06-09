@@ -859,21 +859,25 @@ async def analyze(req: AnalysisRequest):
 
 @app.post("/analyze/cronbach")
 async def analyze_cronbach(req: CronbachRequest):
-    if len(req.columns) < 2:
-        raise HTTPException(status_code=400, detail="En az 2 sütun gerekli")
-    df = pd.DataFrame([r.values for r in req.data])
-    missing = [c for c in req.columns if c not in df.columns]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Sütunlar bulunamadı: {missing}")
-    for col in req.columns:
-        df[col] = pd.to_numeric(df[col].astype(str).str.replace(",", ".", regex=False), errors="coerce")
+    import traceback
     try:
+        if len(req.columns) < 2:
+            raise HTTPException(status_code=400, detail="En az 2 sütun gerekli")
+        df = pd.DataFrame([r.values for r in req.data])
+        missing = [c for c in req.columns if c not in df.columns]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Sütunlar bulunamadı: {missing}")
+        for col in req.columns:
+            df[col] = pd.to_numeric(df[col].astype(str).str.replace(",", ".", regex=False), errors="coerce")
         result = cronbach_analysis(df, req.columns)
+        if result is None:
+            raise HTTPException(status_code=400, detail="Cronbach alfa hesaplanamadı (yetersiz veri veya varyans)")
+        return sanitize({"result": result})
+    except HTTPException:
+        raise
     except Exception as e:
+        print(traceback.format_exc())
         raise HTTPException(status_code=400, detail=str(e))
-    if result is None:
-        raise HTTPException(status_code=400, detail="Cronbach alfa hesaplanamadı (yetersiz veri veya varyans)")
-    return sanitize({"result": result})
 
 
 @app.post("/analyze/paired")
@@ -892,16 +896,23 @@ async def analyze_paired(req: PairedRequest):
 
 CLASSIFY_SYSTEM = """Sen bir veri analisti yardımcısısın. Verilen sütun isimlerini ve örnek değerleri inceleyerek her sütunu sınıflandır.
 
-Kurallar:
-- anket_no, id, sira, no gibi kimlik sütunları → "exclude"
-- oys_1, neq_3, sbito_6, _ters, _T ile biten madde sütunları → "exclude"
-- cinsiyet, bolum, kategori, grup, binary, md, ed, gd, kh, ik, sk, ak gibi demografik/grup sütunları → "categorical"
-- _TOPLAM, _toplam ile biten toplam puan sütunları → "continuous"
-- yas, boy, kilo, vki, bmi gibi ölçüm değerleri → "continuous"
-- Değerleri metin olan sütunlar (Kadın/Erkek, Evet/Hayır gibi) → "categorical"
-- Değerleri çok sayısal ve geniş aralıklı sütunlar → "continuous"
+ÖNEMLİ: Sadece açıkça madde olan sütunları exclude et. Şüphe durumunda categorical veya continuous seç.
 
-SADECE JSON döndür, başka hiçbir şey yazma:
+EXCLUDE — sadece bunlar:
+- Tam olarak: anket_no, id, no, sira, num, serial
+- Madde pattern: oys_1, oys_2, neq_1, sbito_6, sbito_6_ters, SBITO_6_T gibi (harf_rakam formatı)
+
+CATEGORICAL — bunlar:
+- Metin değerli sütunlar: Kadın/Erkek, Evet/Hayır, bölüm adları
+- Sayısal ama az benzersiz değer (≤6): cinsiyet, bolum, md, ed, gd, kh, ik, sk, ak
+- _grup, _binary, _kategori, YAS_GRUBU, GYA_RISK_GRUBU, VKI_Kategori gibi
+
+CONTINUOUS — bunlar:
+- _TOPLAM, _toplam ile bitenler: OYS_TOPLAM, NEQ_TOPLAM, SBITO_TOPLAM
+- Sayısal, geniş aralık: dbf_yas, dbf_boy, dbf_kilo, vki, VKI
+- Ölçüm değerleri
+
+SADECE JSON döndür:
 {"categorical": ["sütun1"], "continuous": ["sütun2"], "exclude": ["sütun3"]}"""
 
 
