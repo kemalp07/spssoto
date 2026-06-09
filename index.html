@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>StatAI — Akademik Analiz</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --accent: #2563eb; --accent2: #10b981; --text: #e6edf3;
+    --muted: #7d8590; --danger: #f85149; --warn: #d29922;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  header { border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; align-items: center; gap: 12px; }
+  header .logo { font-size: 18px; font-weight: 700; }
+  header .logo span { color: var(--accent); }
+  header .badge { font-size: 11px; background: var(--accent); color: white; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px 32px; }
+
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 16px; padding: 60px 40px;
+    text-align: center; cursor: pointer; transition: all 0.2s; background: var(--surface);
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(37,99,235,0.06); }
+  .upload-zone .icon { font-size: 48px; margin-bottom: 16px; }
+  .upload-zone h2 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  .upload-zone p { color: var(--muted); font-size: 14px; }
+  .upload-zone .formats { margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .format-badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); }
+  #fileInput { display: none; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .panel-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+  .checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+  }
+  .col-checkbox {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .col-checkbox:hover { border-color: var(--accent); }
+  .col-checkbox.selected { border-color: var(--accent); background: rgba(37,99,235,0.08); }
+  .col-checkbox input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; }
+  .col-name { font-weight: 600; font-size: 13px; }
+  .col-sample { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+  .missing-badge { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin-top: 4px; display: inline-block; }
+  .missing-badge.medium { background: rgba(210,153,34,0.2); color: var(--warn); }
+  .missing-badge.high { background: rgba(248,81,73,0.2); color: var(--danger); }
+
+  .btn { padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-success { background: var(--accent2); color: white; }
+  .btn-success:hover { background: #059669; }
+  .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-lg { padding: 14px 28px; font-size: 16px; }
+
+  .result-card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+  .result-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .result-title { font-weight: 600; font-size: 15px; }
+  .result-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .result-body { padding: 18px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .stat-item { background: var(--surface); border-radius: 8px; padding: 12px; text-align: center; }
+  .stat-value { font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+  .stat-label { font-size: 11px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .sig-badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
+  .sig-badge.yes { background: rgba(16,185,129,0.2); color: #34d399; }
+  .sig-badge.no { background: rgba(125,133,144,0.2); color: var(--muted); }
+  .norm-badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
+  .norm-badge.ok { background: rgba(16,185,129,0.15); color: #34d399; }
+  .norm-badge.fail { background: rgba(248,81,73,0.15); color: var(--danger); }
+  .test-note { font-size: 12px; color: var(--muted); margin-bottom: 10px; font-style: italic; }
+  .freq-bar { height: 6px; background: var(--accent); border-radius: 3px; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: var(--surface); padding: 9px 14px; text-align: left; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 14px; border-bottom: 1px solid rgba(48,54,61,0.5); }
+  tr:last-child td { border-bottom: none; }
+  .corr-matrix td, .corr-matrix th { text-align: center; font-size: 12px; }
+  .corr-matrix .diag { color: var(--muted); }
+  .corr-matrix .sig { font-weight: 700; color: var(--accent2); }
+  .apa-table-title { font-weight: 700; font-size: 14px; margin-bottom: 10px; }
+  .apa-table { margin-bottom: 10px; }
+  .apa-table tr.alt td { background: rgba(242,242,242,0.06); }
+  .apa-table td, .apa-table th { font-size: 12px; padding: 7px 10px; }
+  .apa-note { font-size: 12px; color: var(--muted); font-style: italic; margin-bottom: 8px; line-height: 1.5; }
+  .intro-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 20px; font-size: 14px; line-height: 1.7; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .bulgu-box { background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.2); border-radius: 8px; padding: 16px; margin-top: 14px; }
+  .bulgu-label { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .bulgu-text { font-size: 14px; line-height: 1.7; color: var(--text); }
+  .bulgu-loading { color: var(--muted); font-size: 14px; font-style: italic; }
+
+  .info-bar { background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.2); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--accent); margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+  .warn-bar { background: rgba(210,153,34,0.08); border: 1px solid rgba(210,153,34,0.3); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--warn); margin-bottom: 20px; }
+
+  .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+  .empty { text-align: center; padding: 60px; color: var(--muted); }
+  .empty .icon { font-size: 48px; margin-bottom: 12px; }
+
+  #page2, #page3 { display: none; }
+  #labelWarningModal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+  #labelWarningModal.open { display: flex; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Stat<span>AI</span></div>
+  <div class="badge">BETA</div>
+</header>
+
+<div class="container">
+
+  <!-- ADIM 1: Upload -->
+  <div id="page1">
+    <div style="text-align:center; margin-bottom:32px">
+      <h1 style="font-size:28px;font-weight:700;margin-bottom:8px">Akademik Analiz Aracı</h1>
+      <p style="color:var(--muted);font-size:16px">Excel veya CSV yükle → Otomatik analiz → APA 7 bulgular</p>
+    </div>
+
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <div class="icon">📊</div>
+      <h2>Veri dosyanı yükle</h2>
+      <p>Sürükle bırak veya tıkla</p>
+      <div class="formats">
+        <span class="format-badge">.xlsx</span>
+        <span class="format-badge">.xls</span>
+        <span class="format-badge">.csv</span>
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFile(this.files[0])" />
+
+    <div style="text-align:center; margin-top:24px">
+      <button class="btn btn-ghost" onclick="loadSampleData()">🧪 Örnek veri ile dene</button>
+    </div>
+  </div>
+
+  <!-- ADIM 2: Sütun tipi onayı -->
+  <div id="page2">
+    <div class="info-bar">
+      📁 <span id="fileInfo"></span>
+    </div>
+    <div id="missingWarnBar" style="display:none" class="warn-bar"></div>
+    <div class="panel">
+      <div class="panel-title">👥 Gruplandırma Değişkenleri (Kategorik)</div>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
+        Cinsiyet, bölüm, yaş grubu gibi gruplara ayıran değişkenler
+      </p>
+      <div class="checkbox-grid" id="catGrid"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">📊 Analiz Değişkenleri (Sürekli)</div>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
+        Toplam puanlar, ölçümler gibi sayısal değişkenler
+      </p>
+      <div class="checkbox-grid" id="contGrid"></div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-ghost" onclick="reset()">← Başa Dön</button>
+      <button class="btn btn-success btn-lg" onclick="runAnalysis()">🔬 Analiz Et</button>
+    </div>
+  </div>
+
+  <!-- ADIM 3: Sonuçlar -->
+  <div id="page3">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+      <div style="font-size:20px;font-weight:700">Analiz Sonuçları</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="showPage(2)">← Geri</button>
+        <button class="btn btn-primary" onclick="generateAllBulgu()">✨ Tüm Bulguları Yaz</button>
+        <button class="btn btn-success" id="btnWord" onclick="downloadWord()" disabled>📄 Word İndir</button>
+      </div>
+    </div>
+    <div id="resultsContainer"></div>
+  </div>
+
+</div>
+
+<div id="labelWarningModal">
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:32px; max-width:520px; width:90%;">
+    <div style="font-size:32px; margin-bottom:16px">⚠️</div>
+    <div style="font-size:18px; font-weight:700; margin-bottom:12px">Kategorik Etiketler Eksik Olabilir</div>
+    <p style="color:var(--muted); font-size:14px; line-height:1.7; margin-bottom:16px">
+      Aşağıdaki sütunlarda sadece sayısal kodlar tespit edildi. Analizde gruplar "1", "2", "3" olarak görünecek — gerçek isimler değil.
+    </p>
+    <div id="suspiciousCols" style="background:var(--bg); border-radius:8px; padding:14px; margin-bottom:20px; font-size:13px; font-family:'JetBrains Mono',monospace;"></div>
+    <p style="color:var(--muted); font-size:13px; margin-bottom:20px">
+      💡 <strong>Önerilen çözüm:</strong> SPSS'de File → Export → CSV açılınca <em>"Save value labels where defined instead of data values"</em> seçeneğini işaretleyip tekrar export edin.
+    </p>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeLabelWarning(true)">← Geri Dön, Düzelt</button>
+      <button class="btn btn-primary" onclick="proceedWithNumbers()">Sayılarla Devam Et →</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+const API = window.STATAI_API || "http://localhost:8765";
+let parsedData = [];
+let columns = [];
+let catColumns = [];
+let contColumns = [];
+let selectedCat = new Set();
+let selectedCont = new Set();
+let analysisResults = [];
+let analysisMeta = {};
+let missingData = [];
+let bulgular = {};
+
+function normalizeDecimalValue(val) {
+  if (val === "" || val === null || val === undefined) return val;
+  if (typeof val === "number") return val;
+  const s = String(val).trim();
+  if (/^-?\d{1,3}(\.\d{3})+,\d+$/.test(s)) return s.replace(/\./g, "").replace(",", ".");
+  if (/^-?\d+,\d+$/.test(s)) return s.replace(",", ".");
+  return val;
+}
+
+function normalizeDataDecimals(data) {
+  return data.map(row => {
+    const out = { ...row };
+    columns.forEach(col => {
+      if (out[col] !== undefined && out[col] !== null && out[col] !== "") {
+        out[col] = normalizeDecimalValue(out[col]);
+      }
+    });
+    return out;
+  });
+}
+
+function isNumericValue(v) {
+  const n = parseFloat(normalizeDecimalValue(v));
+  return !isNaN(n) && isFinite(n);
+}
+
+function escAttr(s) {
+  return String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function colDomId(type, col) {
+  return `${type}_${col.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+}
+
+function classifyColumns(cols, data) {
+  const catCols = [];
+  const contCols = [];
+  const excludeCols = [];
+
+  const EXCLUDE_PATTERNS = [
+    /^(anket_no|id|no|sira|num|serial)$/i,
+    /^[a-z]+_\d+(_ters)?$/i,
+    /^[A-Z]+_\d+(_T)?$/,
+    /_\d+$/,
+  ];
+
+  const CAT_PATTERNS = [
+    /bolum/i, /cinsiyet/i, /_md$/i, /_ed$/i, /_gd$/i,
+    /(_kh|_ik|_sk|_ak)$/i, /kategori/i, /_grup/i, /_binary/i,
+    /yas_grubu/i, /risk_grup/i, /risk_binary/i, /oys_grup/i,
+  ];
+
+  const CONT_PATTERNS = [
+    /_toplam$/i, /_TOPLAM$/i, /^vki$/i, /^dbf_yas$/i,
+    /^dbf_boy$/i, /^dbf_kilo$/i,
+  ];
+
+  cols.forEach(col => {
+    if (EXCLUDE_PATTERNS.some(p => p.test(col))) {
+      excludeCols.push(col);
+      return;
+    }
+    if (CAT_PATTERNS.some(p => p.test(col))) {
+      catCols.push(col);
+      return;
+    }
+    if (CONT_PATTERNS.some(p => p.test(col))) {
+      contCols.push(col);
+      return;
+    }
+    const vals = [...new Set(data.slice(0, 50).map(r => r[col]).filter(v => v !== "" && v != null))];
+    if (!vals.length) {
+      catCols.push(col);
+      return;
+    }
+    const numeric = vals.filter(v => isNumericValue(v));
+    if (numeric.length / vals.length > 0.8 && vals.length > 8) {
+      contCols.push(col);
+    } else {
+      catCols.push(col);
+    }
+  });
+
+  return { catCols, contCols, excludeCols };
+}
+
+function renderSelectionGrids(catCols, contCols) {
+  const catGrid = document.getElementById("catGrid");
+  const contGrid = document.getElementById("contGrid");
+
+  catGrid.innerHTML = catCols.length ? catCols.map(col => {
+    const samples = [...new Set(parsedData.slice(0, 3).map(r => r[col]))].join(", ");
+    const id = colDomId("cat", col);
+    const c = escAttr(col);
+    return `
+      <label class="col-checkbox selected" id="${id}">
+        <input type="checkbox" checked onchange="toggleCol('cat','${c}',this.checked)" />
+        <div>
+          <div class="col-name">${col}</div>
+          <div class="col-sample">${samples}</div>
+        </div>
+      </label>`;
+  }).join("") : '<p style="color:var(--muted);font-size:13px">Kategorik değişken bulunamadı.</p>';
+
+  contGrid.innerHTML = contCols.length ? contCols.map(col => {
+    const samples = [...new Set(parsedData.slice(0, 3).map(r => r[col]))].join(", ");
+    const id = colDomId("cont", col);
+    const c = escAttr(col);
+    return `
+      <label class="col-checkbox selected" id="${id}">
+        <input type="checkbox" checked onchange="toggleCol('cont','${c}',this.checked)" />
+        <div>
+          <div class="col-name">${col}</div>
+          <div class="col-sample">${samples}</div>
+        </div>
+      </label>`;
+  }).join("") : '<p style="color:var(--muted);font-size:13px">Sürekli değişken bulunamadı.</p>';
+}
+
+function toggleCol(type, col, checked) {
+  const set = type === "cat" ? selectedCat : selectedCont;
+  const el = document.getElementById(colDomId(type, col));
+  if (checked) {
+    set.add(col);
+    if (el) el.classList.add("selected");
+  } else {
+    set.delete(col);
+    if (el) el.classList.remove("selected");
+  }
+}
+
+function checkNumericLabels(cols, data) {
+  const suspicious = [];
+  cols.forEach(col => {
+    const vals = data.slice(0, 50).map(r => r[col]).filter(v => v !== "" && v != null);
+    const uniqueVals = [...new Set(vals)];
+    const uniqueCount = uniqueVals.length;
+    if (uniqueCount <= 10) {
+      const allNumeric = uniqueVals.every(v => {
+        const n = parseFloat(String(v));
+        return !isNaN(n) && isFinite(n);
+      });
+      if (allNumeric) {
+        suspicious.push({ col, values: uniqueVals.slice(0, 5) });
+      }
+    }
+  });
+  return suspicious;
+}
+
+function showLabelWarning(suspicious) {
+  const modal = document.getElementById("labelWarningModal");
+  const colsEl = document.getElementById("suspiciousCols");
+  colsEl.innerHTML = suspicious.map(s =>
+    `<div style="margin-bottom:6px">
+      <strong>${s.col}</strong>:
+      <span style="color:var(--muted)">${s.values.join(", ")}${s.values.length >= 5 ? "..." : ""}</span>
+    </div>`
+  ).join("");
+  modal.classList.add("open");
+}
+
+function closeLabelWarning(goBack) {
+  document.getElementById("labelWarningModal").classList.remove("open");
+  if (goBack) showPage(1);
+}
+
+function proceedWithNumbers() {
+  closeLabelWarning(false);
+  showPage(2);
+}
+
+// ── Upload ────────────────────────────────────────────────────────────────────
+
+const zone = document.getElementById("uploadZone");
+zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag"); });
+zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+zone.addEventListener("drop", e => { e.preventDefault(); zone.classList.remove("drag"); handleFile(e.dataTransfer.files[0]); });
+
+function handleFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(e.target.result, { type: "binary" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
+    if (!json.length) return alert("Dosya boş görünüyor.");
+    loadData(json, file.name);
+  };
+  reader.readAsBinaryString(file);
+}
+
+function loadData(json, fileName) {
+  columns = Object.keys(json[0]);
+  parsedData = normalizeDataDecimals(json);
+  const { catCols, contCols, excludeCols } = classifyColumns(columns, parsedData);
+  catColumns = catCols;
+  contColumns = contCols;
+  selectedCat = new Set(catCols);
+  selectedCont = new Set(contCols);
+  computeMissingData([...catCols, ...contCols]);
+  const visible = catCols.length + contCols.length;
+  document.getElementById("fileInfo").textContent =
+    `${fileName} · ${json.length} satır · ${visible} analiz sütunu (${excludeCols.length} madde gizlendi)`;
+  renderSelectionGrids(catCols, contCols);
+  renderMissingWarnings();
+
+  const suspicious = checkNumericLabels(catCols, parsedData);
+  if (suspicious.length > 0) {
+    showLabelWarning(suspicious);
+  } else {
+    showPage(2);
+  }
+}
+
+function computeMissingData(cols) {
+  const total = parsedData.length;
+  missingData = cols.map(col => {
+    const missing = parsedData.filter(r => r[col] === "" || r[col] === null || r[col] === undefined).length;
+    const pct = Math.round(missing / total * 1000) / 10;
+    let warning = "none";
+    if (pct > 30) warning = "high";
+    else if (pct > 10) warning = "medium";
+    return { column: col, missing_pct: pct, missing_n: missing, warning };
+  });
+}
+
+function renderMissingWarnings() {
+  const warnBar = document.getElementById("missingWarnBar");
+  const issues = missingData.filter(m => m.warning !== "none");
+  if (!issues.length) {
+    warnBar.style.display = "none";
+    return;
+  }
+  warnBar.style.display = "block";
+  warnBar.innerHTML = "⚠️ Eksik veri uyarısı: " + issues.map(m =>
+  `${m.column} (%${m.missing_pct})`).join(", ");
+}
+
+function loadSampleData() {
+  const cinsiyet = ["Kadın", "Erkek"];
+  const egitim = ["Lisans", "Yüksek Lisans", "Doktora"];
+  const grup = ["Deney", "Kontrol"];
+  const json = [];
+  for (let i = 1; i <= 50; i++) {
+    const c = cinsiyet[i % 2];
+    const e = egitim[i % 3];
+    const g = grup[i % 2];
+    const yas = 22 + Math.floor(Math.random() * 15);
+    const motivasyon = Math.round((3.2 + (g === "Deney" ? 0.8 : 0) + (Math.random() - 0.5)) * 10) / 10;
+    const basari = Math.round((65 + (g === "Deney" ? 8 : 0) + (motivasyon - 3) * 5 + (Math.random() - 0.5) * 10) * 10) / 10;
+    const stres = Math.round((3.5 - (g === "Deney" ? 0.5 : 0) + (Math.random() - 0.5)) * 10) / 10;
+  json.push({
+      ID: i,
+      Cinsiyet: c,
+      Egitim: e,
+      Grup: g,
+      Yas: yas,
+      Motivasyon: motivasyon,
+      Basari: basari,
+      Stres: stres,
+      ...(i % 7 === 0 ? { Stres: "" } : {}),
+    });
+  }
+  loadData(json, "ornek_veri.xlsx");
+}
+
+// ── Analiz ────────────────────────────────────────────────────────────────────
+
+async function runAnalysis() {
+  if (!selectedCat.size && !selectedCont.size) return alert("En az bir değişken seçmelisiniz.");
+
+  showPage(3);
+  bulgular = {};
+  analysisMeta = {};
+  document.getElementById("btnWord").disabled = true;
+  document.getElementById("resultsContainer").innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Analiz yapılıyor...</p></div>';
+
+  const variables = [
+    ...[...selectedCat].map(col => ({ name: col, label: col, type: "categorical", included: true })),
+    ...[...selectedCont].map(col => ({ name: col, label: col, type: "continuous", included: true })),
+  ];
+
+  const data = parsedData.map(row => {
+    const clean = {};
+    variables.forEach(v => {
+      let val = row[v.name];
+      if (typeof val === "string") val = normalizeDecimalValue(val);
+      clean[v.name] = val;
+    });
+    return { values: clean };
+  });
+
+  try {
+    const res = await fetch(`${API}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ variables, data })
+    });
+    if (!res.ok) throw new Error("Analiz hatası");
+    const json = await res.json();
+    analysisResults = json.results || [];
+    analysisMeta = json.meta || {};
+    if (json.missing_data) missingData = json.missing_data;
+    renderResults();
+    document.getElementById("btnWord").disabled = !analysisResults.length;
+  } catch(e) {
+    document.getElementById("resultsContainer").innerHTML = `
+      <div class="empty">
+        <div class="icon">⚠️</div>
+        <p>Backend bağlantısı kurulamadı.<br><code style="font-size:12px">baslat.bat</code> çalışıyor mu?</p>
+      </div>`;
+  }
+}
+
+function renderApaNote(note) {
+  if (!note) return "";
+  const text = note.replace(/^Not\.\s*/, "");
+  return `<div class="apa-note"><strong><em>Not.</em></strong> <em>${text}</em></div>`;
+}
+
+function renderApaTable(r) {
+  if (!r.headers || !r.rows) return "";
+  return `
+    <div class="apa-table-title">${r.title}</div>
+    <table class="apa-table">
+      <tr>${r.headers.map(h => `<th>${h}</th>`).join("")}</tr>
+      ${r.rows.map((row, i) => `<tr class="${i % 2 ? "alt" : ""}">${row.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}
+    </table>
+    ${renderApaNote(r.note)}`;
+}
+
+function renderResults() {
+  const el = document.getElementById("resultsContainer");
+  if (!analysisResults.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">📭</div><p>Sonuç bulunamadı</p></div>';
+    return;
+  }
+  const intro = analysisMeta.intro
+    ? `<div class="intro-box">${analysisMeta.intro}</div>` : "";
+  el.innerHTML = intro + analysisResults.map((r, i) => renderResult(r, i)).join("");
+}
+
+function renderResult(r, i) {
+  const sigBadge = r.significant !== undefined
+    ? `<span class="sig-badge ${r.significant ? "yes" : "no"}">${r.significant ? "p < .05" : "ns"}</span>` : "";
+  const body = renderApaTable(r);
+
+  return `<div class="result-card">
+    <div class="result-body">
+      ${sigBadge ? `<div class="result-badges" style="margin-bottom:10px">${sigBadge}</div>` : ""}
+      ${body}
+      <div class="bulgu-box" id="bulgu_${i}">
+        <div class="bulgu-label">✨ Bulgu</div>
+        <p class="bulgu-loading">Bulgu yazmak için "Tüm Bulguları Yaz" butonuna bas</p>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function generateAllBulgu() {
+  for (let i = 0; i < analysisResults.length; i++) {
+    await generateBulgu(i);
+  }
+}
+
+async function generateBulgu(i) {
+  const r = analysisResults[i];
+  const el = document.getElementById(`bulgu_${i}`);
+  if (!el) return;
+  el.querySelector("p").textContent = "Yazılıyor...";
+
+  try {
+    const res = await fetch(`${API}/ai/bulgu`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ result: r })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "API hatası");
+    }
+    const data = await res.json();
+    const text = data.bulgu || "Bulgu üretilemedi.";
+    bulgular[String(i)] = text;
+    el.querySelector("p").textContent = text;
+    el.querySelector("p").className = "bulgu-text";
+  } catch(e) {
+    el.querySelector("p").textContent = e.message || "API hatası. ANTHROPIC_API_KEY ayarlı mı?";
+  }
+}
+
+async function downloadWord() {
+  try {
+    const res = await fetch(`${API}/export/word`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        results: analysisResults,
+        bulgular: Object.fromEntries(Object.entries(bulgular).map(([k, v]) => [String(k), v])),
+        intro: analysisMeta.intro || ""
+      })
+    });
+    if (!res.ok) throw new Error("Word oluşturulamadı");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "statai_bulgular.docx";
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert("Word indirme hatası: " + e.message);
+  }
+}
+
+function showPage(n) {
+  [1,2,3].forEach(i => document.getElementById("page"+i).style.display = i===n?"block":"none");
+}
+
+function reset() {
+  parsedData = []; columns = [];
+  catColumns = []; contColumns = [];
+  selectedCat = new Set(); selectedCont = new Set();
+  analysisResults = []; analysisMeta = {};
+  missingData = []; bulgular = {};
+  document.getElementById("btnWord").disabled = true;
+  document.getElementById("labelWarningModal").classList.remove("open");
+  showPage(1);
+}
+</script>
+</body>
+</html>
