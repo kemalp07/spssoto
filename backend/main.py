@@ -664,6 +664,14 @@ def detect_scale_groups(columns: List[str]) -> Dict[str, List[str]]:
 
 # ── Ana Analiz Akışı ──────────────────────────────────────────────────────────
 
+PRIMARY_GROUPING_KEYS = ("bolum", "cinsiyet", "yas")
+
+
+def is_primary_grouping(var: Variable) -> bool:
+    name = var.name.lower()
+    return any(key in name for key in PRIMARY_GROUPING_KEYS)
+
+
 def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
     active = [v for v in variables if v.included]
     cat_vars = [v for v in active if v.type == "categorical"]
@@ -707,18 +715,22 @@ def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
             "count": len(freq_vars),
         })
 
-    kare_pairs = []
     for cv in grouping_cat:
-        for ov in outcome_cat:
-            if cv.name in df.columns and ov.name in df.columns:
-                kare_pairs.append(f"{cv.label} × {ov.label}")
-    if kare_pairs:
+        if cv.name not in df.columns:
+            continue
+        kare_pairs = [
+            f"{cv.label} × {ov.label}"
+            for ov in outcome_cat
+            if ov.name in df.columns
+        ]
+        if not kare_pairs:
+            continue
         tests.append({
-            "id": "chi_square",
+            "id": f"chi_square_{cv.name}",
             "type": "chi_square",
-            "label": "Ki-Kare Testleri",
+            "label": f"Ki-Kare — {cv.label}",
             "detail": "; ".join(kare_pairs[:3]) + ("..." if len(kare_pairs) > 3 else ""),
-            "recommended": True,
+            "recommended": is_primary_grouping(cv),
             "count": len(kare_pairs),
         })
 
@@ -740,7 +752,7 @@ def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
                 "type": "ttest_anova",
                 "label": f"{cv.label} için {test_name}",
                 "detail": "; ".join(pairs[:3]) + ("..." if len(pairs) > 3 else ""),
-                "recommended": True,
+                "recommended": is_primary_grouping(cv),
                 "count": len(pairs),
             })
 
