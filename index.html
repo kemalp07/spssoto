@@ -173,8 +173,23 @@
       </p>
       <div class="checkbox-grid" id="contGrid"></div>
     </div>
+
+    <div id="cronbachPanel" style="display:none" class="panel">
+      <div class="panel-title">🔢 Cronbach Alfa — Ölçek Güvenilirliği</div>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
+        Bir ölçeğin maddelerini seçin (oys_1...oys_15 gibi). Madde sütunları burada görünür.
+      </p>
+      <div class="checkbox-grid" id="itemGrid"></div>
+      <div class="actions" style="margin-top:12px">
+        <button class="btn btn-ghost" onclick="document.getElementById('cronbachPanel').style.display='none'">Kapat</button>
+        <button class="btn btn-primary" onclick="runCronbach()">Hesapla</button>
+      </div>
+      <div id="cronbachResult" style="margin-top:12px"></div>
+    </div>
+
     <div class="actions">
       <button class="btn btn-ghost" onclick="reset()">← Başa Dön</button>
+      <button class="btn btn-ghost" onclick="showCronbachPanel()">🔢 Cronbach Alfa</button>
       <button class="btn btn-success btn-lg" onclick="runAnalysis()">🔬 Analiz Et</button>
     </div>
   </div>
@@ -225,6 +240,9 @@ let analysisResults = [];
 let analysisMeta = {};
 let missingData = [];
 let bulgular = {};
+let excludeColumns = [];
+let cronbachResults = [];
+let selectedItems = new Set();
 
 function normalizeDecimalValue(val) {
   if (val === "" || val === null || val === undefined) return val;
@@ -408,36 +426,144 @@ zone.addEventListener("drop", e => { e.preventDefault(); zone.classList.remove("
 function handleFile(file) {
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     const wb = XLSX.read(e.target.result, { type: "binary" });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
     if (!json.length) return alert("Dosya boş görünüyor.");
-    loadData(json, file.name);
+    await loadData(json, file.name);
   };
   reader.readAsBinaryString(file);
 }
 
-function loadData(json, fileName) {
+async function loadData(json, fileName) {
   columns = Object.keys(json[0]);
   parsedData = normalizeDataDecimals(json);
-  const { catCols, contCols, excludeCols } = classifyColumns(columns, parsedData);
+  cronbachResults = [];
+  selectedItems = new Set();
+
+  const samples = {};
+  columns.forEach(col => {
+    samples[col] = [...new Set(
+      parsedData.slice(0, 5).map(r => r[col]).filter(v => v !== "" && v != null)
+    )].slice(0, 4);
+  });
+
+  document.getElementById("fileInfo").textContent = `${fileName} · Sütunlar analiz ediliyor...`;
+  document.getElementById("catGrid").innerHTML = '<p style="color:var(--muted);font-size:13px">Yükleniyor...</p>';
+  document.getElementById("contGrid").innerHTML = "";
+  showPage(2);
+
+  let catCols, contCols, excludeCols;
+
+  try {
+    const res = await fetch(`${API}/classify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ columns, samples }),
+    });
+    if (!res.ok) throw new Error("classify hatası");
+    const cls = await res.json();
+    catCols = cls.categorical || [];
+    contCols = cls.continuous || [];
+    excludeCols = cls.exclude || [];
+  } catch (e) {
+    const fb = classifyColumns(columns, parsedData);
+    catCols = fb.catCols;
+    contCols = fb.contCols;
+    excludeCols = fb.excludeCols;
+  }
+
   catColumns = catCols;
   contColumns = contCols;
+  excludeColumns = excludeCols;
   selectedCat = new Set(catCols);
   selectedCont = new Set(contCols);
   computeMissingData([...catCols, ...contCols]);
+
   const visible = catCols.length + contCols.length;
   document.getElementById("fileInfo").textContent =
     `${fileName} · ${json.length} satır · ${visible} analiz sütunu (${excludeCols.length} madde gizlendi)`;
+
   renderSelectionGrids(catCols, contCols);
   renderMissingWarnings();
 
   const suspicious = checkNumericLabels(catCols, parsedData);
   if (suspicious.length > 0) {
     showLabelWarning(suspicious);
+  }
+}
+
+const ITEM_PATTERNS = [/^[a-z]+_\d+(_ters)?$/i, /^[A-Z]+_\d+(_T)?$/];
+
+function itemDomId(col) {
+  return `item_${col.replace(/[^a-zA-Z0-9_]/g, "_")}`;
+}
+
+function showCronbachPanel() {
+  const panel = document.getElementById("cronbachPanel");
+  const isHidden = panel.style.display === "none";
+  panel.style.display = isHidden ? "block" : "none";
+  if (!isHidden) return;
+
+  const itemCols = columns.filter(col =>
+    ITEM_PATTERNS.some(p => p.test(col)) || excludeColumns.includes(col)
+  );
+
+  const grid = document.getElementById("itemGrid");
+  if (!itemCols.length) {
+    grid.innerHTML = '<p style="color:var(--muted);font-size:13px">Madde sütunu bulunamadı.</p>';
+    return;
+  }
+
+  grid.innerHTML = itemCols.map(col => {
+    const id = itemDomId(col);
+    const c = escAttr(col);
+    const checked = selectedItems.has(col);
+    return `
+      <label class="col-checkbox ${checked ? "selected" : ""}" id="${id}">
+        <input type="checkbox" ${checked ? "checked" : ""} onchange="toggleItem('${c}', this.checked)" />
+        <div><div class="col-name">${col}</div></div>
+      </label>`;
+  }).join("");
+}
+
+function toggleItem(col, checked) {
+  const el = document.getElementById(itemDomId(col));
+  if (checked) {
+    selectedItems.add(col);
+    if (el) el.classList.add("selected");
   } else {
-    showPage(2);
+    selectedItems.delete(col);
+    if (el) el.classList.remove("selected");
+  }
+}
+
+async function runCronbach() {
+  if (selectedItems.size < 2) return alert("En az 2 madde seçmelisiniz.");
+
+  const resultEl = document.getElementById("cronbachResult");
+  resultEl.innerHTML = '<p style="color:var(--muted)">Hesaplanıyor...</p>';
+
+  try {
+    const res = await fetch(`${API}/analyze/cronbach`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        columns: [...selectedItems],
+        data: parsedData.map(row => ({ values: row })),
+      }),
+    });
+    if (!res.ok) throw new Error("Cronbach hatası");
+    const json = await res.json();
+    if (json.result) {
+      resultEl.innerHTML = renderApaTable(json.result);
+      cronbachResults = [json.result];
+    } else {
+      resultEl.innerHTML = '<p style="color:var(--danger)">Sonuç alınamadı.</p>';
+    }
+  } catch (e) {
+    resultEl.innerHTML = '<p style="color:var(--danger)">Hata oluştu.</p>';
   }
 }
 
@@ -490,7 +616,7 @@ function loadSampleData() {
       ...(i % 7 === 0 ? { Stres: "" } : {}),
     });
   }
-  loadData(json, "ornek_veri.xlsx");
+  loadData(json, "ornek_veri.xlsx").catch(() => {});
 }
 
 // ── Analiz ────────────────────────────────────────────────────────────────────
@@ -527,7 +653,7 @@ async function runAnalysis() {
     });
     if (!res.ok) throw new Error("Analiz hatası");
     const json = await res.json();
-    analysisResults = json.results || [];
+    analysisResults = [...cronbachResults, ...(json.results || [])];
     analysisMeta = json.meta || {};
     if (json.missing_data) missingData = json.missing_data;
     renderResults();
@@ -648,12 +774,15 @@ function showPage(n) {
 
 function reset() {
   parsedData = []; columns = [];
-  catColumns = []; contColumns = [];
+  catColumns = []; contColumns = []; excludeColumns = [];
   selectedCat = new Set(); selectedCont = new Set();
+  selectedItems = new Set(); cronbachResults = [];
   analysisResults = []; analysisMeta = {};
   missingData = []; bulgular = {};
   document.getElementById("btnWord").disabled = true;
   document.getElementById("labelWarningModal").classList.remove("open");
+  document.getElementById("cronbachPanel").style.display = "none";
+  document.getElementById("cronbachResult").innerHTML = "";
   showPage(1);
 }
 </script>

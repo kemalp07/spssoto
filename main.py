@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Tuple
+import json
 import math
 import re
 import pandas as pd
@@ -64,6 +65,10 @@ class PairedRequest(BaseModel):
     col1: str
     col2: str
     data: List[DataRow]
+
+class ClassifyRequest(BaseModel):
+    columns: List[str]
+    samples: Dict[str, List[Any]]
 
 # ── APA Yardımcıları ─────────────────────────────────────────────────────────
 
@@ -550,31 +555,40 @@ def table_regression(tc: TableCounter, df: pd.DataFrame, v1: Variable, v2: Varia
         significant=bool(p < 0.05), predictor=v1.label, outcome=v2.label,
     )
 
-def cronbach_analysis(df: pd.DataFrame, columns: List[str]) -> dict:
+def cronbach_analysis(df: pd.DataFrame, columns: List[str], table_no: Optional[int] = None) -> Optional[dict]:
     items_df = df[columns].apply(pd.to_numeric, errors="coerce").dropna()
-    k = items_df.shape[1]
+    k = len(columns)
+    if k < 2 or len(items_df) < 3:
+        return None
     item_var = items_df.var(axis=0, ddof=1).sum()
     total_var = items_df.sum(axis=1).var(ddof=1)
-    alpha = float((k / (k - 1)) * (1 - item_var / total_var)) if total_var else 0.0
+    if total_var == 0:
+        return None
+    alpha = float((k / (k - 1)) * (1 - item_var / total_var))
 
-    def interpret(a):
-        if a < 0.60:
-            return "Düşük güvenilirlik"
-        if a < 0.70:
-            return "Kabul edilebilir"
-        if a < 0.90:
-            return "İyi"
-        return "Yüksek güvenilirlik"
+    if alpha >= 0.90:
+        interp = "Yüksek güvenilirlik"
+    elif alpha >= 0.70:
+        interp = "İyi güvenilirlik"
+    elif alpha >= 0.60:
+        interp = "Kabul edilebilir"
+    else:
+        interp = "Düşük güvenilirlik"
 
-    return {
-        "type": "cronbach",
-        "title": "Ölçek Güvenilirlik Analizi (Cronbach Alfa)",
-        "headers": ["Madde Sayısı", "Geçerli n", "α", "Yorum"],
-        "rows": [[str(k), str(len(items_df)), fmt_num(alpha), interpret(alpha)]],
-        "note": "Not. α < .60 Düşük; .60–.70 Kabul edilebilir; .70–.90 İyi; > .90 Yüksek güvenilirlik.",
-        "items": columns, "n_items": k, "n": int(len(items_df)),
-        "alpha": round(alpha, 3), "interpretation": interpret(alpha),
-    }
+    if table_no is None:
+        tc = TableCounter()
+        table_no, title = tc.next("Ölçek Güvenilirlik Analizi (Cronbach α)")
+    else:
+        title = f"Tablo {table_no}. Ölçek Güvenilirlik Analizi (Cronbach α)"
+
+    return make_result(
+        "cronbach", table_no, title,
+        ["Madde Sayısı", "Geçerli n", "Cronbach α", "Değerlendirme"],
+        [[k, len(items_df), f"{alpha:.3f}", interp]],
+        "Not. α = Cronbach alfa iç tutarlılık katsayısı. Kabul edilebilir sınır: α ≥ .70.",
+        items=columns, n_items=k, n=int(len(items_df)),
+        alpha=round(alpha, 3), interpretation=interp,
+    )
 
 def paired_ttest(df: pd.DataFrame, col1: str, col2: str) -> dict:
     s1 = pd.to_numeric(df[col1], errors="coerce")
@@ -661,11 +675,10 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
     for cols in detect_scale_groups(list(df.columns)).values():
         try:
             if all(c in df.columns for c in cols):
-                cb = cronbach_analysis(df, cols)
-                no, title = tc.next("Ölçek Güvenilirlik Analizi (Cronbach Alfa)")
-                cb["table_number"] = no
-                cb["title"] = title
-                results.append(cb)
+                no, _ = tc.next("Ölçek Güvenilirlik Analizi (Cronbach α)")
+                cb = cronbach_analysis(df, cols, table_no=no)
+                if cb:
+                    results.append(cb)
         except Exception:
             pass
 
@@ -858,7 +871,9 @@ async def analyze_cronbach(req: CronbachRequest):
         result = cronbach_analysis(df, req.columns)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"result": result}
+    if result is None:
+        raise HTTPException(status_code=400, detail="Cronbach alfa hesaplanamadı (yetersiz veri veya varyans)")
+    return sanitize({"result": result})
 
 
 @app.post("/analyze/paired")
@@ -873,6 +888,49 @@ async def analyze_paired(req: PairedRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"result": result}
+
+
+CLASSIFY_SYSTEM = """Sen bir veri analisti yardımcısısın. Verilen sütun isimlerini ve örnek değerleri inceleyerek her sütunu sınıflandır.
+
+Kurallar:
+- anket_no, id, sira, no gibi kimlik sütunları → "exclude"
+- oys_1, neq_3, sbito_6, _ters, _T ile biten madde sütunları → "exclude"
+- cinsiyet, bolum, kategori, grup, binary, md, ed, gd, kh, ik, sk, ak gibi demografik/grup sütunları → "categorical"
+- _TOPLAM, _toplam ile biten toplam puan sütunları → "continuous"
+- yas, boy, kilo, vki, bmi gibi ölçüm değerleri → "continuous"
+- Değerleri metin olan sütunlar (Kadın/Erkek, Evet/Hayır gibi) → "categorical"
+- Değerleri çok sayısal ve geniş aralıklı sütunlar → "continuous"
+
+SADECE JSON döndür, başka hiçbir şey yazma:
+{"categorical": ["sütun1"], "continuous": ["sütun2"], "exclude": ["sütun3"]}"""
+
+
+@app.post("/classify")
+async def classify_columns(req: ClassifyRequest):
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY ortam değişkeni ayarlanmamış")
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    col_info = "\n".join([
+        f"- {col}: örnek değerler = {req.samples.get(col, [])}"
+        for col in req.columns
+    ])
+
+    msg = client.messages.create(
+        model=ANTHROPIC_MODEL,
+        max_tokens=800,
+        system=CLASSIFY_SYSTEM,
+        messages=[{"role": "user", "content": f"Şu sütunları sınıflandır:\n{col_info}"}],
+    )
+
+    text = msg.content[0].text.strip()
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except Exception:
+            pass
+    return {"categorical": [], "continuous": [], "exclude": []}
 
 
 @app.post("/ai/bulgu")
