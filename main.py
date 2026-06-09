@@ -786,8 +786,15 @@ def run_analyze(
     variables: List[Variable],
     active_types: Optional[List[str]] = None,
 ) -> Tuple[List[dict], dict]:
-    def enabled(test_type: str) -> bool:
-        return active_types is None or test_type in active_types
+    def enabled(test_key: str) -> bool:
+        if active_types is None:
+            return True
+        return test_key in active_types
+
+    def enabled_group(group_type: str, item_key: str) -> bool:
+        if active_types is None:
+            return True
+        return group_type in active_types or item_key in active_types
     tc = TableCounter()
     results: List[dict] = []
     active = [v for v in variables if v.included]
@@ -859,19 +866,22 @@ def run_analyze(
                 pass
 
     # 5. Ki-kare: gruplandırma × sonuç (kategorik)
-    if enabled("chi_square"):
-        for cv in grouping_cat:
-            for ov in outcome_cat:
-                if cv.name in df.columns and ov.name in df.columns:
-                    try:
-                        results.append(table_chi_square(tc, df, cv, ov))
-                    except Exception:
-                        pass
+    for cv in grouping_cat:
+        chi_key = f"chi_square_{cv.name}"
+        if not enabled_group("chi_square", chi_key):
+            continue
+        for ov in outcome_cat:
+            if cv.name in df.columns and ov.name in df.columns:
+                try:
+                    results.append(table_chi_square(tc, df, cv, ov))
+                except Exception:
+                    pass
 
     # 6. t-test / ANOVA / Mann-Whitney / Kruskal: gruplandırma × (sonuç + ölçüm)
-    if not enabled("ttest_anova"):
-        pass
-    for cv in (grouping_cat if enabled("ttest_anova") else []):
+    for cv in grouping_cat:
+        ttest_key = f"ttest_anova_{cv.name}"
+        if not enabled_group("ttest_anova", ttest_key):
+            continue
         for sv in outcome_cont + grouping_cont:
             if cv.name not in df.columns or sv.name not in df.columns:
                 continue

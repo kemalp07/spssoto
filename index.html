@@ -1050,7 +1050,7 @@ function togglePlan(i, checked) {
 }
 
 async function runAnalysisFromPlan() {
-  const activeTypes = new Set(analysisPlan.filter(t => t.recommended).map(t => t.type));
+  const activeTypes = new Set(analysisPlan.filter(t => t.recommended).map(t => t.id));
   if (!activeTypes.size) return alert("En az bir test seçmelisiniz.");
   await runAnalysis(activeTypes);
 }
