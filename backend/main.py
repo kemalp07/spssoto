@@ -2093,62 +2093,85 @@ async def import_spss_tables_endpoint(req: SpssTableRequest):
     })
 
 
-def _toad_slug(scale_name: str) -> str:
-    slug = scale_name.strip()
-    for src, dst in [
-        ("Ş", "s"), ("ş", "s"), ("İ", "i"), ("ı", "i"), ("Ğ", "g"), ("ğ", "g"),
-        ("Ü", "u"), ("ü", "u"), ("Ö", "o"), ("ö", "o"), ("Ç", "c"), ("ç", "c"),
-    ]:
-        slug = slug.replace(src, dst)
-    slug = slug.lower()
-    slug = re.sub(r"[^a-z0-9\-]", "-", slug).strip("-")
-    return slug
+def make_toad_slug(scale_name: str) -> str:
+    s = scale_name.lower().strip()
+    tr_map = str.maketrans("şıüöçğâî", "siuocgai")
+    s = s.translate(tr_map)
+    s = s.replace("i̇", "i")
+    s = re.sub(r"\([^)]*\)", "", s)
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    return s
 
 
-async def search_toad(scale_name: str) -> dict:
-    """toad.halileksi.net'te ölçek ara."""
+def _parse_toad_page(soup: BeautifulSoup) -> dict:
+    result: Dict[str, Any] = {}
+
+    h1 = soup.find("h1")
+    if h1:
+        result["full_name"] = h1.get_text(strip=True)
+
+    content = soup.get_text()
+
+    m = re.search(r"(\d+)\s*madde", content, re.IGNORECASE)
+    if m:
+        result["item_count"] = int(m.group(1))
+
+    m = re.search(
+        r"puan aral[ıi][gğ][ıi]\s*[:\-]?\s*(\d+)\s*[\-–]\s*(\d+)",
+        content,
+        re.IGNORECASE,
+    )
+    if m:
+        result["min_score"] = int(m.group(1))
+        result["max_score"] = int(m.group(2))
+
+    m = re.search(r"(\d+)['\s]li?\s*Likert", content, re.IGNORECASE)
+    if m:
+        result["likert"] = f"{m.group(1)}'li Likert"
+
+    m = re.search(r"kesim\s*(?:noktası|puan[ıi])\s*[:\-]?\s*(\d+)", content, re.IGNORECASE)
+    if not m:
+        m = re.search(r"sınır\s*de[gğ]er\s*[:\-]?\s*(\d+)", content, re.IGNORECASE)
+    if m:
+        result["cutoff"] = int(m.group(1))
+
+    return result if len(result) >= 2 else {}
+
+
+async def fetch_toad_page(url: str) -> dict:
     try:
-        url = f"https://toad.halileksi.net/olcek/{_toad_slug(scale_name)}/"
+        if url.startswith("/"):
+            url = "https://toad.halileksi.net" + url
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.get(url, follow_redirects=True)
             if r.status_code != 200:
                 return {}
-
             soup = BeautifulSoup(r.text, "html.parser")
-            result: Dict[str, Any] = {}
-
-            h1 = soup.find("h1")
-            if h1:
-                result["full_name"] = h1.get_text(strip=True)
-
-            content = soup.get_text()
-
-            m = re.search(r"(\d+)\s*madde", content, re.IGNORECASE)
-            if m:
-                result["item_count"] = int(m.group(1))
-
-            m = re.search(
-                r"puan aral[ıi][gğ][ıi]\s*[:\-]?\s*(\d+)\s*[\-–]\s*(\d+)",
-                content,
-                re.IGNORECASE,
-            )
-            if m:
-                result["min_score"] = int(m.group(1))
-                result["max_score"] = int(m.group(2))
-
-            m = re.search(r"(\d+)['\s]li?\s*Likert", content, re.IGNORECASE)
-            if m:
-                result["likert"] = f"{m.group(1)}'li Likert"
-
-            m = re.search(r"kesim\s*(?:noktası|puan[ıi])\s*[:\-]?\s*(\d+)", content, re.IGNORECASE)
-            if not m:
-                m = re.search(r"sınır\s*de[gğ]er\s*[:\-]?\s*(\d+)", content, re.IGNORECASE)
-            if m:
-                result["cutoff"] = int(m.group(1))
-
-            return result if len(result) >= 2 else {}
+            return _parse_toad_page(soup)
     except Exception:
         return {}
+
+
+async def search_toad(scale_name: str) -> dict:
+    """toad.halileksi.net'te ölçek ara."""
+    slug = make_toad_slug(scale_name)
+
+    result = await fetch_toad_page(f"https://toad.halileksi.net/olcek/{slug}/")
+    if result:
+        return result
+
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(f"https://toad.halileksi.net/?s={quote_plus(scale_name)}")
+            if r.status_code != 200:
+                return {}
+            soup = BeautifulSoup(r.text, "html.parser")
+            first_link = soup.select_one("article a, h2 a, .entry-title a")
+            if first_link and "/olcek/" in first_link.get("href", ""):
+                return await fetch_toad_page(first_link["href"])
+    except Exception:
+        pass
+    return {}
 
 
 async def search_dergipark(scale_name: str) -> dict:
@@ -2201,9 +2224,10 @@ def get_scale_info_ai(scale_name: str, research_topic: str, client: anthropic.An
     msg = client.messages.create(
         model=ANTHROPIC_MODEL,
         max_tokens=200,
-        system="""Türk akademik ölçek uzmanısın. SADECE JSON döndür:
-{"full_name":"...","item_count":15,"min_score":15,"max_score":75,"cutoff":null,"likert":"5'li Likert","note":"..."}
-Bilmediğin alanları null yap.""",
+        system="""Türkiye'de kullanılan akademik ölçekler uzmanısın. Ölçeği tanıyorsan bilgilerini ver, tanımıyorsan ölçek adından mantıklı çıkarım yap (örn: 20 maddelik 5'li Likert → 20-100 aralığı).
+SADECE JSON döndür:
+{"full_name":"...","item_count":20,"min_score":20,"max_score":100,"cutoff":null,"likert":"5'li Likert","note":"kısa açıklama"}
+ASLA "bilgi sağlanmamıştır" deme — bilmiyorsan null koy ama tahmin edebileceğini tahmin et.""",
         messages=[{
             "role": "user",
             "content": f"Araştırma: {research_topic}\nÖlçek: {scale_name}",
