@@ -115,7 +115,43 @@
   .empty { text-align: center; padding: 60px; color: var(--muted); }
   .empty .icon { font-size: 48px; margin-bottom: 12px; }
 
-  #page2, #page3 { display: none; }
+  #page2, #page3, #page4 { display: none; }
+  .plan-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    transition: all 0.15s;
+  }
+  .plan-card.disabled { opacity: 0.5; }
+  .plan-card input[type=checkbox] {
+    width: 18px; height: 18px;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .plan-label { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .plan-detail { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .plan-count {
+    font-size: 11px; font-weight: 700; padding: 3px 8px;
+    border-radius: 20px; background: rgba(37,99,235,0.15);
+    color: #60a5fa; flex-shrink: 0; margin-left: auto;
+    white-space: nowrap;
+  }
+  .plan-badge-rec {
+    font-size: 11px; font-weight: 700; padding: 3px 8px;
+    border-radius: 20px; background: rgba(16,185,129,0.15);
+    color: #34d399; flex-shrink: 0; white-space: nowrap;
+  }
+  .plan-badge-opt {
+    font-size: 11px; font-weight: 700; padding: 3px 8px;
+    border-radius: 20px; background: rgba(125,133,144,0.15);
+    color: var(--muted); flex-shrink: 0; white-space: nowrap;
+  }
   #labelWarningModal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
   #labelWarningModal.open { display: flex; }
 </style>
@@ -247,11 +283,26 @@
     <div class="actions">
       <button class="btn btn-ghost" onclick="reset()">← Başa Dön</button>
       <button class="btn btn-ghost" onclick="showCronbachPanel()">🔢 Cronbach Alfa</button>
-      <button class="btn btn-success btn-lg" onclick="runAnalysis()">🔬 Analiz Et</button>
+      <button class="btn btn-success btn-lg" onclick="loadAnalysisPlan()">📋 Analiz Planı →</button>
     </div>
   </div>
 
-  <!-- ADIM 3: Sonuçlar -->
+  <!-- ADIM 3: Analiz Planı -->
+  <div id="page4">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+      <div>
+        <div style="font-size:20px;font-weight:700">Analiz Planı</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px">Yapılacak testleri onaylayın veya istediğinizi kapatın</div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-ghost" onclick="showPage(2)">← Geri</button>
+        <button class="btn btn-success btn-lg" onclick="runAnalysisFromPlan()">🔬 Analiz Et</button>
+      </div>
+    </div>
+    <div id="planContainer"></div>
+  </div>
+
+  <!-- ADIM 4: Sonuçlar -->
   <div id="page3">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
       <div style="font-size:20px;font-weight:700">Analiz Sonuçları</div>
@@ -303,6 +354,7 @@ let detectedScales = [];
 let pendingJson = null;
 let pendingFileName = "";
 let userLabels = {};
+let analysisPlan = [];
 
 const EXCLUDE_PATTERNS = [
   /^(anket_no|id|no|sira|num|serial)$/i,
@@ -314,6 +366,7 @@ const EXCLUDE_PATTERNS = [
 const GROUPING_PATTERNS = [
   /^bolum$/i, /cinsiyet/i, /^dbf_md$/i, /^dbf_ed$/i, /^dbf_gd$/i,
   /^(dbf_kh|dbf_ik|dbf_sk|dbf_ak)$/i,
+  /^dbf_yas$/i, /^dbf_boy$/i, /^dbf_kilo$/i, /^vki$/i,
 ];
 
 const OUTCOME_CAT_PATTERNS = [
@@ -872,40 +925,49 @@ function loadSampleData() {
 
 // ── Analiz ────────────────────────────────────────────────────────────────────
 
-async function runAnalysis() {
-  if (!selectedCat.size && !selectedCont.size) return alert("En az bir değişken seçmelisiniz.");
-
-  showPage(3);
-  bulgular = {};
-  analysisMeta = {};
-  document.getElementById("btnWord").disabled = true;
-  document.getElementById("resultsContainer").innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Analiz yapılıyor...</p></div>';
-
+function buildVariables() {
   collectUserLabelsFromInputs();
-
-  const variables = [
-    ...[...selectedCat].map(col => ({
-      name: col,
-      label: userLabels[col] || col,
-      type: "categorical",
-      role: "grouping", included: true
-    })),
-    ...[...selectedCont].map(col => {
+  return [
+    ...[...selectedCat].map(col => {
+      const isGroupingMeas = GROUPING_PATTERNS.some(p => p.test(col));
+      if (!isGroupingMeas) {
+        return {
+          name: col,
+          label: userLabels[col] || col,
+          type: "categorical",
+          role: "grouping", included: true
+        };
+      }
       const vals = [...new Set(parsedData.slice(0, 20).map(r => r[col]).filter(v => v !== "" && v != null))];
       const numericCount = vals.filter(v => !isNaN(parseFloat(String(v).replace(",", ".")))).length;
       const isNumeric = vals.length > 0 && numericCount / vals.length > 0.8;
-      const hasWideRange = isNumeric && vals.some(v => parseFloat(String(v).replace(",", ".")) > 10);
-
+      const hasWideRange = isNumeric && vals.some(v => (parseFloat(String(v).replace(",", ".")) || 0) > 10);
       return {
         name: col,
         label: userLabels[col] || col,
         type: (isNumeric && hasWideRange) ? "continuous" : "categorical",
-        role: "outcome", included: true
+        role: "grouping", included: true
+      };
+    }),
+    ...[...selectedCont].map(col => {
+      const isGroupingMeas = GROUPING_PATTERNS.some(p => p.test(col));
+      const vals = [...new Set(parsedData.slice(0, 20).map(r => r[col]).filter(v => v !== "" && v != null))];
+      const numericCount = vals.filter(v => !isNaN(parseFloat(String(v).replace(",", ".")))).length;
+      const isNumeric = vals.length > 0 && numericCount / vals.length > 0.8;
+      const hasWideRange = isNumeric && vals.some(v => (parseFloat(String(v).replace(",", ".")) || 0) > 10);
+      return {
+        name: col,
+        label: userLabels[col] || col,
+        type: (isNumeric && hasWideRange) ? "continuous" : "categorical",
+        role: isGroupingMeas ? "grouping" : "outcome",
+        included: true
       };
     }),
   ];
+}
 
-  const data = parsedData.map(row => {
+function buildData(variables) {
+  return parsedData.map(row => {
     const clean = {};
     variables.forEach(v => {
       let val = row[v.name];
@@ -914,12 +976,107 @@ async function runAnalysis() {
     });
     return { values: clean };
   });
+}
+
+function updatePlanTotalBar() {
+  const bar = document.getElementById("planTotalBar");
+  if (!bar) return;
+  const totalTests = analysisPlan.filter(t => t.recommended).reduce((s, t) => s + (t.count || 1), 0);
+  bar.innerHTML = `📋 Toplam <strong>${totalTests}</strong> tablo oluşturulacak`;
+}
+
+async function loadAnalysisPlan() {
+  if (!selectedCat.size && !selectedCont.size) return alert("En az bir değişken seçmelisiniz.");
+
+  const variables = buildVariables();
+  const data = buildData(variables);
+
+  document.getElementById("planContainer").innerHTML =
+    '<div class="empty"><div class="icon">⏳</div><p>Plan hazırlanıyor...</p></div>';
+  showPage(4);
+
+  try {
+    const res = await fetch(`${API}/plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ variables, data }),
+    });
+    if (!res.ok) throw new Error("Plan hatası");
+    const json = await res.json();
+    analysisPlan = json.tests || [];
+    renderAnalysisPlan();
+  } catch (e) {
+    await runAnalysis(null);
+  }
+}
+
+function renderAnalysisPlan() {
+  const el = document.getElementById("planContainer");
+  if (!analysisPlan.length) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:13px">Analiz planı oluşturulamadı.</p>';
+    return;
+  }
+
+  el.innerHTML = `
+    <div id="planTotalBar" style="background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--accent);"></div>
+    ${analysisPlan.map((t, i) => `
+      <div class="plan-card ${t.recommended ? "" : "disabled"}" id="plancard_${i}">
+        <input type="checkbox" ${t.recommended ? "checked" : ""}
+          onchange="togglePlan(${i}, this.checked)" />
+        <div style="flex:1">
+          <div class="plan-label">${t.label}</div>
+          <div class="plan-detail">${t.detail}</div>
+        </div>
+        <span class="${t.recommended ? "plan-badge-rec" : "plan-badge-opt"}">
+          ${t.recommended ? "✅ Önerilen" : "⚠️ Opsiyonel"}
+        </span>
+        <span class="plan-count">${t.count} tablo</span>
+      </div>
+    `).join("")}
+  `;
+  updatePlanTotalBar();
+}
+
+function togglePlan(i, checked) {
+  analysisPlan[i].recommended = checked;
+  const card = document.getElementById(`plancard_${i}`);
+  if (card) card.classList.toggle("disabled", !checked);
+  const badge = card?.querySelector(".plan-badge-rec, .plan-badge-opt");
+  if (badge) {
+    badge.className = checked ? "plan-badge-rec" : "plan-badge-opt";
+    badge.textContent = checked ? "✅ Önerilen" : "⚠️ Opsiyonel";
+  }
+  updatePlanTotalBar();
+}
+
+async function runAnalysisFromPlan() {
+  const activeTypes = new Set(analysisPlan.filter(t => t.recommended).map(t => t.type));
+  if (!activeTypes.size) return alert("En az bir test seçmelisiniz.");
+  await runAnalysis(activeTypes);
+}
+
+async function runAnalysis(activeTypes = null) {
+  if (!selectedCat.size && !selectedCont.size) return alert("En az bir değişken seçmelisiniz.");
+
+  showPage(3);
+  bulgular = {};
+  analysisMeta = {};
+  document.getElementById("btnWord").disabled = true;
+  document.getElementById("resultsContainer").innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Analiz yapılıyor...</p></div>';
+
+  const variables = buildVariables();
+  const data = buildData(variables);
+
+  const payload = { variables, data };
+  if (activeTypes && activeTypes.size) {
+    payload.active_types = [...activeTypes];
+  }
 
   try {
     const res = await fetch(`${API}/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ variables, data })
+      body: JSON.stringify(payload)
     });
     if (!res.ok) throw new Error("Analiz hatası");
     const json = await res.json();
@@ -1076,7 +1233,10 @@ async function downloadWord() {
 }
 
 function showPage(n) {
-  [1,2,3].forEach(i => document.getElementById("page"+i).style.display = i===n?"block":"none");
+  [1, 2, 3, 4].forEach(i => {
+    const el = document.getElementById("page" + i);
+    if (el) el.style.display = i === n ? "block" : "none";
+  });
 }
 
 function reset() {
@@ -1087,6 +1247,7 @@ function reset() {
   detectedScales = [];
   pendingJson = null; pendingFileName = "";
   userLabels = {};
+  analysisPlan = [];
   analysisResults = []; analysisMeta = {};
   missingData = []; bulgular = {};
   document.getElementById("btnWord").disabled = true;

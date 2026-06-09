@@ -50,6 +50,11 @@ class DataRow(BaseModel):
 class AnalysisRequest(BaseModel):
     variables: List[Variable]
     data: List[DataRow]
+    active_types: Optional[List[str]] = None
+
+class PlanRequest(BaseModel):
+    variables: List[Variable]
+    data: List[DataRow]
 
 class BulguRequest(BaseModel):
     result: Any
@@ -659,7 +664,118 @@ def detect_scale_groups(columns: List[str]) -> Dict[str, List[str]]:
 
 # ── Ana Analiz Akışı ──────────────────────────────────────────────────────────
 
-def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict], dict]:
+def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
+    active = [v for v in variables if v.included]
+    cat_vars = [v for v in active if v.type == "categorical"]
+    cont_vars = [v for v in active if v.type == "continuous"]
+    grouping_cat = [v for v in cat_vars if v.role == "grouping"]
+    outcome_cat = [v for v in cat_vars if v.role == "outcome"]
+    grouping_cont = [v for v in cont_vars if v.role == "grouping"]
+    outcome_cont = [v for v in cont_vars if v.role == "outcome"]
+    all_cont = outcome_cont + grouping_cont
+
+    tests: List[dict] = []
+
+    if all_cont:
+        tests.append({
+            "id": "descriptive",
+            "type": "descriptive",
+            "label": "Tanımlayıcı İstatistikler",
+            "detail": f"{len(all_cont)} sürekli değişken: {', '.join(v.label for v in all_cont[:3])}{'...' if len(all_cont) > 3 else ''}",
+            "recommended": True,
+            "count": 1,
+        })
+
+    if all_cont:
+        tests.append({
+            "id": "normality",
+            "type": "normality",
+            "label": "Normallik Testi",
+            "detail": f"{len(all_cont)} değişken için Shapiro-Wilk / Kolmogorov-Smirnov",
+            "recommended": True,
+            "count": 1,
+        })
+
+    freq_vars = grouping_cat + outcome_cat
+    if freq_vars:
+        tests.append({
+            "id": "frequency",
+            "type": "frequency",
+            "label": "Frekans Tabloları",
+            "detail": f"{len(freq_vars)} kategorik değişken: {', '.join(v.label for v in freq_vars[:3])}{'...' if len(freq_vars) > 3 else ''}",
+            "recommended": True,
+            "count": len(freq_vars),
+        })
+
+    kare_pairs = []
+    for cv in grouping_cat:
+        for ov in outcome_cat:
+            if cv.name in df.columns and ov.name in df.columns:
+                kare_pairs.append(f"{cv.label} × {ov.label}")
+    if kare_pairs:
+        tests.append({
+            "id": "chi_square",
+            "type": "chi_square",
+            "label": "Ki-Kare Testleri",
+            "detail": "; ".join(kare_pairs[:3]) + ("..." if len(kare_pairs) > 3 else ""),
+            "recommended": True,
+            "count": len(kare_pairs),
+        })
+
+    cont_targets = [
+        v for v in outcome_cont + grouping_cont
+        if v.name in df.columns and is_numeric_continuous(df, v, {})
+    ]
+    for cv in grouping_cat:
+        if cv.name not in df.columns:
+            continue
+        n_groups = df[cv.name].dropna().nunique()
+        if n_groups < 2:
+            continue
+        test_name = "t-Testi" if n_groups == 2 else "ANOVA"
+        pairs = [f"{cv.label} × {sv.label}" for sv in cont_targets]
+        if pairs:
+            tests.append({
+                "id": f"ttest_anova_{cv.name}",
+                "type": "ttest_anova",
+                "label": f"{cv.label} için {test_name}",
+                "detail": "; ".join(pairs[:3]) + ("..." if len(pairs) > 3 else ""),
+                "recommended": True,
+                "count": len(pairs),
+            })
+
+    corr_vars = [v for v in outcome_cont if is_numeric_continuous(df, v, {})]
+    if len(corr_vars) >= 2:
+        tests.append({
+            "id": "correlation",
+            "type": "correlation",
+            "label": "Korelasyon Matrisi",
+            "detail": f"{len(corr_vars)} değişken: {', '.join(v.label for v in corr_vars)}",
+            "recommended": True,
+            "count": 1,
+        })
+
+    if len(corr_vars) >= 2:
+        reg_count = len(corr_vars) * (len(corr_vars) - 1) // 2
+        tests.append({
+            "id": "regression",
+            "type": "regression",
+            "label": "Basit Doğrusal Regresyon",
+            "detail": f"{reg_count} çift kombinasyon",
+            "recommended": False,
+            "count": reg_count,
+        })
+
+    return tests
+
+
+def run_analyze(
+    df: pd.DataFrame,
+    variables: List[Variable],
+    active_types: Optional[List[str]] = None,
+) -> Tuple[List[dict], dict]:
+    def enabled(test_type: str) -> bool:
+        return active_types is None or test_type in active_types
     tc = TableCounter()
     results: List[dict] = []
     active = [v for v in variables if v.included]
@@ -669,6 +785,7 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
 
     grouping_cat = [v for v in cat_vars if v.role == "grouping"]
     outcome_cat = [v for v in cat_vars if v.role == "outcome"]
+    grouping_cont = [v for v in cont_vars if v.role == "grouping"]
     outcome_cont = [v for v in cont_vars if v.role == "outcome"]
     all_cont = cont_vars
 
@@ -690,34 +807,39 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
     }
 
     # 1. Tanımlayıcı
-    try:
-        r = table_descriptive(tc, outcome_cont, df)
-        if r:
-            results.append(r)
-    except Exception:
-        pass
-
-    # 2. Normallik tablosu
-    try:
-        r = table_normality(tc, outcome_cont, df, norm_map)
-        if r:
-            results.append(r)
-    except Exception:
-        pass
-
-    # 3. Cronbach
-    for cols in detect_scale_groups(list(df.columns)).values():
+    if enabled("descriptive"):
         try:
-            if all(c in df.columns for c in cols):
-                no, _ = tc.next("Ölçek Güvenilirlik Analizi (Cronbach α)")
-                cb = cronbach_analysis(df, cols, table_no=no)
-                if cb:
-                    results.append(cb)
+            r = table_descriptive(tc, outcome_cont, df)
+            if r:
+                results.append(r)
         except Exception:
             pass
 
+    # 2. Normallik tablosu
+    if enabled("normality"):
+        try:
+            r = table_normality(tc, outcome_cont, df, norm_map)
+            if r:
+                results.append(r)
+        except Exception:
+            pass
+
+    # 3. Cronbach
+    if enabled("cronbach"):
+        for cols in detect_scale_groups(list(df.columns)).values():
+            try:
+                if all(c in df.columns for c in cols):
+                    no, _ = tc.next("Ölçek Güvenilirlik Analizi (Cronbach α)")
+                    cb = cronbach_analysis(df, cols, table_no=no)
+                    if cb:
+                        results.append(cb)
+            except Exception:
+                pass
+
     # 4. Frekans
-    for v in grouping_cat + outcome_cat:
+    if not enabled("frequency"):
+        pass
+    for v in (grouping_cat + outcome_cat if enabled("frequency") else []):
         if v.name in df.columns:
             try:
                 results.append(table_frequency(tc, df[v.name], v.label))
@@ -725,18 +847,23 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
                 pass
 
     # 5. Ki-kare: gruplandırma × sonuç (kategorik)
-    for cv in grouping_cat:
-        for ov in outcome_cat:
-            if cv.name in df.columns and ov.name in df.columns:
-                try:
-                    results.append(table_chi_square(tc, df, cv, ov))
-                except Exception:
-                    pass
+    if enabled("chi_square"):
+        for cv in grouping_cat:
+            for ov in outcome_cat:
+                if cv.name in df.columns and ov.name in df.columns:
+                    try:
+                        results.append(table_chi_square(tc, df, cv, ov))
+                    except Exception:
+                        pass
 
-    # 6. t-test / ANOVA / Mann-Whitney / Kruskal: gruplandırma × sürekli sonuç
-    for cv in grouping_cat:
-        for sv in outcome_cont:
+    # 6. t-test / ANOVA / Mann-Whitney / Kruskal: gruplandırma × (sonuç + ölçüm)
+    if not enabled("ttest_anova"):
+        pass
+    for cv in (grouping_cat if enabled("ttest_anova") else []):
+        for sv in outcome_cont + grouping_cont:
             if cv.name not in df.columns or sv.name not in df.columns:
+                continue
+            if not is_numeric_continuous(df, sv, norm_map):
                 continue
             try:
                 n_groups = df[cv.name].dropna().nunique()
@@ -760,7 +887,7 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
 
     # 7. Korelasyon matrisi (kodlanmış kategorikler hariç)
     corr_vars = [v for v in outcome_cont if is_numeric_continuous(df, v, norm_map)]
-    if len(corr_vars) >= 2:
+    if enabled("correlation") and len(corr_vars) >= 2:
         try:
             all_parametric = all(norm_map.get(v.name, {}).get("is_parametric", True) for v in corr_vars)
             r = table_correlation_matrix(tc, corr_vars, df, norm_map, all_parametric)
@@ -770,18 +897,19 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
             pass
 
     # 8. Regresyon: gerçek sürekli sonuç × sonuç (parametrik)
-    reg_cont = [v for v in outcome_cont if is_numeric_continuous(df, v, norm_map)]
-    for i, v1 in enumerate(reg_cont):
-        for v2 in reg_cont[i + 1:]:
-            if v1.name not in df.columns or v2.name not in df.columns:
-                continue
-            if not (norm_map.get(v1.name, {}).get("is_parametric", True) and
-                    norm_map.get(v2.name, {}).get("is_parametric", True)):
-                continue
-            try:
-                results.append(table_regression(tc, df, v1, v2))
-            except Exception:
-                pass
+    if enabled("regression"):
+        reg_cont = [v for v in outcome_cont if is_numeric_continuous(df, v, norm_map)]
+        for i, v1 in enumerate(reg_cont):
+            for v2 in reg_cont[i + 1:]:
+                if v1.name not in df.columns or v2.name not in df.columns:
+                    continue
+                if not (norm_map.get(v1.name, {}).get("is_parametric", True) and
+                        norm_map.get(v2.name, {}).get("is_parametric", True)):
+                    continue
+                try:
+                    results.append(table_regression(tc, df, v1, v2))
+                except Exception:
+                    pass
 
     results = [
         r for r in results
@@ -883,13 +1011,31 @@ BULGU_SYSTEM = (
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+def _prepare_analysis_df(df: pd.DataFrame, variables: List[Variable]) -> pd.DataFrame:
+    df = normalize_continuous_columns(df, variables)
+    for v in variables:
+        if re.match(r"^vki$", v.name, re.I) and v.name in df.columns:
+            max_val = df[v.name].max()
+            if pd.notna(max_val) and max_val > 1000:
+                df[v.name] = pd.to_numeric(df[v.name], errors="coerce")
+    return df
+
+
+@app.post("/plan")
+async def generate_analysis_plan(req: PlanRequest):
+    rows = [r.values for r in req.data]
+    df = pd.DataFrame(rows)
+    df = _prepare_analysis_df(df, req.variables)
+    return {"tests": generate_plan(df, req.variables)}
+
+
 @app.post("/analyze")
 async def analyze(req: AnalysisRequest):
     rows = [r.values for r in req.data]
     df = pd.DataFrame(rows)
-    df = normalize_continuous_columns(df, req.variables)
+    df = _prepare_analysis_df(df, req.variables)
     missing_data = missing_data_report(df, req.variables)
-    results, meta = run_analyze(df, req.variables)
+    results, meta = run_analyze(df, req.variables, req.active_types)
     return sanitize({"results": results, "missing_data": missing_data, "meta": meta})
 
 
