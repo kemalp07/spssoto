@@ -972,14 +972,57 @@ async function nextStep() {
   if (STEPS[currentStep] === "topic") {
     ensurePendingUserLabels();
     applyScaleInfoToLabels();
-    await loadCutoffsForTopic(researchTopicText);
+
+    const btn = document.querySelector(".slide-active .btn-success");
+    const prevText = btn ? btn.innerHTML : "";
+
+    const hasScaleCutoffs = Object.values(scaleInfo).some(s => s && s.cutoff != null);
+    if (!hasScaleCutoffs) {
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = "⏳ Kesim noktaları aranıyor...";
+      }
+      try {
+        await loadCutoffsForTopic(researchTopicText);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = prevText;
+        }
+      }
+    } else {
+      approvedCutoffs = Object.entries(scaleInfo)
+        .filter(([, s]) => s && s.cutoff != null)
+        .map(([name, s]) => ({
+          code: name,
+          label: s.full_name || name,
+          scale_name: s.full_name || name,
+          cutoff_ranges: `Kesim puanı: ${s.cutoff}`,
+          citation: s.reference || "",
+          has_cutoff: true,
+        }));
+    }
+
     if (STEPS[next] === "cutoffs" && !hasCutoffData()) next++;
   }
 
   if (STEPS[next] === "cutoffs" && !hasCutoffData()) next++;
 
   if (STEPS[next] === "variables" && !variablesDataReady) {
-    await loadData(pendingJson, pendingFileName, researchTopicText);
+    const btn = document.querySelector(".slide-active .btn-success");
+    const prevText = btn ? btn.innerHTML : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = "⏳ Değişkenler hazırlanıyor...";
+    }
+    try {
+      await loadData(pendingJson, pendingFileName, researchTopicText);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = prevText;
+      }
+    }
   }
 
   if (next < STEPS.length) goToStep(next, "forward");
