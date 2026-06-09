@@ -783,20 +783,17 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
             except Exception:
                 pass
 
-    def _is_valid_table(r: dict) -> bool:
-        if not r or not r.get("rows") or len(r["rows"]) == 0:
-            return False
-        skip_dash = r.get("type") == "correlation_matrix"
-        for row in r.get("rows", []):
-            for cell in row[:3]:
-                s = str(cell)
-                if s in ("nan", "None"):
-                    return False
-                if s == "—" and not skip_dash:
-                    return False
-        return True
-
-    results = [r for r in results if _is_valid_table(r)]
+    results = [
+        r for r in results
+        if r is not None
+        and r.get("rows")
+        and len(r["rows"]) > 0
+        and not all(
+            str(cell) in ("—", "nan", "None", "")
+            for row in r.get("rows", [])
+            for cell in (row[:2] if len(row) >= 2 else row)
+        )
+    ]
 
     return results, meta
 
