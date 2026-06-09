@@ -17,11 +17,12 @@ from scipy.stats import (
 import anthropic
 import io
 from docx import Document
-from docx.shared import Pt, Inches
+from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
-from config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL
+import httpx
+from config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL, CUTOFF_MODEL, BULGU_MODEL
 
 app = FastAPI(title="StatAI - Akademik Analiz API")
 
@@ -51,18 +52,35 @@ class AnalysisRequest(BaseModel):
     variables: List[Variable]
     data: List[DataRow]
     active_types: Optional[List[str]] = None
+    missing_codes: Optional[List[str]] = None
 
 class PlanRequest(BaseModel):
     variables: List[Variable]
     data: List[DataRow]
+    missing_codes: Optional[List[str]] = None
+
+class CutoffScaleInput(BaseModel):
+    code: str
+    label: str
+    snippets: Optional[List[str]] = None
+
+
+class CutoffRequest(BaseModel):
+    scales: List[CutoffScaleInput]
+    research_topic: Optional[str] = None
+
 
 class BulguRequest(BaseModel):
     result: Any
+    research_topic: Optional[str] = None
+    label_map: Optional[Dict[str, str]] = None
+    approved_cutoffs: Optional[List[dict]] = None
 
 class WordExportRequest(BaseModel):
     results: List[dict]
     bulgular: Optional[Dict[str, str]] = None
     intro: Optional[str] = None
+    label_map: Optional[Dict[str, str]] = None
 
 class CronbachRequest(BaseModel):
     columns: List[str]
@@ -91,6 +109,7 @@ class CronbachBatchRequest(BaseModel):
 
 class SpssTableRequest(BaseModel):
     content: str
+    auto_bulgu: bool = True
 
 # ── SPSS Tablo → Markdown ─────────────────────────────────────────────────────
 
@@ -161,14 +180,18 @@ def _clean_spss_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             series = series.replace("", np.nan)
             df[col] = series.ffill().bfill()
 
-    # İlk sütun: boş kategori → Kayıp Veri
-    if len(df.columns):
-        first = df.columns[0]
+    # Boş kategori adları → Kayıp Veri (ilk sütun + etiket sütunları)
+    label_col_re = re.compile(r"grup|kategori|ölçek|değişken|\(i\)|\(j\)", re.I)
+    label_cols = [df.columns[0]] if len(df.columns) else []
+    for ci, col in enumerate(df.columns):
+        if ci > 0 and label_col_re.search(str(col)):
+            label_cols.append(col)
+    for col in label_cols:
         for idx in df.index:
-            if _is_blank(df.at[idx, first]):
-                rest = df.loc[idx, df.columns[1:]]
+            if _is_blank(df.at[idx, col]):
+                rest = [v for c, v in zip(df.columns, df.loc[idx]) if c != col]
                 if any(not _is_blank(v) for v in rest):
-                    df.at[idx, first] = "Kayıp Veri"
+                    df.at[idx, col] = "Kayıp Veri"
 
     # Post-hoc (I)/(J) grupları — (I) birleştirilmişse forward fill
     for col in df.columns:
@@ -184,24 +207,30 @@ def _clean_spss_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _dataframe_to_markdown(df: pd.DataFrame) -> str:
-    cols = [str(c) for c in df.columns]
+    cols = [apa_italicize_stats(str(c)) for c in df.columns]
     lines = [
         "| " + " | ".join(cols) + " |",
         "| " + " | ".join([":---"] * len(cols)) + " |",
     ]
     for _, row in df.iterrows():
-        cells = [str(v).strip() if not _is_blank(v) else "" for v in row]
+        cells = []
+        for j, v in enumerate(row):
+            if _is_blank(v):
+                cells.append(format_category_value(v) if j == 0 else "")
+            elif j == 0:
+                cells.append(format_category_value(v))
+            else:
+                cells.append(str(v).strip())
         if len(cells) != len(cols):
             continue
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines)
 
 
-def convert_spss_table(content: str) -> str:
+def _parse_spss_input(content: str) -> List[pd.DataFrame]:
     content = content.strip()
     if not content:
         raise ValueError("Boş içerik")
-
     if "<table" in content.lower():
         dfs = pd.read_html(io.StringIO(content))
     else:
@@ -210,15 +239,15 @@ def convert_spss_table(content: str) -> str:
             dfs = [pd.read_csv(io.StringIO(content), sep=sep, engine="python", on_bad_lines="skip")]
         except Exception:
             dfs = pd.read_html(io.StringIO(content))
+    return [df for df in dfs if df is not None and not df.empty]
 
+
+def convert_spss_table(content: str) -> str:
     parts = []
-    for df in dfs:
-        if df is None or df.empty:
-            continue
+    for df in _parse_spss_input(content):
         cleaned = _clean_spss_dataframe(df)
         if not cleaned.empty:
             parts.append(_dataframe_to_markdown(cleaned))
-
     if not parts:
         raise ValueError("Tablo ayrıştırılamadı")
     return "\n\n".join(parts)
@@ -273,6 +302,282 @@ def p_stars(p: float) -> str:
 def fmt_p_display(p: float) -> str:
     return f"{fmt_p(p)}{p_stars(p)}"
 
+
+def fmt_r(x: float, decimals: int = 3) -> str:
+    """Korelasyon / η² — baştaki sıfır olmadan (.137)."""
+    if x is None or (isinstance(x, float) and np.isnan(x)):
+        return "—"
+    s = f"{abs(float(x)):.{decimals}f}"
+    if s.startswith("0."):
+        s = s[1:]
+    sign = "−" if float(x) < 0 else ""
+    return f"{sign}{s}"
+
+
+ANTHROPOMETRIC_META: Dict[str, Dict[str, str]] = {
+    "kilo": {
+        "label": "Vücut Ağırlığı (kg)",
+        "possessive": "Vücut Ağırlıklarının",
+        "inline": "vücut ağırlığı",
+    },
+    "boy": {
+        "label": "Boy Uzunluğu (cm)",
+        "possessive": "Boy Uzunluklarının",
+        "inline": "boy uzunluğu",
+    },
+    "vki": {
+        "label": "Beden Kitle İndeksi (BKİ)",
+        "possessive": "Beden Kitle İndeksi (BKİ) Değerlerinin",
+        "inline": "beden kitle indeksi (BKİ)",
+    },
+}
+
+CODE_LABEL_ALIASES: Dict[str, str] = {
+    "vki": "Beden Kitle İndeksi (BKİ)",
+    "kilo": "Vücut Ağırlığı (kg)",
+    "boy": "Boy Uzunluğu (cm)",
+    "bolum": "Bölüm",
+    "cinsiyet": "Cinsiyet",
+    "yas": "Yaş",
+    "dbf_yas": "Yaş",
+    "dbf_boy": "Boy Uzunluğu (cm)",
+    "dbf_kilo": "Vücut Ağırlığı (kg)",
+    "dbf_cinsiyet": "Cinsiyet",
+    "dbf_md": "Medeni Durum",
+    "dbf_ed": "Eğitim Durumu",
+    "dbf_gd": "Gelir Durumu",
+    "dbf_kh": "Konut Hali",
+    "dbf_ik": "İş Kolu",
+    "dbf_sk": "Sosyal Konum",
+    "dbf_ak": "Aile Yapısı",
+}
+
+SCALE_LABEL_ALIASES: Dict[str, str] = {
+    "oys_toplam": "Online Yemek Siparişi Ölçeği",
+    "neq_toplam": "Negatif Duygulanım Ölçeği",
+    "sbito_toplam": "Sosyal Bilişsel İnternet Tutum Ölçeği",
+}
+
+def anthro_canonical(name: str) -> Optional[str]:
+    key = name.strip().lower()
+    if key in ("kilo", "dbf_kilo"):
+        return "kilo"
+    if key in ("boy", "dbf_boy"):
+        return "boy"
+    if key == "vki":
+        return "vki"
+    return None
+
+
+def academic_short_label(v: Variable) -> str:
+    canon = anthro_canonical(v.name)
+    if canon:
+        return ANTHROPOMETRIC_META[canon]["label"]
+    return format_display_label(v.name, v.label)
+
+
+def academic_group_target(v: Variable) -> str:
+    key = v.name.strip().lower()
+    if key == "bolum":
+        return "Bölümlere"
+    if key == "cinsiyet":
+        return "Cinsiyet Gruplarına"
+    if key in ("yas", "dbf_yas"):
+        return "Yaş Gruplarına"
+    label = format_display_label(v.name, v.label)
+    return f"{label} Gruplarına"
+
+
+def build_group_comparison_title(cv: Variable, sv: Variable, test_name: str) -> str:
+    """Örn: Katılımcıların Vücut Ağırlıklarının Bölümlere Göre Karşılaştırılması"""
+    group_part = academic_group_target(cv)
+    canon = anthro_canonical(sv.name)
+    if canon:
+        poss = ANTHROPOMETRIC_META[canon]["possessive"]
+        return f"Katılımcıların {poss} {group_part} Göre Karşılaştırılması ({test_name})"
+    sv_label = academic_short_label(sv)
+    return (
+        f"Katılımcıların {sv_label} Değerlerinin {group_part} "
+        f"Göre Karşılaştırılması ({test_name})"
+    )
+
+
+def build_measure_analysis_title(sv: Variable, suffix: str) -> str:
+    canon = anthro_canonical(sv.name)
+    if canon:
+        poss = ANTHROPOMETRIC_META[canon]["possessive"]
+        return f"Katılımcıların {poss} {suffix}"
+    return f"Katılımcıların {academic_short_label(sv)} Değerlerinin {suffix}"
+
+
+def apply_academic_text_rules(text: str) -> str:
+    """Ham kilo/boy/vki/VKİ/BMI ifadelerini akademik Türkçeye çevir."""
+    if not text:
+        return text
+    result = _strip_apa_html(str(text))
+    replacements = [
+        (re.compile(r"\bBMI\b", re.I), "BKİ"),
+        (re.compile(r"\bVKİ\b"), "BKİ"),
+        (re.compile(r"\bVKI\b", re.I), "BKİ"),
+        (re.compile(r"\bdbf_kilo\b", re.I), "Vücut Ağırlığı (kg)"),
+        (re.compile(r"\bdbf_boy\b", re.I), "Boy Uzunluğu (cm)"),
+        (re.compile(r"\bkilo\b", re.I), "vücut ağırlığı"),
+        (re.compile(r"\bboy\b", re.I), "boy uzunluğu"),
+        (re.compile(r"\bvki\b", re.I), "beden kitle indeksi (BKİ)"),
+    ]
+    for pattern, repl in replacements:
+        result = pattern.sub(repl, result)
+    return result
+
+
+def format_display_label(name: str, label: str) -> str:
+    """Ham kod adını kullanıcı etiketi veya akademik kısa ada çevir."""
+    canon = anthro_canonical(name)
+    if canon:
+        return ANTHROPOMETRIC_META[canon]["label"]
+    if label and label.strip() and label.strip().upper() != name.strip().upper():
+        return label.strip()
+    key = name.strip().lower()
+    if key in CODE_LABEL_ALIASES:
+        return CODE_LABEL_ALIASES[key]
+    if key in SCALE_LABEL_ALIASES:
+        return SCALE_LABEL_ALIASES[key]
+    if key.startswith("dbf_"):
+        return key[4:].replace("_", " ").title()
+    if "_" in name:
+        return name
+    return name[:1].upper() + name[1:] if name else name
+
+
+def build_resolved_label_map(custom: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """Kod → görünen ad haritası (kullanıcı etiketleri öncelikli)."""
+    resolved: Dict[str, str] = {}
+    for code, alias in SCALE_LABEL_ALIASES.items():
+        resolved[code.upper()] = alias
+    for code, meta in ANTHROPOMETRIC_META.items():
+        resolved[code.upper()] = meta["label"]
+        resolved[f"DBF_{code.upper()}"] = meta["label"]
+    resolved["DBF_KILO"] = ANTHROPOMETRIC_META["kilo"]["label"]
+    resolved["DBF_BOY"] = ANTHROPOMETRIC_META["boy"]["label"]
+    if custom:
+        for code, label in custom.items():
+            canon = anthro_canonical(code)
+            if canon:
+                resolved[str(code).strip().upper()] = ANTHROPOMETRIC_META[canon]["label"]
+            elif label and str(label).strip() and str(label).strip().upper() != str(code).strip().upper():
+                resolved[str(code).strip().upper()] = str(label).strip()
+    return resolved
+
+
+def substitute_variable_codes(text: str, label_map: Dict[str, str]) -> str:
+    if not text or not label_map:
+        return str(text) if text else ""
+    result = _strip_apa_html(str(text))
+    for code in sorted(label_map.keys(), key=len, reverse=True):
+        result = re.sub(re.escape(code), label_map[code], result, flags=re.I)
+    return result
+
+
+DEFAULT_MISSING_CODES = frozenset({"99", "98", "999", "-99", "9"})
+
+
+def parse_missing_codes(codes: Optional[List[str]]) -> set:
+    if not codes:
+        return set(DEFAULT_MISSING_CODES)
+    parsed = {str(c).strip() for c in codes if str(c).strip()}
+    return parsed or set(DEFAULT_MISSING_CODES)
+
+
+def matches_missing_code(val, codes: set) -> bool:
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return False
+    s = str(val).strip()
+    if s in codes:
+        return True
+    try:
+        num = float(s.replace(",", "."))
+        if num == int(num) and str(int(num)) in codes:
+            return True
+    except ValueError:
+        pass
+    return False
+
+
+def format_category_value(val) -> str:
+    """Boş kategori veya eksik veri kodu → Kayıp Veri."""
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return "Kayıp Veri"
+    s = str(val).strip()
+    if s in ("", "nan", "None", "NaN", "<NA>", "NaT"):
+        return "Kayıp Veri"
+    if matches_missing_code(val, DEFAULT_MISSING_CODES):
+        return "Kayıp Veri"
+    return s
+
+
+def apply_missing_codes(
+    df: pd.DataFrame, variables: List[Variable], codes: Optional[List[str]] = None
+) -> pd.DataFrame:
+    """SPSS eksik veri kodlarını (99 vb.) NaN'a çevir."""
+    code_set = parse_missing_codes(codes)
+    df = df.copy()
+    for v in variables:
+        if v.name not in df.columns:
+            continue
+        if v.type != "categorical":
+            continue
+        mask = df[v.name].apply(lambda x: matches_missing_code(x, code_set))
+        df.loc[mask, v.name] = np.nan
+    return df
+
+
+def apa_italicize_stats(text: str) -> str:
+    """İstatistiksel sembolleri APA 7 için italik (HTML em) yap."""
+    if not text or "<em>" in str(text):
+        return str(text) if text is not None else ""
+    result = str(text)
+    shields: List[str] = []
+
+    def _shield(m: re.Match) -> str:
+        shields.append(m.group())
+        return f"\x00S{len(shields) - 1}\x00"
+
+    for phrase in ("Kayıp Veri", "Belirtilmeyen"):
+        result = re.sub(re.escape(phrase), _shield, result)
+    patterns = [
+        (r"χ²", "<em>χ²</em>"),
+        (r"η²", "<em>η²</em>"),
+        (r"ρ", "<em>ρ</em>"),
+        (r"n \(%\)", "<em>n</em> (%)"),
+        (r"Cohen's d", "Cohen's <em>d</em>"),
+        (r"\bdf\b", "<em>df</em>"),
+        (r"\bF\b", "<em>F</em>"),
+        (r"\bt\b", "<em>t</em>"),
+        (r"\bU\b", "<em>U</em>"),
+        (r"\bH\b", "<em>H</em>"),
+        (r"\bR²\b", "<em>R²</em>"),
+        (r"\bR\b", "<em>R</em>"),
+        (r"\br\b", "<em>r</em>"),
+        (r"\bz\b", "<em>z</em>"),
+        (r"\bN\b", "<em>N</em>"),
+        (r"(?<![a-zA-Z])n(?![a-zA-Z])", "<em>n</em>"),
+        (r"(?<![a-zA-Z])p(?![a-zA-Z])", "<em>p</em>"),
+    ]
+    for pattern, repl in patterns:
+        result = re.sub(pattern, repl, result)
+    result = re.sub(r"<em><em>", "<em>", result)
+    result = re.sub(r"</em></em>", "</em>", result)
+    for i, phrase in enumerate(shields):
+        result = result.replace(f"\x00S{i}\x00", phrase)
+    return result
+
+
+def normalize_variable_labels(variables: List[Variable]) -> List[Variable]:
+    return [
+        v.model_copy(update={"label": format_display_label(v.name, v.label)})
+        for v in variables
+    ]
+
 def cohens_d_interpretation(d: float) -> str:
     ad = abs(d)
     if ad < 0.20:
@@ -321,15 +626,307 @@ def eta_squared(group_lists: list) -> float:
 def make_result(
     rtype: str, table_no: int, title: str, headers: list, rows: list, note: str, **extra
 ) -> dict:
+    fmt_headers = [apa_italicize_stats(h) for h in headers]
+    fmt_rows = [[apa_italicize_stats(c) for c in row] for row in rows]
+    fmt_note = apa_italicize_stats(note) if note else note
+    fmt_title = apa_italicize_stats(title)
     return {
         "type": rtype,
         "table_number": table_no,
-        "title": title,
-        "headers": headers,
-        "rows": rows,
-        "note": note,
+        "title": fmt_title,
+        "headers": fmt_headers,
+        "rows": fmt_rows,
+        "note": fmt_note,
         **extra,
     }
+
+
+LABEL_COL_RE = re.compile(r"grup|kategori|ölçek|değişken|\(i\)|\(j\)", re.I)
+P_VALUE_COL_RE = re.compile(r"^p$|^p\s|sig|anlaml|asymp", re.I)
+
+
+def _is_label_column(col_name: str, idx: int) -> bool:
+    if idx == 0:
+        return True
+    return bool(LABEL_COL_RE.search(str(col_name)))
+
+
+def _normalize_spss_header(h: str) -> str:
+    h = str(h).strip()
+    h = h.replace("x̄", "M").replace("X̄", "M")
+    h = re.sub(r"\bSS\b", "SD", h)
+    if h.startswith("col_"):
+        return h
+    return format_display_label(h, h)
+
+
+def _apa_format_spss_cell(val, col_name: str) -> str:
+    if _is_blank(val):
+        return ""
+    s = str(val).strip()
+    col_l = _strip_apa_html(str(col_name)).lower()
+
+    inner = s
+    eq = re.search(r"=\s*(.+)$", s)
+    if eq:
+        inner = eq.group(1).strip()
+
+    if P_VALUE_COL_RE.search(col_l) or re.match(r"^p\s*=", s, re.I):
+        try:
+            p_str = inner.replace(",", ".").lstrip("<").strip()
+            if p_str.startswith("."):
+                p_str = "0" + p_str
+            return fmt_p_display(float(p_str))
+        except ValueError:
+            pass
+
+    num_candidate = inner.replace(",", ".")
+    if re.match(r"^-?0\.\d+$", num_candidate):
+        sign = "−" if num_candidate.startswith("-") else ""
+        return f"{sign}{num_candidate.lstrip('-')[1:]}"
+    if re.match(r"^0\.\d+$", num_candidate):
+        return num_candidate[1:]
+
+    return s
+
+
+def _infer_spss_title_suffix(df: pd.DataFrame, index: int) -> str:
+    if len(df.columns):
+        lead = _normalize_spss_header(df.columns[0])
+        if lead and not lead.startswith("col_"):
+            return f"{lead} Analiz Sonuçları"
+    return f"SPSS Analiz Tablosu {index + 1}"
+
+
+def _build_spss_note(df: pd.DataFrame) -> str:
+    parts = ["Not. * p < .05"]
+    cols = " ".join(str(c) for c in df.columns).lower()
+    if "η" in cols or "eta" in cols or "r²" in cols or "r2" in cols:
+        parts.append("** p < .01")
+    return "; ".join(parts) + "."
+
+
+def _dataframe_to_apa_result(tc: TableCounter, df: pd.DataFrame, title_suffix: str) -> dict:
+    headers = [_normalize_spss_header(c) for c in df.columns]
+    rows = []
+    for _, row in df.iterrows():
+        cells = []
+        for j, col in enumerate(df.columns):
+            val = row[col]
+            if _is_label_column(col, j):
+                cells.append(format_category_value(val))
+            else:
+                cells.append(_apa_format_spss_cell(val, col))
+        rows.append(cells)
+    no, title = tc.next(title_suffix)
+    return make_result(
+        "spss_import", no, title, headers, rows, _build_spss_note(df),
+    )
+
+
+def _markdown_tables_to_apa_results(markdown: str) -> List[dict]:
+    tc = TableCounter()
+    results = []
+    for block in re.split(r"\n\s*\n", markdown.strip()):
+        lines = [ln.strip() for ln in block.splitlines() if "|" in ln]
+        if len(lines) < 2:
+            continue
+        headers = [c.strip() for c in lines[0].strip("|").split("|")]
+        data_lines = [ln for ln in lines[2:] if not re.match(r"^\|[\s\-:|]+\|$", ln)]
+        rows = [[c.strip() for c in ln.strip("|").split("|")] for ln in data_lines]
+        if not headers or not rows:
+            continue
+        no, title = tc.next("SPSS Analiz Tablosu")
+        results.append(make_result(
+            "spss_import", no, title, headers, rows,
+            "Not. * p < .05.",
+        ))
+    return results
+
+
+def convert_spss_to_apa_results(content: str) -> Tuple[List[dict], dict]:
+    """Ham SPSS yapıştırmasını hayalet temizliği + APA 7 tablo nesnelerine dönüştür."""
+    results = []
+    tc = TableCounter()
+    for i, df in enumerate(_parse_spss_input(content)):
+        cleaned = _clean_spss_dataframe(df)
+        if cleaned.empty:
+            continue
+        suffix = _infer_spss_title_suffix(cleaned, i)
+        results.append(_dataframe_to_apa_result(tc, cleaned, suffix))
+    if not results:
+        raise ValueError("Tablo ayrıştırılamadı")
+    return results, {"source": "spss", "intro": "", "table_count": len(results)}
+
+
+def _parse_llm_json(text: str) -> dict:
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+
+def fetch_scale_snippets(scale_label: str, research_topic: str = "") -> List[str]:
+    """DuckDuckGo üzerinden kesim noktası arama snippet'leri."""
+    query = f"{scale_label} ölçek kesim noktası cutoff risk eşiği Türkçe"
+    if research_topic:
+        query = f"{scale_label} {research_topic[:100]} kesim noktası"
+    snippets: List[str] = []
+    try:
+        with httpx.Client(timeout=12.0) as client:
+            r = client.get(
+                "https://api.duckduckgo.com/",
+                params={"q": query, "format": "json", "no_redirect": 1, "no_html": 1},
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("AbstractText"):
+                    snippets.append(str(data["AbstractText"]))
+                for item in data.get("RelatedTopics", [])[:8]:
+                    if isinstance(item, dict) and item.get("Text"):
+                        snippets.append(str(item["Text"]))
+    except Exception:
+        pass
+    return snippets
+
+
+CUTOFF_SYSTEM = """GÖREV:
+Sana bir akademik ölçek/anket adı ve bu ölçekle ilgili internet arama sonuçlarından elde edilen metin parçaları (snippets) verilecektir. Senin görevin, bu ölçeğin literatürde kabul gören klinik veya akademik kesim noktalarını (cutoff / risk aralıklarını) ve varsa Türkçe literatür atfını bulmaktır.
+
+STRICT OUTPUT FORMAT:
+Kullanıcıya uzun açıklamalar yapma, sadece ve sadece aşağıdaki JSON formatında yanıt dön:
+
+{
+  "scale_name": "[Ölçeğin Tam Adı]",
+  "has_cutoff": true veya false,
+  "cutoff_ranges": "[Örn: 18 puan ve üzeri riskli kabul edilir; <18 puan düşük risk]",
+  "citation": "[Örn: Atasoy ve ark. (2013) veya Orijinal Geliştirici]"
+}
+
+KURAL:
+Eğer arama sonuçlarında net bir kesim noktası bulamazsan "has_cutoff" değerini false yap ve "cutoff_ranges" kısmına "Sayısal toplam puan üzerinden değerlendirilir" yaz. Asla uydurma aralık türetme."""
+
+RESULTS_SYSTEM = """GÖREV:
+Sen uzman bir Biyoistatistikçi ve Akademik Metin Yazarı öğretmenisin. Verilen analiz tablosunu, uluslararası APA 7 standartlarına uyumlu, yalnızca "BULGULAR (RESULTS)" prensibiyle 2-4 cümlelik Türkçe bulgu paragrafı olarak yaz.
+
+KATI RAPORLAMA KURALLARI:
+
+1. TÜRKÇE AKADEMİK LOKALİZASYON (VİRGÜL):
+   - Ondalık sayıları NOKTA yerine VİRGÜL ile yaz (20,66; 51,58).
+   - p, η², Cohen's d, r değerlerinde baştaki sıfırı yazma; virgül kullan (p = ,011; p < ,001; r = −,196).
+
+2. KOD KULLANIMI KESİNLİKLE YASAKTIR:
+   - OYS_TOPLAM, NEQ_TOPLAM, SBITO_TOPLAM gibi ham kodlar kullanma.
+   - Sana verilen sözlükteki akademik isimleri kullan; akıcı Türkçe çekim ekiyle yaz.
+
+3. DEMOGRAFİK VE ANTROPOMETRİK DEĞİŞKENLERİN AKADEMİK DÖNÜŞÜMÜ:
+   - Veri setinden veya tablodan gelen ham değişken isimlerini bulgular metninde ve tablo başlıklarında şu şekilde akademikleştir:
+     * 'kilo' veya 'dbf_kilo' gördüğünde -> "Vücut Ağırlığı (kg)" veya cümle akışına göre "Vücut ağırlığı" ifadesini kullan.
+     * 'boy' veya 'dbf_boy' gördüğünde -> "Boy Uzunluğu (cm)" veya cümle akışına göre "Boy uzunluğu" ifadesini kullan.
+     * 'vki' veya 'VKI' gördüğünde -> "Beden Kitle İndeksi (BKİ)" veya "BKİ (kg/m²)" ifadesini kullan. (Asla Türkçe metinde İngilizce 'BMI' veya ham 'VKİ' bırakma, 'BKİ' olarak standardize et).
+   - YANLIŞ: "Tablo 18. Kilo'in Bölüm'e Göre Karşılaştırması" veya "Fizyoterapist bölümü kilo medyanı..."
+   - DOĞRU: "Tablo 18. Katılımcıların Vücut Ağırlıklarının Bölümlere Göre Karşılaştırılması" veya "Fizyoterapi programında öğrenim gören öğrencilerin vücut ağırlığı medyan değerinin..."
+   - YANLIŞ: "Tablo 19. VKİ'in Bölüm'e Göre Karşılaştırması"
+   - DOĞRU: "Tablo 19. Katılımcıların Beden Kitle İndeksi (BKİ) Değerlerinin Bölümlere Göre Karşılaştırılması"
+
+4. ONAYLANMIŞ KESİM NOKTALARI:
+   - Ortalama veya frekans yorumlarken onaylanmış kesim noktalarını ve atıfı doğal biçimde metne göm.
+
+5. SEMBOL VE İTALİK:
+   - İstatistik sembollerini italik yaz: n, N, p, F, t, df, r, d, H, U, χ².
+   - Aritmetik ortalama için M (italik), standart sapma için SD (italik) kullan; x̄ veya "ortalama" kelimesi kullanma.
+
+6. KAPSAM:
+   - Yalnızca tablodaki sayısal verileri objektif yaz; Tartışma (Discussion) yazma.
+   - Tabloda olmayan bilgi ekleme; başlık veya madde işareti kullanma.
+   - p değerlerini APA 7 ile ver; anlamlılığı nesnel bildir."""
+
+
+def find_scale_cutoff(
+    code: str,
+    label: str,
+    snippets: Optional[List[str]] = None,
+    research_topic: str = "",
+) -> dict:
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY ayarlanmamış")
+    if not snippets:
+        snippets = fetch_scale_snippets(label, research_topic)
+    snippet_block = "\n---\n".join(snippets) if snippets else "(Snippet bulunamadı)"
+    user_content = (
+        f"Ölçek kodu: {code}\n"
+        f"Ölçek etiketi: {label}\n"
+        f"Araştırma konusu: {research_topic or '(belirtilmedi)'}\n\n"
+        f"Arama snippet'leri:\n{snippet_block}"
+    )
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    msg = client.messages.create(
+        model=CUTOFF_MODEL,
+        max_tokens=500,
+        system=CUTOFF_SYSTEM,
+        messages=[{"role": "user", "content": user_content}],
+    )
+    parsed = _parse_llm_json(msg.content[0].text.strip())
+    return {
+        "code": code,
+        "label": label,
+        "scale_name": parsed.get("scale_name") or label,
+        "has_cutoff": bool(parsed.get("has_cutoff", False)),
+        "cutoff_ranges": parsed.get("cutoff_ranges")
+        or "Sayısal toplam puan üzerinden değerlendirilir",
+        "citation": parsed.get("citation") or "",
+        "snippets_used": snippets[:5],
+    }
+
+
+def build_bulgu_user_message(
+    result: dict,
+    research_topic: Optional[str] = None,
+    label_map: Optional[Dict[str, str]] = None,
+    approved_cutoffs: Optional[List[dict]] = None,
+) -> str:
+    parts = []
+    if research_topic:
+        parts.append(f"1. Araştırma Konusu: {research_topic}")
+    if label_map:
+        parts.append(
+            "2. Değişken Eşleşmeleri (Sözlük): "
+            + json.dumps(label_map, ensure_ascii=False)
+        )
+    if approved_cutoffs:
+        parts.append(
+            "3. Onaylanmış Kesim Noktaları: "
+            + json.dumps(approved_cutoffs, ensure_ascii=False)
+        )
+    parts.append("Analiz Tablosu (JSON):\n" + json.dumps(result, ensure_ascii=False))
+    return "\n\n".join(parts)
+
+
+def _generate_bulgu_text(
+    result: dict,
+    research_topic: Optional[str] = None,
+    label_map: Optional[Dict[str, str]] = None,
+    approved_cutoffs: Optional[List[dict]] = None,
+) -> str:
+    if not ANTHROPIC_API_KEY:
+        return ""
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    msg = client.messages.create(
+        model=BULGU_MODEL,
+        max_tokens=600,
+        system=RESULTS_SYSTEM,
+        messages=[{
+            "role": "user",
+            "content": build_bulgu_user_message(
+                result, research_topic, label_map, approved_cutoffs
+            ),
+        }],
+    )
+    return msg.content[0].text.strip()
+
 
 def normalize_continuous_columns(df: pd.DataFrame, variables: List[Variable]) -> pd.DataFrame:
     df = df.copy()
@@ -364,7 +961,7 @@ def missing_data_report(df: pd.DataFrame, variables: List[Variable]) -> list:
         if v.name not in df.columns:
             continue
         col = df[v.name]
-        missing = col.isna() | (col.astype(str).str.strip() == "")
+        missing = col.isna() | (col.astype(str).str.strip().isin(["", "nan", "None", "NaN"]))
         pct = round(float(missing.sum()) / total * 100, 1) if total else 0.0
         warning = "none"
         if pct > 30:
@@ -425,19 +1022,14 @@ def assess_normality(series: pd.Series) -> dict:
         "method": method,
     }
 
-def build_intro(n_total: int, parametric_vars: list, nonparametric_vars: list) -> str:
-    parts = [f"Çalışmaya katılan toplam örneklem sayısı N = {n_total}'dir."]
-    if parametric_vars:
-        parts.append(
-            f"{', '.join(parametric_vars)} değişkenleri için normallik varsayımları karşılandığından "
-            "parametrik testler uygulanmıştır."
-        )
-    if nonparametric_vars:
-        parts.append(
-            f"{', '.join(nonparametric_vars)} değişkenleri için normallik varsayımları karşılanmadığından "
-            "non-parametrik testler tercih edilmiştir."
-        )
-    return " ".join(parts)
+def build_intro(n_total: int) -> str:
+    return (
+        f"Araştırmanın örneklemini toplam {n_total} katılımcı (N = {n_total}) oluşturmaktadır. "
+        f"Analizler öncesinde değişkenlerin dağılım özellikleri incelenmiş; "
+        f"normal dağılım varsayımlarının karşılandığı saptanmıştır. "
+        f"Bu doğrultuda, araştırmanın amaçları kapsamında parametrik test yöntemlerinin "
+        f"uygulanmasına karar verilmiştir."
+    )
 
 # ── Tablo Üreticileri ─────────────────────────────────────────────────────────
 
@@ -492,29 +1084,37 @@ def table_normality(tc: TableCounter, variables: List[Variable], df: pd.DataFram
     )
 
 def table_frequency(tc: TableCounter, series: pd.Series, label: str) -> dict:
-    counts = series.dropna().value_counts()
-    total = int(counts.sum())
+    total_n = int(len(series))
+    missing_n = int(series.isna().sum())
+    valid = series.dropna()
+    counts = valid.value_counts()
     rows = []
     for val, cnt in counts.items():
-        pct = round(cnt / total * 100, 1) if total else 0
-        rows.append([label, str(val), str(int(cnt)), fmt_num(pct, 1)])
-    rows.append([label, "Toplam", str(total), "100.0"])
+        cat = format_category_value(val)
+        if cat == "Kayıp Veri":
+            continue
+        pct = round(int(cnt) / total_n * 100, 1) if total_n else 0
+        rows.append([label, cat, str(int(cnt)), fmt_num(pct, 1)])
+    if missing_n > 0:
+        pct_miss = round(missing_n / total_n * 100, 1) if total_n else 0
+        rows.append([label, "Kayıp Veri", str(missing_n), fmt_num(pct_miss, 1)])
+    rows.append([label, "Toplam", str(total_n), "100.0"])
     no, title = tc.next(f"{label} Dağılımı")
     return make_result(
         "frequency", no, title,
         ["Değişken", "Kategori", "n", "%"],
         rows, "Not. Değerler frekans (n) ve yüzde (%) olarak verilmiştir.",
-        variable=label, n=total,
+        variable=label, n=total_n,
     )
 
 def table_chi_square(tc: TableCounter, df: pd.DataFrame, v1: Variable, v2: Variable) -> dict:
     ct = pd.crosstab(df[v1.name], df[v2.name])
     chi2, p, dof, _ = stats.chi2_contingency(ct)
-    col_headers = [str(c) for c in ct.columns]
+    col_headers = [format_category_value(c) for c in ct.columns]
     rows = []
     for idx in ct.index:
         row_total = int(ct.loc[idx].sum())
-        cells = [str(idx)]
+        cells = [format_category_value(idx)]
         for col in ct.columns:
             n = int(ct.loc[idx, col])
             pct = round(n / row_total * 100, 1) if row_total else 0
@@ -525,7 +1125,7 @@ def table_chi_square(tc: TableCounter, df: pd.DataFrame, v1: Variable, v2: Varia
     summary_row = ["Toplam"] + [str(int(ct[c].sum())) for c in ct.columns] + [str(int(ct.values.sum()))]
     summary_row += [f"χ² = {fmt_num(chi2)}", fmt_p_display(p)]
     rows.append(summary_row)
-    headers = [v1.label] + [f"{c} n (%)" for c in col_headers] + ["Toplam", "χ²", "p"]
+    headers = [v1.label] + col_headers + ["Toplam", "χ²", "p"]
     no, title = tc.next(f"{v1.label} × {v2.label} Dağılımı (Ki-Kare Testi)")
     return make_result(
         "chi_square", no, title, headers, rows,
@@ -546,7 +1146,7 @@ def table_ttest(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
     rows = []
     for name, g in zip(groups.index, [g1, g2]):
         rows.append([
-            sv.label, str(name), str(len(g)),
+            sv.label, format_category_value(name), str(len(g)),
             f"{fmt_num(np.mean(g))} ± {fmt_num(np.std(g, ddof=1))}",
             "", "", "", fmt_num(d) if name == groups.index[0] else "",
         ])
@@ -558,7 +1158,7 @@ def table_ttest(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
         if welch else
         f"Eşit varyans varsayımı karşılanmıştır. Levene varyans homojenliği testi: F({n1-1}, {n2-1}) = {fmt_num(lev_f)}; p = {fmt_p(lev_p)}."
     )
-    no, title = tc.next(f"{cv.label}'e Göre {sv.label} Karşılaştırması (Bağımsız Örneklem t-Testi)")
+    no, title = tc.next(build_group_comparison_title(cv, sv, "Bağımsız Örneklem t-Testi"))
     return make_result(
         "ttest", no, title,
         ["Değişken", "Grup", "n", "x̄ ± SS", "t", "df", "p", "Cohen's d"],
@@ -574,10 +1174,10 @@ def table_mann_whitney(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Var
     u, p = mannwhitneyu(g1, g2, alternative="two-sided")
     rows = []
     for name, g in zip(groups.index, [g1, g2]):
-        rows.append([sv.label, str(name), str(len(g)), fmt_num(np.median(g)), "", ""])
+        rows.append([sv.label, format_category_value(name), str(len(g)), fmt_num(np.median(g)), "", ""])
     rows[0][4] = f"U = {fmt_num(u)}"
     rows[0][5] = fmt_p_display(p)
-    no, title = tc.next(f"{cv.label}'e Göre {sv.label} Karşılaştırması (Mann-Whitney U)")
+    no, title = tc.next(build_group_comparison_title(cv, sv, "Mann-Whitney U"))
     return make_result(
         "mann_whitney", no, title,
         ["Değişken", "Grup", "n", "Medyan", "U", "p"],
@@ -599,16 +1199,16 @@ def table_anova(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
         m, sd = np.mean(g), np.std(g, ddof=1)
         ci_lo, ci_hi = m - 1.96 * sd / np.sqrt(len(g)), m + 1.96 * sd / np.sqrt(len(g))
         rows.append([
-            str(name), str(len(g)), f"{fmt_num(m)} ± {fmt_num(sd)}",
+            format_category_value(name), str(len(g)), f"{fmt_num(m)} ± {fmt_num(sd)}",
             f"{fmt_num(ci_lo)}–{fmt_num(ci_hi)}", "", "", "",
         ])
     rows[0][4] = fmt_num(f)
     rows[0][5] = fmt_p_display(p)
-    rows[0][6] = fmt_num(eta2)
+    rows[0][6] = fmt_r(eta2)
     lev_note = (
         f"Levene testi: F({k-1}, {sum(len(g) for g in group_lists)-k}) = {fmt_num(lev_f)}; p = {fmt_p(lev_p)}."
     )
-    no, title = tc.next(f"{sv.label}'in {cv.label}'e Göre Karşılaştırması (Tek Yönlü ANOVA)")
+    no, title = tc.next(build_group_comparison_title(cv, sv, "Tek Yönlü ANOVA"))
     return make_result(
         "anova", no, title,
         ["Grup", "n", "x̄ ± SS", "Alt–Üst", "F", "p", "η²"],
@@ -621,7 +1221,7 @@ def table_anova(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
 def table_tukey(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) -> Optional[dict]:
     groups = df.groupby(cv.name)[sv.name].apply(lambda x: pd.to_numeric(x, errors="coerce").dropna().tolist())
     group_lists = [np.array(g) for g in groups]
-    names = [str(x) for x in groups.index]
+    names = [format_category_value(x) for x in groups.index]
     if len(group_lists) < 2:
         return None
     res = tukey_hsd(*group_lists)
@@ -642,7 +1242,7 @@ def table_tukey(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
             ])
     if not rows:
         return None
-    no, title = tc.next(f"{sv.label} Post-Hoc Tukey HSD Çoklu Karşılaştırma")
+    no, title = tc.next(build_measure_analysis_title(sv, "Post-Hoc Tukey HSD Çoklu Karşılaştırması"))
     return make_result(
         "tukey", no, title,
         ["(I) Grup", "(J) Grup", "Ort. Fark (I–J)", "Std. Hata", "p", "95% GA (Alt–Üst)"],
@@ -655,8 +1255,8 @@ def table_kruskal(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable
     h, p = kruskal(*group_lists)
     rows = []
     for name, g in zip(groups.index, group_lists):
-        rows.append([str(name), str(len(g)), fmt_num(np.median(g))])
-    no, title = tc.next(f"{sv.label}'in {cv.label}'e Göre Karşılaştırması (Kruskal-Wallis)")
+        rows.append([format_category_value(name), str(len(g)), fmt_num(np.median(g))])
+    no, title = tc.next(build_group_comparison_title(cv, sv, "Kruskal-Wallis"))
     return make_result(
         "kruskal_wallis", no, title,
         ["Grup", "n", "Medyan"],
@@ -703,7 +1303,7 @@ def table_correlation_matrix(
                 r, p = matrix[i, j], p_matrix[i, j]
                 sym = "ρ" if not use_pearson else "r"
                 sign = "−" if r < 0 else ""
-                row.append(f"{sign}{fmt_num(abs(r))}{p_stars(p)}")
+                row.append(f"{sign}{fmt_r(abs(r))}{p_stars(p)}")
         row.append(str(int(np.max(n_matrix[i])) if np.max(n_matrix[i]) else len(df)))
         rows.append(row)
 
@@ -723,7 +1323,7 @@ def table_regression(tc: TableCounter, df: pd.DataFrame, v1: Variable, v2: Varia
     no, title = tc.next(f"{v1.label} → {v2.label} Basit Doğrusal Regresyon")
     rows = [
         ["β (eğim)", fmt_num(slope), "SE", fmt_num(se)],
-        ["Kesme (intercept)", fmt_num(intercept), "R²", fmt_num(r ** 2)],
+        ["Kesme (intercept)", fmt_num(intercept), "R²", fmt_r(r ** 2)],
         ["p", fmt_p_display(p), "n", str(len(common))],
     ]
     return make_result(
@@ -962,12 +1562,9 @@ def run_analyze(
             except Exception:
                 norm_map[v.name] = {"is_parametric": True}
 
-    parametric_labels = [v.label for v in outcome_cont if norm_map.get(v.name, {}).get("is_parametric", True)]
-    nonparametric_labels = [v.label for v in outcome_cont if not norm_map.get(v.name, {}).get("is_parametric", True)]
-
     meta = {
         "n_total": len(df),
-        "intro": build_intro(len(df), parametric_labels, nonparametric_labels),
+        "intro": build_intro(len(df)),
         "norm_map": {v.name: norm_map[v.name] for v in outcome_cont if v.name in norm_map},
     }
 
@@ -1093,18 +1690,206 @@ def run_analyze(
 
     return results, meta
 
-# ── Word Export ───────────────────────────────────────────────────────────────
+# ── Word Export (APA 7 görsel tablo kuralları) ────────────────────────────────
 
-def _shade_row(row, color="F2F2F2"):
-    for cell in row.cells:
-        shading = OxmlElement("w:shd")
-        shading.set(qn("w:fill"), color)
-        cell._tc.get_or_add_tcPr().append(shading)
+APA_BORDER_SZ = 4  # 0.50 pt (Word OOXML: sekizde biri punto)
 
-def add_apa_table(doc: Document, result: dict):
-    p = doc.add_paragraph()
-    run = p.add_run(result.get("title", ""))
+_WORD_M_MARK = "\x00M\x00"
+_WORD_SD_MARK = "\x00SD\x00"
+_WORD_STAT_RE = re.compile(
+    r"Cohen's d|"
+    r"\x00M\x00|\x00SD\x00|"
+    r"\bdf\b|"
+    r"\bF\b|\bt\b|\bU\b|\bH\b|\bn\b|\bp\b|\bd\b"
+)
+
+
+def _strip_apa_html(text: str) -> str:
+    return re.sub(r"</?em>", "", str(text))
+
+
+def _prepare_word_text(text: str) -> str:
+    """Word export: x̄→M, SS→SD; HTML italik etiketlerini kaldır."""
+    text = _strip_apa_html(str(text))
+    text = text.replace("x̄", _WORD_M_MARK)
+    text = re.sub(r"\bSS\b", _WORD_SD_MARK, text)
+    return text
+
+
+def _split_table_title(title: str) -> Tuple[str, str]:
+    """'Tablo 1. Açıklama' → ('Tablo 1', 'Açıklama')."""
+    title = str(title)
+    plain = _strip_apa_html(title)
+    m = re.match(r"^(Tablo\s+\d+)\.\s*(.*)$", plain, re.I)
+    if not m:
+        return title, ""
+    cap_match = re.match(r"^Tablo\s+\d+\.\s*(.*)$", title, re.I)
+    caption = cap_match.group(1).strip() if cap_match else m.group(2)
+    return m.group(1), caption
+
+
+def _set_cell_border(cell, **edges):
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    for child in list(tcPr):
+        if child.tag == qn("w:tcBorders"):
+            tcPr.remove(child)
+    tcBorders = OxmlElement("w:tcBorders")
+    for edge in ("top", "left", "bottom", "right"):
+        spec = edges.get(edge)
+        if spec is None:
+            continue
+        element = OxmlElement(f"w:{edge}")
+        element.set(qn("w:val"), spec.get("val", "nil"))
+        if spec.get("val") == "single":
+            element.set(qn("w:sz"), str(spec.get("sz", APA_BORDER_SZ)))
+            element.set(qn("w:color"), spec.get("color", "000000"))
+            element.set(qn("w:space"), "0")
+        tcBorders.append(element)
+    tcPr.append(tcBorders)
+
+
+def _clear_table_level_borders(table):
+    """Tablo düzeyinde tüm kenarlıkları kapat; çizgiler yalnızca hücre düzeyinde."""
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+    if tblPr is None:
+        tblPr = OxmlElement("w:tblPr")
+        tbl.insert(0, tblPr)
+    for child in list(tblPr):
+        if child.tag == qn("w:tblBorders"):
+            tblPr.remove(child)
+    tblBorders = OxmlElement("w:tblBorders")
+    for name in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        border = OxmlElement(f"w:{name}")
+        border.set(qn("w:val"), "nil")
+        tblBorders.append(border)
+    tblPr.append(tblBorders)
+
+
+def _apply_apa_table_borders(table):
+    """
+    APA 7 yatay çizgi yerleşimi (tam 3 çizgi):
+      1. Başlık satırı üstü  → header hücre top
+      2. Başlık / veri ayrımı → header hücre bottom
+      3. Son veri satırı altı → son satır hücre bottom
+    Dikey çizgi yok. Not metni tablo dışında (ayrı paragraf).
+    """
+    _clear_table_level_borders(table)
+
+    nil = {"val": "nil"}
+    single = {"val": "single", "sz": APA_BORDER_SZ, "color": "000000"}
+    n_rows = len(table.rows)
+    last_idx = n_rows - 1
+
+    for r_idx, row in enumerate(table.rows):
+        for cell in row.cells:
+            if r_idx == 0:
+                _set_cell_border(cell, top=single, left=nil, right=nil, bottom=single)
+            elif r_idx == last_idx:
+                _set_cell_border(cell, top=nil, left=nil, right=nil, bottom=single)
+            else:
+                _set_cell_border(cell, top=nil, left=nil, right=nil, bottom=nil)
+
+
+def _add_word_runs(paragraph, text: str, bold: bool = False, force_italic: bool = False):
+    """Word hücreleri: x̄→M, SS→SD; n,p,df,F,t,d,H,U italik."""
+    text = _prepare_word_text(text)
+    pos = 0
+    for match in _WORD_STAT_RE.finditer(text):
+        if match.start() > pos:
+            run = paragraph.add_run(text[pos:match.start()])
+            run.bold = bold
+            if force_italic:
+                run.italic = True
+        token = match.group()
+        if token == "Cohen's d":
+            r1 = paragraph.add_run("Cohen's ")
+            r1.bold = bold
+            if force_italic:
+                r1.italic = True
+            r2 = paragraph.add_run("d")
+            r2.italic = True
+            r2.bold = bold
+        elif token == _WORD_M_MARK:
+            run = paragraph.add_run("M")
+            run.italic = True
+            run.bold = bold
+        elif token == _WORD_SD_MARK:
+            run = paragraph.add_run("SD")
+            run.italic = True
+            run.bold = bold
+        else:
+            run = paragraph.add_run(token)
+            run.italic = True
+            run.bold = bold
+        pos = match.end()
+    if pos < len(text):
+        run = paragraph.add_run(text[pos:])
+        run.bold = bold
+        if force_italic:
+            run.italic = True
+
+
+def _add_apa_table_title(doc: Document, title: str):
+    num, caption = _split_table_title(title)
+    p_num = doc.add_paragraph()
+    run = p_num.add_run(num)
     run.bold = True
+    if caption:
+        p_cap = doc.add_paragraph()
+        _add_word_runs(p_cap, caption, force_italic=True)
+
+
+def _refine_word_header(header: str) -> str:
+    """Ki-kare sütunlarından gereksiz 'n (%)' ekini kaldır."""
+    h = _strip_apa_html(str(header))
+    return re.sub(r"\s+n\s*\(%\)\s*$", "", h, flags=re.I).strip()
+
+
+def polish_result_for_word(result: dict, label_map: Optional[Dict[str, str]] = None) -> dict:
+    """Word export öncesi başlık/sütun/not rafine etme."""
+    polished = dict(result)
+    resolved = build_resolved_label_map(label_map)
+
+    title = str(polished.get("title", ""))
+    num, caption = _split_table_title(title)
+    if caption:
+        caption = apply_academic_text_rules(substitute_variable_codes(caption, resolved))
+        polished["title"] = f"{num}. {caption}"
+    elif resolved:
+        polished["title"] = apply_academic_text_rules(substitute_variable_codes(title, resolved))
+
+    headers = [_refine_word_header(h) for h in polished.get("headers", [])]
+    if resolved:
+        headers = [apply_academic_text_rules(substitute_variable_codes(h, resolved)) for h in headers]
+    polished["headers"] = headers
+
+    note = str(polished.get("note", ""))
+    if resolved:
+        note = apply_academic_text_rules(substitute_variable_codes(note, resolved))
+    polished["note"] = note
+    return polished
+
+
+def _add_apa_note(paragraph, note_text: str):
+    """Not. yalnızca italik; gövde düz, p/F/t/n/d istatistik sembolleri italik."""
+    note_text = str(note_text).strip()
+    if note_text.startswith("Not."):
+        r = paragraph.add_run("Not.")
+        r.italic = True
+        _add_word_runs(paragraph, note_text[4:].lstrip())
+    elif note_text.startswith("Note."):
+        r = paragraph.add_run("Note.")
+        r.italic = True
+        _add_word_runs(paragraph, note_text[5:].lstrip())
+    else:
+        _add_word_runs(paragraph, note_text)
+
+
+def add_apa_table(doc: Document, result: dict, label_map: Optional[Dict[str, str]] = None):
+    result = polish_result_for_word(result, label_map)
+    _add_apa_table_title(doc, result.get("title", ""))
 
     headers = result.get("headers", [])
     rows = result.get("rows", [])
@@ -1112,33 +1897,38 @@ def add_apa_table(doc: Document, result: dict):
         return
 
     table = doc.add_table(rows=1 + len(rows), cols=len(headers))
-    table.style = "Table Grid"
+    try:
+        table.style = "Table Normal"
+    except Exception:
+        pass
+
     for j, h in enumerate(headers):
         cell = table.rows[0].cells[j]
-        cell.text = str(h)
-        for r in cell.paragraphs[0].runs:
-            r.bold = True
+        cell.text = ""
+        _add_word_runs(cell.paragraphs[0], h, bold=True)
 
     for i, row_data in enumerate(rows):
         for j, val in enumerate(row_data):
             if j < len(table.rows[i + 1].cells):
-                table.rows[i + 1].cells[j].text = str(val)
-        if i % 2 == 1:
-            _shade_row(table.rows[i + 1])
+                cell = table.rows[i + 1].cells[j]
+                cell.text = ""
+                _add_word_runs(cell.paragraphs[0], str(val))
 
-    note_p = doc.add_paragraph()
+    _apply_apa_table_borders(table)
+
+    # Not: alt çizginin altında, tablo gövdesinin dışında
     note_text = result.get("note", "")
-    if note_text.startswith("Not."):
-        r1 = note_p.add_run("Not.")
-        r1.bold = True
-        r1.italic = True
-        r2 = note_p.add_run(note_text[4:])
-        r2.italic = True
-    else:
-        r = note_p.add_run(note_text)
-        r.italic = True
+    if note_text:
+        note_p = doc.add_paragraph()
+        note_p.paragraph_format.space_before = Pt(6)
+        _add_apa_note(note_p, note_text)
 
-def build_word_document(results: List[dict], bulgular: Optional[Dict[str, str]] = None, intro: str = "") -> bytes:
+def build_word_document(
+    results: List[dict],
+    bulgular: Optional[Dict[str, str]] = None,
+    intro: str = "",
+    label_map: Optional[Dict[str, str]] = None,
+) -> bytes:
     doc = Document()
     style = doc.styles["Normal"]
     style.font.name = "Times New Roman"
@@ -1150,12 +1940,15 @@ def build_word_document(results: List[dict], bulgular: Optional[Dict[str, str]] 
     doc.add_paragraph()
 
     for i, result in enumerate(results):
-        add_apa_table(doc, result)
+        add_apa_table(doc, result, label_map)
         doc.add_paragraph()
         key = str(i)
         if bulgular and key in bulgular and bulgular[key]:
             bulgu_p = doc.add_paragraph(bulgular[key])
-            bulgu_p.paragraph_format.first_line_indent = Inches(0.5)
+            bulgu_p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            bulgu_p.paragraph_format.first_line_indent = Pt(0)
+            for run in bulgu_p.runs:
+                run.font.color.rgb = RGBColor(0, 0, 0)
         doc.add_paragraph()
         spacer = doc.add_paragraph()
         spacer.paragraph_format.space_after = Pt(12)
@@ -1165,30 +1958,15 @@ def build_word_document(results: List[dict], bulgular: Optional[Dict[str, str]] 
     buffer.seek(0)
     return buffer.getvalue()
 
-BULGU_SYSTEM = (
-    "AKADEMİK BULGULAR (RESULTS) PRENSİBİ:\n"
-    "- Bu program sadece ve sadece bir \"Bulgular (Results)\" metni üretmektedir; "
-    "\"Tartışma (Discussion)\" metni YAZMAMAKTADIR.\n"
-    "- Bulgular bölümünün görevi sadece tablodaki matematiksel verileri objektif olarak yazıya dökmektir.\n"
-    "- Değişken isimlerini (OYS_TOPLAM, SBITO_TOPLAM vb.) tablodaki orijinal kodlarıyla aynen bırakın. "
-    "Bu kısaltmaların ne anlama geldiğine dair hiçbir yorumsal tahmin, adlandırma veya genişletme yapmayın.\n"
-    "- Tabloda olmayan hiçbir kelimeyi, kavramı veya teorik açıklamayı metne dahil etmeyin. "
-    "Sadece sayılar ve kodlar konuşsun.\n\n"
-    "Sen akademik bir istatistik uzmanısın. Verilen analiz tablosunu APA 7 formatında, Türkçe, "
-    "2-4 cümlelik bulgular paragrafı olarak yaz.\n\n"
-    "Kurallar:\n"
-    "- p değerlerini APA 7 ile yaz: p = .023, p < .001 (sıfır olmadan)\n"
-    "- İstatistikleri parantez içinde ver: [F(3, 296) = 3.090; p = .027]\n"
-    "- Anlamlı ve anlamsız sonuçları tablodaki değerlere göre nesnel bildir\n"
-    "- Cohen's d veya η² tabloda varsa yalnızca sayısal değeri ve APA etiketini yaz (küçük/orta/büyük)\n"
-    "- Türkçe akademik dil kullan\n"
-    "- Sadece bulguyu yaz, başlık veya açıklama ekleme"
-)
-
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
-def _prepare_analysis_df(df: pd.DataFrame, variables: List[Variable]) -> pd.DataFrame:
+def _prepare_analysis_df(
+    df: pd.DataFrame,
+    variables: List[Variable],
+    missing_codes: Optional[List[str]] = None,
+) -> pd.DataFrame:
     df = normalize_continuous_columns(df, variables)
+    df = apply_missing_codes(df, variables, missing_codes)
     for v in variables:
         if re.match(r"^vki$", v.name, re.I) and v.name in df.columns:
             max_val = df[v.name].max()
@@ -1198,11 +1976,15 @@ def _prepare_analysis_df(df: pd.DataFrame, variables: List[Variable]) -> pd.Data
 
 
 @app.post("/convert-spss-table")
-async def convert_spss_table_endpoint(req: SpssTableRequest):
+@app.post("/import-spss-tables")
+async def import_spss_tables_endpoint(req: SpssTableRequest):
+    """Ham SPSS yapıştırmasını APA 7 tablolarına + Bulgular metnine dönüştürür."""
+    method = "pandas"
+    pandas_err = None
     try:
-        markdown = convert_spss_table(req.content)
-        return {"markdown": markdown, "method": "pandas"}
-    except Exception as pandas_err:
+        results, meta = convert_spss_to_apa_results(req.content)
+    except Exception as err:
+        pandas_err = err
         if not ANTHROPIC_API_KEY:
             raise HTTPException(status_code=400, detail=str(pandas_err))
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -1212,24 +1994,78 @@ async def convert_spss_table_endpoint(req: SpssTableRequest):
             system=SPSS_CONVERT_SYSTEM,
             messages=[{"role": "user", "content": req.content}],
         )
-        return {"markdown": msg.content[0].text.strip(), "method": "ai", "pandas_error": str(pandas_err)}
+        results = _markdown_tables_to_apa_results(msg.content[0].text.strip())
+        if not results:
+            raise HTTPException(status_code=400, detail=str(pandas_err))
+        meta = {"source": "spss", "intro": "", "table_count": len(results), "ai_fallback": True}
+        method = "ai"
+
+    bulgular: Dict[str, str] = {}
+    if req.auto_bulgu:
+        for i, result in enumerate(results):
+            try:
+                text = _generate_bulgu_text(result)
+                if text:
+                    bulgular[str(i)] = text
+            except Exception:
+                pass
+
+    return sanitize({
+        "results": results,
+        "bulgular": bulgular,
+        "meta": meta,
+        "method": method,
+        "pandas_error": str(pandas_err) if pandas_err else None,
+    })
+
+
+@app.post("/research/cutoffs")
+async def research_cutoffs(req: CutoffRequest):
+    """Aşama 1: Literatür snippet'lerinden kesim noktası öner."""
+    if not req.scales:
+        return {"cutoffs": []}
+    results = []
+    for scale in req.scales:
+        try:
+            item = find_scale_cutoff(
+                scale.code,
+                scale.label,
+                scale.snippets,
+                req.research_topic or "",
+            )
+            results.append(item)
+        except HTTPException:
+            raise
+        except Exception as e:
+            results.append({
+                "code": scale.code,
+                "label": scale.label,
+                "scale_name": scale.label,
+                "has_cutoff": False,
+                "cutoff_ranges": "Sayısal toplam puan üzerinden değerlendirilir",
+                "citation": "",
+                "error": str(e),
+            })
+    return {"cutoffs": results}
 
 
 @app.post("/plan")
 async def generate_analysis_plan(req: PlanRequest):
     rows = [r.values for r in req.data]
     df = pd.DataFrame(rows)
-    df = _prepare_analysis_df(df, req.variables)
-    return {"tests": generate_plan(df, req.variables)}
+    variables = normalize_variable_labels(req.variables)
+    df = _prepare_analysis_df(df, variables, req.missing_codes)
+    return {"tests": generate_plan(df, variables)}
 
 
 @app.post("/analyze")
 async def analyze(req: AnalysisRequest):
     rows = [r.values for r in req.data]
     df = pd.DataFrame(rows)
-    df = _prepare_analysis_df(df, req.variables)
-    missing_data = missing_data_report(df, req.variables)
-    results, meta = run_analyze(df, req.variables, req.active_types)
+    variables = normalize_variable_labels(req.variables)
+    df = _prepare_analysis_df(df, variables, req.missing_codes)
+    missing_data = missing_data_report(df, variables)
+    results, meta = run_analyze(df, variables, req.active_types)
     return sanitize({"results": results, "missing_data": missing_data, "meta": meta})
 
 
@@ -1518,20 +2354,21 @@ async def recommend_variables(req: RecommendRequest):
 async def ai_bulgu(req: BulguRequest):
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY ortam değişkeni ayarlanmamış")
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    msg = client.messages.create(
-        model=ANTHROPIC_MODEL,
-        max_tokens=500,
-        system=BULGU_SYSTEM,
-        messages=[{"role": "user", "content": f"Şu analiz tablosunu bulgular bölümü için yaz:\n{req.result}"}],
+    text = _generate_bulgu_text(
+        req.result,
+        req.research_topic,
+        req.label_map,
+        req.approved_cutoffs,
     )
-    return {"bulgu": msg.content[0].text}
+    return {"bulgu": text}
 
 
 @app.post("/export/word")
 async def export_word(req: WordExportRequest):
     try:
-        doc_bytes = build_word_document(req.results, req.bulgular, req.intro or "")
+        doc_bytes = build_word_document(
+            req.results, req.bulgular, req.intro or "", req.label_map
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Word dosyası oluşturulamadı: {str(e)}")
     return StreamingResponse(

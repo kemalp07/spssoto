@@ -95,18 +95,59 @@
   .corr-matrix td, .corr-matrix th { text-align: center; font-size: 12px; }
   .corr-matrix .diag { color: var(--muted); }
   .corr-matrix .sig { font-weight: 700; color: var(--accent2); }
-  .apa-table-title { font-weight: 700; font-size: 14px; margin-bottom: 10px; }
-  .apa-table { margin-bottom: 10px; }
-  .apa-table tr.alt td { background: rgba(242,242,242,0.06); }
-  .apa-table td, .apa-table th { font-size: 12px; padding: 7px 10px; }
-  .apa-note { font-size: 12px; color: var(--muted); font-style: italic; margin-bottom: 8px; line-height: 1.5; }
+  .apa-table-heading { margin-bottom: 10px; }
+  .apa-table-number { font-weight: 700; font-size: 14px; line-height: 1.4; }
+  .apa-table-caption { font-style: italic; font-size: 14px; line-height: 1.4; }
+  /* APA 7: üst çizgi | başlık altı | tablo altı — dikey çizgi yok */
+  .apa-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0;
+    border-top: 1.5px solid var(--text);
+    border-bottom: 1.5px solid var(--text);
+  }
+  .apa-table thead tr {
+    border-bottom: 1px solid var(--text);
+  }
+  .apa-table th,
+  .apa-table td {
+    border-left: none !important;
+    border-right: none !important;
+    border-top: none;
+    border-bottom: none;
+    background: transparent;
+  }
+  .apa-table th {
+    text-transform: none;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    padding: 7px 10px;
+    text-align: left;
+  }
+  .apa-table td {
+    font-size: 12px;
+    padding: 7px 10px;
+  }
+  .apa-table-wrap { margin-bottom: 10px; }
+  .apa-table em, .apa-table-caption em { font-style: italic; }
+  .apa-note {
+    font-size: 12px;
+    color: var(--muted);
+    font-style: normal;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+  .apa-note .note-label { font-style: italic; }
+  .apa-note em { font-style: italic; }
   .intro-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 20px; font-size: 14px; line-height: 1.7; }
   .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .bulgu-box { background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.2); border-radius: 8px; padding: 16px; margin-top: 14px; }
+  .bulgu-box { background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.2); border-radius: 8px; padding: 16px; margin-top: 14px; text-align: center; }
   .bulgu-label { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-  .bulgu-text { font-size: 14px; line-height: 1.7; color: var(--text); }
-  .bulgu-loading { color: var(--muted); font-size: 14px; font-style: italic; }
+  .bulgu-text { font-size: 14px; line-height: 1.7; color: var(--text); text-align: center; }
+  .bulgu-loading { color: var(--muted); font-size: 14px; font-style: italic; text-align: center; }
 
   .info-bar { background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.2); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--accent); margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
   .warn-bar { background: rgba(210,153,34,0.08); border: 1px solid rgba(210,153,34,0.3); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--warn); margin-bottom: 20px; }
@@ -184,6 +225,13 @@
         <div style="margin-top:10px; padding:10px 14px; background:rgba(210,153,34,0.08); border:1px solid rgba(210,153,34,0.3); border-radius:8px; color:var(--warn);">
           ⚠️ Bu seçenek işaretlenmezse gruplar "1, 2, 3" olarak görünür, gerçek isimler değil.
         </div>
+        <div style="margin-top:16px;">
+          <strong style="color:var(--text);">Eksik veri kodları (SPSS):</strong>
+          <p style="margin:6px 0 8px; font-size:12px;">Tanımsız/geçersiz değer kodlarını virgülle girin. Frekans tablolarında "Kayıp Veri" olarak gösterilir.</p>
+          <input type="text" id="missingValueCodes" value="99"
+            placeholder="99, 98, 999"
+            style="width:100%; max-width:320px; padding:8px 12px; font-size:13px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:8px; font-family:'JetBrains Mono',monospace;" />
+        </div>
       </div>
     </div>
 
@@ -218,9 +266,17 @@
           </p>
           <div id="labelInputGrid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;"></div>
         </div>
-        <div style="margin-top:12px; display:flex; gap:10px;">
+        <div id="cutoffApprovalBox" style="display:none; margin-top:16px; padding:14px; background:rgba(210,153,34,0.06); border:1px solid rgba(210,153,34,0.25); border-radius:8px;">
+          <div style="font-size:14px; font-weight:700; margin-bottom:8px;">📏 Kesim Noktası Onayı (Aşama 1)</div>
+          <p style="color:var(--muted); font-size:12px; margin-bottom:12px;">Literatürden bulunan risk eşiklerini kontrol edin, gerekirse düzenleyin ve onaylayın.</p>
+          <div id="cutoffList"></div>
+          <div style="margin-top:12px;">
+            <button class="btn btn-success btn-sm" onclick="confirmCutoffsAndContinue()">✅ Onayla ve Devam Et</button>
+          </div>
+        </div>
+        <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn btn-ghost btn-sm" onclick="skipResearchTopic()">Atla, manuel seç</button>
-          <button class="btn btn-primary" onclick="analyzeWithTopic()">🤖 AI ile Analiz Et</button>
+          <button class="btn btn-primary" id="btnTopicAnalyze" onclick="analyzeWithTopic()">🤖 AI ile Analiz Et</button>
         </div>
       </div>
     </div>
@@ -280,25 +336,10 @@
       <div id="cronbachResult" style="margin-top:12px"></div>
     </div>
 
-    <div class="panel">
-      <div class="panel-title">📋 SPSS Tablo Dönüştürücü</div>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
-        SPSS'ten kopyaladığınız tabloyu yapıştırın (Ctrl+V). HTML veya metin formatında çalışır.
-      </p>
-      <textarea id="spssPasteInput" placeholder="SPSS çıktısını buraya yapıştırın..."
-        style="width:100%;min-height:100px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:12px;border-radius:8px;font-size:12px;font-family:'JetBrains Mono',monospace;resize:vertical;"
-      ></textarea>
-      <div class="actions" style="margin-top:10px">
-        <button class="btn btn-primary btn-sm" onclick="convertSpssTable()">Markdown'a Dönüştür</button>
-        <button class="btn btn-ghost btn-sm" onclick="copySpssMarkdown()">Kopyala</button>
-      </div>
-      <pre id="spssMarkdownOutput" style="display:none;margin-top:12px;padding:14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:12px;overflow-x:auto;white-space:pre-wrap;"></pre>
-    </div>
-
     <div class="actions">
       <button class="btn btn-ghost" onclick="reset()">← Başa Dön</button>
       <button class="btn btn-ghost" onclick="showCronbachPanel()">🔢 Cronbach Alfa</button>
-      <button class="btn btn-success btn-lg" onclick="loadAnalysisPlan()">📋 Analiz Planı →</button>
+      <button class="btn btn-success btn-lg" id="btnPlan" onclick="loadAnalysisPlan()" disabled>📋 Analiz Planı →</button>
     </div>
   </div>
 
@@ -370,6 +411,8 @@ let pendingJson = null;
 let pendingFileName = "";
 let userLabels = {};
 let analysisPlan = [];
+let approvedCutoffs = [];
+let researchTopicText = "";
 
 const EXCLUDE_PATTERNS = [
   /^(anket_no|id|no|sira|num|serial)$/i,
@@ -674,17 +717,104 @@ function handleFile(file) {
 
 function skipResearchTopic() {
   collectUserLabelsFromInputs();
+  approvedCutoffs = [];
+  researchTopicText = "";
   loadData(pendingJson, pendingFileName, null);
+}
+
+function getOutcomeScaleColumns() {
+  if (!pendingJson || !pendingJson.length) return [];
+  return Object.keys(pendingJson[0]).filter(c => /_TOPLAM$/i.test(c));
+}
+
+function renderCutoffApproval(cutoffs) {
+  const box = document.getElementById("cutoffApprovalBox");
+  const list = document.getElementById("cutoffList");
+  if (!cutoffs.length) {
+    box.style.display = "none";
+    return;
+  }
+  approvedCutoffs = cutoffs.map(c => ({ ...c }));
+  box.style.display = "block";
+  list.innerHTML = cutoffs.map((c, i) => `
+    <div style="margin-bottom:12px; padding:10px; background:var(--bg); border:1px solid var(--border); border-radius:8px;">
+      <div style="font-weight:600; font-size:13px; margin-bottom:6px;">${escAttr(c.label || c.code)}</div>
+      <label style="font-size:11px; color:var(--muted);">Kesim / risk aralığı</label>
+      <textarea id="cutoff_range_${i}" rows="2" style="width:100%; margin-top:4px; padding:8px; font-size:12px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px;">${escAttr(c.cutoff_ranges || "")}</textarea>
+      <label style="font-size:11px; color:var(--muted); margin-top:6px; display:block;">Atıf</label>
+      <input type="text" id="cutoff_cite_${i}" value="${escAttr(c.citation || "")}" style="width:100%; margin-top:4px; padding:8px; font-size:12px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px;" />
+      <input type="hidden" id="cutoff_code_${i}" value="${escAttr(c.code)}" />
+      <input type="hidden" id="cutoff_label_${i}" value="${escAttr(c.label || c.code)}" />
+    </div>
+  `).join("");
+}
+
+function collectApprovedCutoffsFromForm() {
+  return approvedCutoffs.map((c, i) => ({
+    code: document.getElementById(`cutoff_code_${i}`)?.value || c.code,
+    label: document.getElementById(`cutoff_label_${i}`)?.value || c.label,
+    scale_name: c.scale_name || c.label,
+    has_cutoff: c.has_cutoff,
+    cutoff_ranges: document.getElementById(`cutoff_range_${i}`)?.value?.trim() || c.cutoff_ranges,
+    citation: document.getElementById(`cutoff_cite_${i}`)?.value?.trim() || c.citation,
+  }));
+}
+
+async function loadCutoffsForApproval(topic) {
+  collectUserLabelsFromInputs();
+  const scaleCols = getOutcomeScaleColumns();
+  if (!scaleCols.length) return false;
+
+  const btn = document.getElementById("btnTopicAnalyze");
+  const prev = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Kesim noktaları aranıyor...";
+
+  try {
+    const scales = scaleCols.map(code => ({
+      code,
+      label: userLabels[code] || code,
+    }));
+    const res = await fetch(`${API}/research/cutoffs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scales, research_topic: topic }),
+    });
+    if (!res.ok) throw new Error("Kesim noktası araması başarısız");
+    const json = await res.json();
+    renderCutoffApproval(json.cutoffs || []);
+    return (json.cutoffs || []).length > 0;
+  } catch (e) {
+    console.warn(e);
+    return false;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = prev;
+  }
+}
+
+function confirmCutoffsAndContinue() {
+  approvedCutoffs = collectApprovedCutoffsFromForm();
+  collectUserLabelsFromInputs();
+  loadData(pendingJson, pendingFileName, researchTopicText);
 }
 
 async function analyzeWithTopic() {
   collectUserLabelsFromInputs();
   const topic = document.getElementById("researchTopic").value.trim();
   if (!topic) return loadData(pendingJson, pendingFileName, null);
-  loadData(pendingJson, pendingFileName, topic);
+  researchTopicText = topic;
+  const hasCutoffs = await loadCutoffsForApproval(topic);
+  if (!hasCutoffs) loadData(pendingJson, pendingFileName, topic);
+}
+
+function setAnalysisPlanEnabled(enabled) {
+  const btn = document.getElementById("btnPlan");
+  if (btn) btn.disabled = !enabled;
 }
 
 async function loadData(json, fileName, researchTopic) {
+  setAnalysisPlanEnabled(false);
   columns = Object.keys(json[0]);
   parsedData = normalizeDataDecimals(json);
   cronbachResults = [];
@@ -811,6 +941,7 @@ async function loadData(json, fileName, researchTopic) {
   if (suspicious.length > 0) {
     showLabelWarning(suspicious);
   }
+  setAnalysisPlanEnabled(true);
 }
 
 const ITEM_PATTERNS = [/^[a-z]+_\d+(_ters)?$/i, /^[A-Z]+_\d+(_T)?$/];
@@ -938,37 +1069,6 @@ function loadSampleData() {
   loadData(json, "ornek_veri.xlsx", null).catch(() => {});
 }
 
-// ── SPSS Tablo Dönüştürücü ────────────────────────────────────────────────────
-
-let lastSpssMarkdown = "";
-
-async function convertSpssTable() {
-  const content = document.getElementById("spssPasteInput").value.trim();
-  if (!content) return alert("Önce SPSS tablosunu yapıştırın.");
-  const out = document.getElementById("spssMarkdownOutput");
-  out.style.display = "block";
-  out.textContent = "Dönüştürülüyor...";
-
-  try {
-    const res = await fetch(`${API}/convert-spss-table`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
-    if (!res.ok) throw new Error("Dönüştürme hatası");
-    const json = await res.json();
-    lastSpssMarkdown = json.markdown || "";
-    out.textContent = lastSpssMarkdown + (json.method === "ai" ? "\n\n(AI yedek dönüştürme kullanıldı)" : "");
-  } catch (e) {
-    out.textContent = "Hata: " + e.message;
-  }
-}
-
-function copySpssMarkdown() {
-  if (!lastSpssMarkdown) return alert("Önce dönüştürün.");
-  navigator.clipboard.writeText(lastSpssMarkdown).then(() => alert("Markdown kopyalandı."));
-}
-
 // ── Analiz ────────────────────────────────────────────────────────────────────
 
 function buildVariables() {
@@ -1012,6 +1112,11 @@ function buildVariables() {
   ];
 }
 
+function getMissingCodes() {
+  const raw = document.getElementById("missingValueCodes")?.value || "99";
+  return raw.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+}
+
 function buildData(variables) {
   return parsedData.map(row => {
     const clean = {};
@@ -1032,6 +1137,7 @@ function updatePlanTotalBar() {
 }
 
 async function loadAnalysisPlan() {
+  if (document.getElementById("btnPlan")?.disabled) return;
   if (!selectedCat.size && !selectedCont.size) return alert("En az bir değişken seçmelisiniz.");
 
   const variables = buildVariables();
@@ -1045,7 +1151,7 @@ async function loadAnalysisPlan() {
     const res = await fetch(`${API}/plan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ variables, data }),
+      body: JSON.stringify({ variables, data, missing_codes: getMissingCodes() }),
     });
     if (!res.ok) throw new Error("Plan hatası");
     const json = await res.json();
@@ -1113,7 +1219,7 @@ async function runAnalysis(activeTypes = null) {
   const variables = buildVariables();
   const data = buildData(variables);
 
-  const payload = { variables, data };
+  const payload = { variables, data, missing_codes: getMissingCodes() };
   if (activeTypes && activeTypes.size) {
     payload.active_types = [...activeTypes];
   }
@@ -1127,7 +1233,7 @@ async function runAnalysis(activeTypes = null) {
     if (!res.ok) throw new Error("Analiz hatası");
     const json = await res.json();
     analysisResults = [...cronbachResults, ...(json.results || [])];
-    analysisMeta = json.meta || {};
+    analysisMeta = { ...(json.meta || {}), research_topic: researchTopicText };
     if (json.missing_data) missingData = json.missing_data;
 
     if (detectedScales.length > 0) {
@@ -1177,21 +1283,50 @@ async function runAnalysis(activeTypes = null) {
   }
 }
 
+function splitApaTitle(title) {
+  const t = String(title ?? "");
+  const plain = t.replace(/<\/?em>/gi, "");
+  const m = plain.match(/^(Tablo\s+\d+)\.\s*(.*)$/i);
+  if (!m) return { num: t, caption: "" };
+  const capMatch = t.match(/^Tablo\s+\d+\.\s*(.*)$/i);
+  return { num: m[1], caption: capMatch ? capMatch[1].trim() : m[2] };
+}
+
 function renderApaNote(note) {
   if (!note) return "";
-  const text = note.replace(/^Not\.\s*/, "");
-  return `<div class="apa-note"><strong><em>Not.</em></strong> <em>${text}</em></div>`;
+  const raw = String(note);
+  if (/^Not\.\s*/i.test(raw)) {
+    const body = raw.replace(/^Not\.\s*/i, "");
+    return `<div class="apa-note"><span class="note-label">Not.</span> ${renderApaCell(body)}</div>`;
+  }
+  if (/^Note\.\s*/i.test(raw)) {
+    const body = raw.replace(/^Note\.\s*/i, "");
+    return `<div class="apa-note"><span class="note-label">Note.</span> ${renderApaCell(body)}</div>`;
+  }
+  return `<div class="apa-note">${renderApaCell(raw)}</div>`;
+}
+
+function renderApaCell(c) {
+  const s = String(c ?? "");
+  if (s.includes("<em>")) return s;
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function renderApaTable(r) {
   if (!r.headers || !r.rows) return "";
+  const { num, caption } = splitApaTitle(r.title);
+  const heading = caption
+    ? `<div class="apa-table-heading"><div class="apa-table-number">${renderApaCell(num)}</div><div class="apa-table-caption">${renderApaCell(caption)}</div></div>`
+    : `<div class="apa-table-heading"><div class="apa-table-number">${renderApaCell(num)}</div></div>`;
   return `
-    <div class="apa-table-title">${r.title}</div>
-    <table class="apa-table">
-      <tr>${r.headers.map(h => `<th>${h}</th>`).join("")}</tr>
-      ${r.rows.map((row, i) => `<tr class="${i % 2 ? "alt" : ""}">${row.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}
-    </table>
-    ${renderApaNote(r.note)}`;
+    ${heading}
+    <div class="apa-table-wrap">
+      <table class="apa-table">
+        <thead><tr>${r.headers.map(h => `<th>${renderApaCell(h)}</th>`).join("")}</tr></thead>
+        <tbody>${r.rows.map(row => `<tr>${row.map(c => `<td>${renderApaCell(c)}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table>
+      ${renderApaNote(r.note)}
+    </div>`;
 }
 
 function renderResults() {
@@ -1209,6 +1344,10 @@ function renderResult(r, i) {
   const sigBadge = r.significant !== undefined
     ? `<span class="sig-badge ${r.significant ? "yes" : "no"}">${r.significant ? "p < .05" : "ns"}</span>` : "";
   const body = renderApaTable(r);
+  const bulguText = bulgular[String(i)];
+  const bulguBody = bulguText
+    ? `<p class="bulgu-text">${bulguText.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`
+    : `<p class="bulgu-loading">Bulgular bekleniyor. Oluşturmak için "Tüm Bulguları Yaz" butonuna basın.</p>`;
 
   return `<div class="result-card">
     <div class="result-body">
@@ -1216,7 +1355,7 @@ function renderResult(r, i) {
       ${body}
       <div class="bulgu-box" id="bulgu_${i}">
         <div class="bulgu-label">✨ Bulgu</div>
-        <p class="bulgu-loading">Bulgu yazmak için "Tüm Bulguları Yaz" butonuna bas</p>
+        ${bulguBody}
       </div>
     </div>
   </div>`;
@@ -1232,13 +1371,19 @@ async function generateBulgu(i) {
   const r = analysisResults[i];
   const el = document.getElementById(`bulgu_${i}`);
   if (!el) return;
-  el.querySelector("p").textContent = "Yazılıyor...";
+  el.querySelector("p").textContent = "Bulgu yazılıyor...";
+  el.querySelector("p").className = "bulgu-loading";
 
   try {
     const res = await fetch(`${API}/ai/bulgu`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ result: r })
+      body: JSON.stringify({
+        result: r,
+        research_topic: researchTopicText || analysisMeta.research_topic || "",
+        label_map: userLabels,
+        approved_cutoffs: approvedCutoffs,
+      })
     });
     if (!res.ok) {
       const err = await res.json();
@@ -1262,7 +1407,8 @@ async function downloadWord() {
       body: JSON.stringify({
         results: analysisResults,
         bulgular: Object.fromEntries(Object.entries(bulgular).map(([k, v]) => [String(k), v])),
-        intro: analysisMeta.intro || ""
+        intro: analysisMeta.intro || "",
+        label_map: userLabels
       })
     });
     if (!res.ok) throw new Error("Word oluşturulamadı");
@@ -1295,8 +1441,10 @@ function reset() {
   userLabels = {};
   analysisPlan = [];
   analysisResults = []; analysisMeta = {};
+  approvedCutoffs = []; researchTopicText = "";
   missingData = []; bulgular = {};
   document.getElementById("btnWord").disabled = true;
+  setAnalysisPlanEnabled(false);
   document.getElementById("labelWarningModal").classList.remove("open");
   document.getElementById("cronbachPanel").style.display = "none";
   document.getElementById("cronbachResult").innerHTML = "";
@@ -1306,10 +1454,6 @@ function reset() {
   document.getElementById("researchTopic").value = "";
   const labelGrid = document.getElementById("labelInputGrid");
   if (labelGrid) labelGrid.innerHTML = "";
-  document.getElementById("spssPasteInput").value = "";
-  document.getElementById("spssMarkdownOutput").style.display = "none";
-  document.getElementById("spssMarkdownOutput").textContent = "";
-  lastSpssMarkdown = "";
   showPage(1);
 }
 </script>
