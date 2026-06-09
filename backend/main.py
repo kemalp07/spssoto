@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any, Tuple
 import json
 import math
 import re
+from collections import defaultdict
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -184,26 +185,25 @@ def normalize_continuous_columns(df: pd.DataFrame, variables: List[Variable]) ->
     for v in variables:
         if v.type != "continuous" or v.name not in df.columns:
             continue
-        if re.match(r"^vki$", v.name, re.I):
-            df[v.name] = (
-                df[v.name].astype(str)
-                .str.replace(".", "", regex=False)
-                .str.replace(",", ".", regex=False)
-            )
-        else:
-            df[v.name] = df[v.name].astype(str).str.replace(",", ".", regex=False)
+        df[v.name] = (
+            df[v.name].astype(str)
+            .str.strip()
+            .str.replace(r"\.(?=\d{3})", "", regex=True)
+            .str.replace(",", ".", regex=False)
+        )
         df[v.name] = pd.to_numeric(df[v.name], errors="coerce")
     return df
 
 
-def is_numeric_continuous(df: pd.DataFrame, v: Variable, norm_map: Dict[str, dict]) -> bool:
-    if v.type != "continuous" or v.name not in df.columns:
+def is_numeric_continuous(df: pd.DataFrame, v: Variable, norm_map: dict) -> bool:
+    """Gerçekten sayısal sürekli mi? Kategorik kodlanmış değilse."""
+    if v.name not in df.columns:
         return False
-    s = pd.to_numeric(df[v.name], errors="coerce").dropna()
-    if len(s) < 3 or s.nunique() <= 10:
+    series = df[v.name].dropna()
+    if len(series) < 3:
         return False
-    nm = norm_map.get(v.name)
-    if not nm or nm.get("method") == "yetersiz_veri":
+    unique_count = series.nunique()
+    if unique_count < 10:
         return False
     return True
 
@@ -760,11 +760,11 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
                 pass
 
     # 7. Korelasyon matrisi (kodlanmış kategorikler hariç)
-    corr_cont = [v for v in all_cont if is_numeric_continuous(df, v, norm_map)]
-    if len(corr_cont) >= 2:
+    corr_vars = [v for v in outcome_cont if is_numeric_continuous(df, v, norm_map)]
+    if len(corr_vars) >= 2:
         try:
-            all_parametric = all(norm_map.get(v.name, {}).get("is_parametric", True) for v in corr_cont)
-            r = table_correlation_matrix(tc, corr_cont, df, norm_map, all_parametric)
+            all_parametric = all(norm_map.get(v.name, {}).get("is_parametric", True) for v in corr_vars)
+            r = table_correlation_matrix(tc, corr_vars, df, norm_map, all_parametric)
             if r:
                 results.append(r)
         except Exception:
@@ -920,48 +920,57 @@ async def analyze_cronbach(req: CronbachRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-DETECT_SCALES_ITEM_PATTERN = re.compile(r"^[a-zA-Z]+_\d+(_ters|_T)?$")
-
-DETECT_SCALES_SYSTEM = """Sen akademik ölçek analizi uzmanısın. Verilen madde sütun isimlerini inceleyerek hangi maddelerin hangi ölçeğe ait olduğunu belirle.
-
-Kurallar:
-- Aynı prefix'e sahip maddeler aynı ölçeğe aittir (oys_1, oys_2... → OYŞTÖ; neq_1, neq_2... → GYA)
-- _ters veya _T ile biten maddeler o maddenin ters puanlanmış versiyonudur
-- Cronbach alfa için ters maddelerin _ters versiyonunu kullan, orijinalini değil
-- Her ölçek için anlamlı bir Türkçe isim ver
-
-SADECE JSON döndür:
-{
-  "scales": [
-    {
-      "name": "OYŞTÖ",
-      "items": ["oys_1", "oys_2", "oys_3", "oys_4_ters", "oys_5"]
-    },
-    {
-      "name": "GYA",
-      "items": ["neq_1_ters", "neq_2", "neq_3", "neq_4_ters"]
-    }
-  ]
-}"""
-
-
 @app.post("/detect-scales")
 async def detect_scales(req: DetectScalesRequest):
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY ayarlanmamış")
 
-    item_cols = [c for c in req.columns if DETECT_SCALES_ITEM_PATTERN.match(c)]
-    if not item_cols:
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+    ITEM_PATTERN = re.compile(r"^[a-zA-Z]+_\d+(_ters|_T)?$", re.IGNORECASE)
+    item_cols = [c for c in req.columns if ITEM_PATTERN.match(c)]
+
+    if len(item_cols) < 2:
         return {"scales": []}
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    prefix_groups: Dict[str, list] = defaultdict(list)
+    for col in item_cols:
+        prefix = re.match(r"^([a-zA-Z]+)_", col)
+        if prefix:
+            prefix_groups[prefix.group(1)].append(col)
+
+    valid_groups = {k: v for k, v in prefix_groups.items() if len(v) >= 3}
+
+    if not valid_groups:
+        return {"scales": []}
+
+    group_info = "\n".join([
+        f"- {prefix}: {', '.join(sorted(cols))}"
+        for prefix, cols in valid_groups.items()
+    ])
+
     msg = client.messages.create(
         model=ANTHROPIC_MODEL,
-        max_tokens=1000,
-        system=DETECT_SCALES_SYSTEM,
+        max_tokens=800,
+        system="""Sen akademik ölçek analizi uzmanısın. Verilen madde gruplarını ölçeklere dönüştür.
+
+KURALLAR:
+- Her prefix grubu ayrı bir ölçektir
+- _ters veya _T ile biten madde varsa o maddenin ters versiyonunu kullan, orijinalini KULLANMA
+- Orijinal madde ile _ters versiyonu AYNI ANDA listede olmamalı
+- Her ölçeğe Türkçe anlamlı isim ver (oys → OYŞTÖ, neq → GYA veya NEQ, sbito → SBİTO)
+- Tüm gruplar için ölçek oluştur, hiçbirini atlama
+
+SADECE JSON döndür:
+{
+  "scales": [
+    {"name": "OYŞTÖ", "items": ["oys_1", "oys_2", "oys_3", "oys_4_ters", "oys_5"]},
+    {"name": "GYA", "items": ["neq_1_ters", "neq_2", "neq_3", "neq_4_ters"]}
+  ]
+}""",
         messages=[{
             "role": "user",
-            "content": f"Şu madde sütunlarını ölçeklere göre gruplandır:\n{', '.join(item_cols)}",
+            "content": f"Şu madde gruplarını ölçeklere dönüştür:\n{group_info}",
         }],
     )
 
@@ -969,10 +978,26 @@ async def detect_scales(req: DetectScalesRequest):
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         try:
-            return json.loads(match.group())
+            result = json.loads(match.group())
+            if not result.get("scales"):
+                raise ValueError("Boş sonuç")
+            return result
         except Exception:
             pass
-    return {"scales": []}
+
+    scales = []
+    scale_names = {"oys": "OYŞTÖ", "neq": "GYA", "sbito": "SBİTO"}
+    for prefix, cols in valid_groups.items():
+        ters_cols = {
+            c.replace("_ters", "").replace("_T", "")
+            for c in cols
+            if "_ters" in c.lower() or c.endswith("_T")
+        }
+        final_items = [c for c in cols if c not in ters_cols]
+        name = scale_names.get(prefix.lower(), prefix.upper())
+        scales.append({"name": name, "items": final_items})
+
+    return {"scales": scales}
 
 
 @app.post("/analyze/cronbach-batch")

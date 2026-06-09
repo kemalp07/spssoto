@@ -810,13 +810,14 @@ async function runAnalysis() {
       role: "grouping", included: true
     })),
     ...[...selectedCont].map(col => {
-      const isContNum = parsedData.slice(0, 10).some(r => {
-        const v = String(r[col] || "").replace(",", ".");
-        return !isNaN(parseFloat(v)) && parseFloat(v) > 10;
-      });
+      const vals = [...new Set(parsedData.slice(0, 20).map(r => r[col]).filter(v => v !== "" && v != null))];
+      const numericCount = vals.filter(v => !isNaN(parseFloat(String(v).replace(",", ".")))).length;
+      const isNumeric = vals.length > 0 && numericCount / vals.length > 0.8;
+      const hasWideRange = isNumeric && vals.some(v => parseFloat(String(v).replace(",", ".")) > 10);
+
       return {
         name: col, label: col,
-        type: isContNum ? "continuous" : "categorical",
+        type: (isNumeric && hasWideRange) ? "continuous" : "categorical",
         role: "outcome", included: true
       };
     }),
