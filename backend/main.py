@@ -36,7 +36,8 @@ app.add_middleware(
 class Variable(BaseModel):
     name: str
     label: str
-    type: str
+    type: str  # "continuous" | "categorical"
+    role: str = "grouping"  # "grouping" | "outcome"
     categories: Optional[List[str]] = None
     included: bool = True
     scale_min: Optional[float] = None
@@ -69,6 +70,18 @@ class PairedRequest(BaseModel):
 class ClassifyRequest(BaseModel):
     columns: List[str]
     samples: Dict[str, List[Any]]
+
+class RecommendRequest(BaseModel):
+    columns: List[str]
+    samples: Dict[str, List[Any]]
+    research_topic: str
+
+class DetectScalesRequest(BaseModel):
+    columns: List[str]
+
+class CronbachBatchRequest(BaseModel):
+    scales: List[dict]
+    data: List[DataRow]
 
 # ── APA Yardımcıları ─────────────────────────────────────────────────────────
 
@@ -171,11 +184,28 @@ def normalize_continuous_columns(df: pd.DataFrame, variables: List[Variable]) ->
     for v in variables:
         if v.type != "continuous" or v.name not in df.columns:
             continue
-        df[v.name] = (
-            df[v.name].astype(str).str.replace(",", ".", regex=False)
-        )
+        if re.match(r"^vki$", v.name, re.I):
+            df[v.name] = (
+                df[v.name].astype(str)
+                .str.replace(".", "", regex=False)
+                .str.replace(",", ".", regex=False)
+            )
+        else:
+            df[v.name] = df[v.name].astype(str).str.replace(",", ".", regex=False)
         df[v.name] = pd.to_numeric(df[v.name], errors="coerce")
     return df
+
+
+def is_numeric_continuous(df: pd.DataFrame, v: Variable, norm_map: Dict[str, dict]) -> bool:
+    if v.type != "continuous" or v.name not in df.columns:
+        return False
+    s = pd.to_numeric(df[v.name], errors="coerce").dropna()
+    if len(s) < 3 or s.nunique() <= 10:
+        return False
+    nm = norm_map.get(v.name)
+    if not nm or nm.get("method") == "yetersiz_veri":
+        return False
+    return True
 
 def missing_data_report(df: pd.DataFrame, variables: List[Variable]) -> list:
     total = len(df)
@@ -635,29 +665,34 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
     results: List[dict] = []
     active = [v for v in variables if v.included]
 
-    cont_vars = [v for v in active if v.type == "continuous"]
     cat_vars = [v for v in active if v.type == "categorical"]
+    cont_vars = [v for v in active if v.type == "continuous"]
+
+    grouping_cat = [v for v in cat_vars if v.role == "grouping"]
+    outcome_cat = [v for v in cat_vars if v.role == "outcome"]
+    outcome_cont = [v for v in cont_vars if v.role == "outcome"]
+    all_cont = cont_vars
 
     norm_map: Dict[str, dict] = {}
-    for v in cont_vars:
+    for v in all_cont:
         if v.name in df.columns:
             try:
                 norm_map[v.name] = assess_normality(df[v.name])
             except Exception:
                 norm_map[v.name] = {"is_parametric": True}
 
-    parametric_labels = [v.label for v in cont_vars if norm_map.get(v.name, {}).get("is_parametric", True)]
-    nonparametric_labels = [v.label for v in cont_vars if not norm_map.get(v.name, {}).get("is_parametric", True)]
+    parametric_labels = [v.label for v in outcome_cont if norm_map.get(v.name, {}).get("is_parametric", True)]
+    nonparametric_labels = [v.label for v in outcome_cont if not norm_map.get(v.name, {}).get("is_parametric", True)]
 
     meta = {
         "n_total": len(df),
         "intro": build_intro(len(df), parametric_labels, nonparametric_labels),
-        "norm_map": {v.name: norm_map[v.name] for v in cont_vars if v.name in norm_map},
+        "norm_map": {v.name: norm_map[v.name] for v in outcome_cont if v.name in norm_map},
     }
 
     # 1. Tanımlayıcı
     try:
-        r = table_descriptive(tc, cont_vars, df)
+        r = table_descriptive(tc, outcome_cont, df)
         if r:
             results.append(r)
     except Exception:
@@ -665,7 +700,7 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
 
     # 2. Normallik tablosu
     try:
-        r = table_normality(tc, cont_vars, df, norm_map)
+        r = table_normality(tc, outcome_cont, df, norm_map)
         if r:
             results.append(r)
     except Exception:
@@ -683,72 +718,62 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
             pass
 
     # 4. Frekans
-    for v in cat_vars:
+    for v in grouping_cat + outcome_cat:
         if v.name in df.columns:
             try:
                 results.append(table_frequency(tc, df[v.name], v.label))
             except Exception:
                 pass
 
-    # 5. Ki-kare
-    for i, v1 in enumerate(cat_vars):
-        for v2 in cat_vars[i + 1:]:
-            if v1.name in df.columns and v2.name in df.columns:
+    # 5. Ki-kare: gruplandırma × sonuç (kategorik)
+    for cv in grouping_cat:
+        for ov in outcome_cat:
+            if cv.name in df.columns and ov.name in df.columns:
                 try:
-                    results.append(table_chi_square(tc, df, v1, v2))
+                    results.append(table_chi_square(tc, df, cv, ov))
                 except Exception:
                     pass
 
-    # 6. t-test / Mann-Whitney
-    for cv in cat_vars:
-        for sv in cont_vars:
+    # 6. t-test / ANOVA / Mann-Whitney / Kruskal: gruplandırma × sürekli sonuç
+    for cv in grouping_cat:
+        for sv in outcome_cont:
             if cv.name not in df.columns or sv.name not in df.columns:
                 continue
             try:
                 n_groups = df[cv.name].dropna().nunique()
-                if n_groups != 2:
-                    continue
-                if norm_map.get(sv.name, {}).get("is_parametric", True):
-                    results.append(table_ttest(tc, df, cv, sv))
-                else:
-                    results.append(table_mann_whitney(tc, df, cv, sv))
+                if n_groups == 2:
+                    if norm_map.get(sv.name, {}).get("is_parametric", True):
+                        results.append(table_ttest(tc, df, cv, sv))
+                    else:
+                        results.append(table_mann_whitney(tc, df, cv, sv))
+                elif n_groups > 2:
+                    if norm_map.get(sv.name, {}).get("is_parametric", True):
+                        anova_res = table_anova(tc, df, cv, sv)
+                        results.append(anova_res)
+                        if anova_res.get("significant"):
+                            tukey = table_tukey(tc, df, cv, sv)
+                            if tukey:
+                                results.append(tukey)
+                    else:
+                        results.append(table_kruskal(tc, df, cv, sv))
             except Exception:
                 pass
 
-    # 7. ANOVA / Kruskal + Tukey
-    for cv in cat_vars:
-        for sv in cont_vars:
-            if cv.name not in df.columns or sv.name not in df.columns:
-                continue
-            try:
-                n_groups = df[cv.name].dropna().nunique()
-                if n_groups <= 2:
-                    continue
-                if norm_map.get(sv.name, {}).get("is_parametric", True):
-                    anova_res = table_anova(tc, df, cv, sv)
-                    results.append(anova_res)
-                    if anova_res.get("significant"):
-                        tukey = table_tukey(tc, df, cv, sv)
-                        if tukey:
-                            results.append(tukey)
-                else:
-                    results.append(table_kruskal(tc, df, cv, sv))
-            except Exception:
-                pass
-
-    # 8. Korelasyon matrisi
-    if len(cont_vars) >= 2:
+    # 7. Korelasyon matrisi (kodlanmış kategorikler hariç)
+    corr_cont = [v for v in all_cont if is_numeric_continuous(df, v, norm_map)]
+    if len(corr_cont) >= 2:
         try:
-            all_parametric = all(norm_map.get(v.name, {}).get("is_parametric", True) for v in cont_vars)
-            r = table_correlation_matrix(tc, cont_vars, df, norm_map, all_parametric)
+            all_parametric = all(norm_map.get(v.name, {}).get("is_parametric", True) for v in corr_cont)
+            r = table_correlation_matrix(tc, corr_cont, df, norm_map, all_parametric)
             if r:
                 results.append(r)
         except Exception:
             pass
 
-    # 9. Regresyon (tüm çiftler parametrikse)
-    for i, v1 in enumerate(cont_vars):
-        for v2 in cont_vars[i + 1:]:
+    # 8. Regresyon: gerçek sürekli sonuç × sonuç (parametrik)
+    reg_cont = [v for v in outcome_cont if is_numeric_continuous(df, v, norm_map)]
+    for i, v1 in enumerate(reg_cont):
+        for v2 in reg_cont[i + 1:]:
             if v1.name not in df.columns or v2.name not in df.columns:
                 continue
             if not (norm_map.get(v1.name, {}).get("is_parametric", True) and
@@ -758,6 +783,21 @@ def run_analyze(df: pd.DataFrame, variables: List[Variable]) -> Tuple[List[dict]
                 results.append(table_regression(tc, df, v1, v2))
             except Exception:
                 pass
+
+    def _is_valid_table(r: dict) -> bool:
+        if not r or not r.get("rows") or len(r["rows"]) == 0:
+            return False
+        skip_dash = r.get("type") == "correlation_matrix"
+        for row in r.get("rows", []):
+            for cell in row[:3]:
+                s = str(cell)
+                if s in ("nan", "None"):
+                    return False
+                if s == "—" and not skip_dash:
+                    return False
+        return True
+
+    results = [r for r in results if _is_valid_table(r)]
 
     return results, meta
 
@@ -880,6 +920,123 @@ async def analyze_cronbach(req: CronbachRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+DETECT_SCALES_ITEM_PATTERN = re.compile(r"^[a-zA-Z]+_\d+(_ters|_T)?$")
+
+DETECT_SCALES_SYSTEM = """Sen akademik ölçek analizi uzmanısın. Verilen madde sütun isimlerini inceleyerek hangi maddelerin hangi ölçeğe ait olduğunu belirle.
+
+Kurallar:
+- Aynı prefix'e sahip maddeler aynı ölçeğe aittir (oys_1, oys_2... → OYŞTÖ; neq_1, neq_2... → GYA)
+- _ters veya _T ile biten maddeler o maddenin ters puanlanmış versiyonudur
+- Cronbach alfa için ters maddelerin _ters versiyonunu kullan, orijinalini değil
+- Her ölçek için anlamlı bir Türkçe isim ver
+
+SADECE JSON döndür:
+{
+  "scales": [
+    {
+      "name": "OYŞTÖ",
+      "items": ["oys_1", "oys_2", "oys_3", "oys_4_ters", "oys_5"]
+    },
+    {
+      "name": "GYA",
+      "items": ["neq_1_ters", "neq_2", "neq_3", "neq_4_ters"]
+    }
+  ]
+}"""
+
+
+@app.post("/detect-scales")
+async def detect_scales(req: DetectScalesRequest):
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY ayarlanmamış")
+
+    item_cols = [c for c in req.columns if DETECT_SCALES_ITEM_PATTERN.match(c)]
+    if not item_cols:
+        return {"scales": []}
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    msg = client.messages.create(
+        model=ANTHROPIC_MODEL,
+        max_tokens=1000,
+        system=DETECT_SCALES_SYSTEM,
+        messages=[{
+            "role": "user",
+            "content": f"Şu madde sütunlarını ölçeklere göre gruplandır:\n{', '.join(item_cols)}",
+        }],
+    )
+
+    text = msg.content[0].text.strip()
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except Exception:
+            pass
+    return {"scales": []}
+
+
+@app.post("/analyze/cronbach-batch")
+async def analyze_cronbach_batch(req: CronbachBatchRequest):
+    df = pd.DataFrame([r.values for r in req.data])
+    results = []
+    tc = TableCounter()
+
+    for scale in req.scales:
+        name = scale.get("name", "Ölçek")
+        items = scale.get("items", [])
+
+        valid_items = []
+        for col in items:
+            if col in df.columns:
+                df[col] = pd.to_numeric(
+                    df[col].astype(str).str.replace(",", ".", regex=False),
+                    errors="coerce",
+                )
+                valid_items.append(col)
+
+        if len(valid_items) < 2:
+            continue
+
+        try:
+            items_df = df[valid_items].dropna()
+            k = len(valid_items)
+            if len(items_df) < 3:
+                continue
+
+            item_vars = items_df.var(axis=0, ddof=1).sum()
+            total_var = items_df.sum(axis=1).var(ddof=1)
+
+            if total_var == 0:
+                continue
+
+            alpha = float((k / (k - 1)) * (1 - item_vars / total_var))
+
+            if alpha >= 0.90:
+                interp = "Yüksek"
+            elif alpha >= 0.70:
+                interp = "İyi"
+            elif alpha >= 0.60:
+                interp = "Kabul Edilebilir"
+            else:
+                interp = "Düşük"
+
+            tno, title = tc.next(f"Ölçek Güvenilirlik Analizi — {name}")
+
+            results.append({
+                "type": "cronbach",
+                "table_number": tno,
+                "title": title,
+                "headers": ["Ölçek", "Madde Sayısı", "Geçerli n", "Cronbach α", "Değerlendirme"],
+                "rows": [[name, k, len(items_df), f"{alpha:.3f}", interp]],
+                "note": "Not. α = Cronbach alfa iç tutarlılık katsayısı. Kabul edilebilir sınır: α ≥ .70.",
+                "significant": None,
+            })
+        except Exception:
+            continue
+
+    return sanitize({"results": results})
+
+
 @app.post("/analyze/paired")
 async def analyze_paired(req: PairedRequest):
     df = pd.DataFrame([r.values for r in req.data])
@@ -942,6 +1099,58 @@ async def classify_columns(req: ClassifyRequest):
         except Exception:
             pass
     return {"categorical": [], "continuous": [], "exclude": []}
+
+
+RECOMMEND_SYSTEM = """Sen akademik araştırma metodolojisi uzmanısın. Verilen araştırma konusu ve sütun listesine göre hangi değişkenlerin analiz için önemli olduğuna karar ver.
+
+Her sütun için üç kategoriden birini seç:
+- "recommended": Bu araştırma için mutlaka analiz edilmeli
+- "optional": Analiz edilebilir ama öncelikli değil
+- "skip": Bu araştırma için gereksiz veya anlamsız
+
+Gruplandırma değişkenleri (kategorik demografik) için tavsiye ver.
+Analiz değişkenleri (ölçek puanları, risk grupları) hepsini "recommended" olarak işaretle.
+
+SADECE JSON döndür:
+{
+  "recommendations": {
+    "sütun_adı": {
+      "status": "recommended|optional|skip",
+      "reason": "Kısa Türkçe açıklama"
+    }
+  }
+}"""
+
+
+@app.post("/recommend")
+async def recommend_variables(req: RecommendRequest):
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY ayarlanmamış")
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    col_info = "\n".join([
+        f"- {col}: örnek değerler = {req.samples.get(col, [])}"
+        for col in req.columns
+    ])
+
+    msg = client.messages.create(
+        model=ANTHROPIC_MODEL,
+        max_tokens=1000,
+        system=RECOMMEND_SYSTEM,
+        messages=[{
+            "role": "user",
+            "content": f"Araştırma konusu: {req.research_topic}\n\nSütunlar:\n{col_info}",
+        }],
+    )
+
+    text = msg.content[0].text.strip()
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except Exception:
+            pass
+    return {"recommendations": {}}
 
 
 @app.post("/ai/bulgu")

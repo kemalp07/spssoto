@@ -136,6 +136,21 @@
       <p style="color:var(--muted);font-size:16px">Excel veya CSV yükle → Otomatik analiz → APA 7 bulgular</p>
     </div>
 
+    <div style="background:rgba(37,99,235,0.06); border:1px solid rgba(37,99,235,0.2); border-radius:12px; padding:20px 24px; margin-bottom:24px;">
+      <div style="font-size:15px; font-weight:700; margin-bottom:12px;">📋 Dosyanızı yüklemeden önce</div>
+      <div style="font-size:13px; color:var(--muted); line-height:1.8;">
+        <div style="margin-bottom:8px;">
+          <strong style="color:var(--text);">SPSS'den doğru export için:</strong>
+        </div>
+        <div>1. <strong>File → Export → CSV</strong> yolunu izleyin</div>
+        <div>2. <strong>"Save value labels where defined instead of data values"</strong> seçeneğini işaretleyin</div>
+        <div>3. CSV olarak kaydedin</div>
+        <div style="margin-top:10px; padding:10px 14px; background:rgba(210,153,34,0.08); border:1px solid rgba(210,153,34,0.3); border-radius:8px; color:var(--warn);">
+          ⚠️ Bu seçenek işaretlenmezse gruplar "1, 2, 3" olarak görünür, gerçek isimler değil.
+        </div>
+      </div>
+    </div>
+
     <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
       <div class="icon">📊</div>
       <h2>Veri dosyanı yükle</h2>
@@ -148,6 +163,23 @@
     </div>
     <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFile(this.files[0])" />
 
+    <div id="researchTopicBox" style="display:none; margin-top:24px;">
+      <div class="panel">
+        <div class="panel-title">🔬 Araştırma Konusu</div>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
+          Kısa bir açıklama yazın — AI hangi değişkenlerin analiz için önemli olduğunu belirlesin.
+        </p>
+        <textarea id="researchTopic"
+          placeholder="örn: Sağlık bilimleri öğrencilerinin online yemek siparişi tutumu, gece yeme davranışı ve sağlıklı beslenme tutumu arasındaki ilişki"
+          style="width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:12px; border-radius:8px; font-size:14px; font-family:inherit; resize:vertical; min-height:80px;"
+        ></textarea>
+        <div style="margin-top:12px; display:flex; gap:10px;">
+          <button class="btn btn-ghost btn-sm" onclick="skipResearchTopic()">Atla, manuel seç</button>
+          <button class="btn btn-primary" onclick="analyzeWithTopic()">🤖 AI ile Analiz Et</button>
+        </div>
+      </div>
+    </div>
+
     <div style="text-align:center; margin-top:24px">
       <button class="btn btn-ghost" onclick="loadSampleData()">🧪 Örnek veri ile dene</button>
     </div>
@@ -159,18 +191,19 @@
       📁 <span id="fileInfo"></span>
     </div>
     <div id="missingWarnBar" style="display:none" class="warn-bar"></div>
+    <div id="cronbachInfo" style="display:none; margin-bottom:16px;"></div>
     <div class="panel">
-      <div class="panel-title">👥 Gruplandırma Değişkenleri (Kategorik)</div>
+      <div class="panel-title">👥 Gruplandırma Değişkenleri</div>
       <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
-        Cinsiyet, bölüm, yaş grubu gibi gruplara ayıran değişkenler
+        Cinsiyet, bölüm, medeni durum gibi demografik değişkenler
       </p>
       <div class="checkbox-grid" id="catGrid"></div>
     </div>
 
     <div class="panel">
-      <div class="panel-title">📊 Analiz Değişkenleri (Sürekli)</div>
+      <div class="panel-title">📊 Analiz Değişkenleri</div>
       <p style="color:var(--muted);font-size:13px;margin-bottom:12px">
-        Toplam puanlar, ölçümler gibi sayısal değişkenler
+        Ölçek toplam puanları, risk grupları, BKİ kategorisi gibi sonuç değişkenleri
       </p>
       <div class="checkbox-grid" id="contGrid"></div>
     </div>
@@ -257,6 +290,31 @@ let missingData = [];
 let bulgular = {};
 let excludeColumns = [];
 let cronbachResults = [];
+let detectedScales = [];
+let pendingJson = null;
+let pendingFileName = "";
+
+const EXCLUDE_PATTERNS = [
+  /^(anket_no|id|no|sira|num|serial)$/i,
+  /^[a-z]+_\d+(_ters)?$/i,
+  /^[A-Z]+_\d+(_T)?$/,
+  /_\d+$/,
+];
+
+const GROUPING_PATTERNS = [
+  /bolum/i, /cinsiyet/i, /_md$/i, /_ed$/i, /_gd$/i,
+  /(_kh|_ik|_sk|_ak)$/i,
+];
+
+const OUTCOME_CAT_PATTERNS = [
+  /kategori/i, /_grup/i, /_binary/i,
+  /yas_grubu/i, /risk_grup/i, /risk_binary/i, /oys_grup/i,
+];
+
+const OUTCOME_CONT_PATTERNS = [
+  /_toplam$/i, /_TOPLAM$/i, /^vki$/i, /^dbf_yas$/i,
+  /^dbf_boy$/i, /^dbf_kilo$/i,
+];
 let selectedItems = new Set();
 
 function normalizeDecimalValue(val) {
@@ -294,88 +352,111 @@ function colDomId(type, col) {
 }
 
 function classifyColumns(cols, data) {
-  const catCols = [];
-  const contCols = [];
+  const groupingCols = [];
+  const outcomeCols = [];
   const excludeCols = [];
-
-  const EXCLUDE_PATTERNS = [
-    /^(anket_no|id|no|sira|num|serial)$/i,
-    /^[a-z]+_\d+(_ters)?$/i,
-    /^[A-Z]+_\d+(_T)?$/,
-    /_\d+$/,
-  ];
-
-  const CAT_PATTERNS = [
-    /bolum/i, /cinsiyet/i, /_md$/i, /_ed$/i, /_gd$/i,
-    /(_kh|_ik|_sk|_ak)$/i, /kategori/i, /_grup/i, /_binary/i,
-    /yas_grubu/i, /risk_grup/i, /risk_binary/i, /oys_grup/i,
-  ];
-
-  const CONT_PATTERNS = [
-    /_toplam$/i, /_TOPLAM$/i, /^vki$/i, /^dbf_yas$/i,
-    /^dbf_boy$/i, /^dbf_kilo$/i,
-  ];
 
   cols.forEach(col => {
     if (EXCLUDE_PATTERNS.some(p => p.test(col))) {
       excludeCols.push(col);
       return;
     }
-    if (CAT_PATTERNS.some(p => p.test(col))) {
-      catCols.push(col);
+    if (GROUPING_PATTERNS.some(p => p.test(col))) {
+      groupingCols.push(col);
       return;
     }
-    if (CONT_PATTERNS.some(p => p.test(col))) {
-      contCols.push(col);
+    if (OUTCOME_CAT_PATTERNS.some(p => p.test(col))) {
+      outcomeCols.push(col);
+      return;
+    }
+    if (OUTCOME_CONT_PATTERNS.some(p => p.test(col))) {
+      outcomeCols.push(col);
       return;
     }
     const vals = [...new Set(data.slice(0, 50).map(r => r[col]).filter(v => v !== "" && v != null))];
-    if (!vals.length) {
-      catCols.push(col);
-      return;
-    }
-    const numeric = vals.filter(v => isNumericValue(v));
+    const numeric = vals.filter(v => !isNaN(parseFloat(String(v).replace(",", "."))));
     if (numeric.length / vals.length > 0.8 && vals.length > 8) {
-      contCols.push(col);
+      outcomeCols.push(col);
     } else {
-      catCols.push(col);
+      groupingCols.push(col);
     }
   });
 
-  return { catCols, contCols, excludeCols };
+  return { groupingCols, outcomeCols, excludeCols };
 }
 
-function renderSelectionGrids(catCols, contCols) {
+function mapClassifyResponse(cls, data) {
+  const groupingCols = [];
+  const outcomeCols = [...(cls.continuous || [])];
+
+  (cls.categorical || []).forEach(col => {
+    if (OUTCOME_CAT_PATTERNS.some(p => p.test(col))) {
+      outcomeCols.push(col);
+    } else if (GROUPING_PATTERNS.some(p => p.test(col))) {
+      groupingCols.push(col);
+    } else {
+      const vals = [...new Set(data.slice(0, 50).map(r => r[col]).filter(v => v !== "" && v != null))];
+      const numeric = vals.filter(v => !isNaN(parseFloat(String(v).replace(",", "."))));
+      if (numeric.length / vals.length > 0.8 && vals.length > 8) {
+        outcomeCols.push(col);
+      } else {
+        groupingCols.push(col);
+      }
+    }
+  });
+
+  return { groupingCols, outcomeCols };
+}
+
+const STATUS_BADGE = {
+  recommended: { emoji: "✅", label: "Önerilen", color: "rgba(16,185,129,0.2)", textColor: "#34d399" },
+  optional:    { emoji: "⚠️", label: "Opsiyonel", color: "rgba(210,153,34,0.2)", textColor: "#d29922" },
+  skip:        { emoji: "❌", label: "Gereksiz", color: "rgba(248,81,73,0.15)", textColor: "#f85149" },
+};
+
+function renderSelectionGrids(groupingCols, outcomeCols, recommendations = {}) {
   const catGrid = document.getElementById("catGrid");
   const contGrid = document.getElementById("contGrid");
 
-  catGrid.innerHTML = catCols.length ? catCols.map(col => {
+  catGrid.innerHTML = groupingCols.length ? groupingCols.map(col => {
+    const rec = recommendations[col] || {};
+    const status = rec.status || "optional";
+    const badge = STATUS_BADGE[status] || STATUS_BADGE.optional;
+    const checked = status !== "skip";
     const samples = [...new Set(parsedData.slice(0, 3).map(r => r[col]))].join(", ");
     const id = colDomId("cat", col);
     const c = escAttr(col);
     return `
-      <label class="col-checkbox selected" id="${id}">
-        <input type="checkbox" checked onchange="toggleCol('cat','${c}',this.checked)" />
-        <div>
+      <label class="col-checkbox ${checked ? "selected" : ""}" id="${id}">
+        <input type="checkbox" ${checked ? "checked" : ""} onchange="toggleCol('cat','${c}',this.checked)" />
+        <div style="flex:1">
           <div class="col-name">${col}</div>
           <div class="col-sample">${samples}</div>
+          ${rec.reason ? `<div style="font-size:11px;margin-top:4px;color:var(--muted);font-style:italic">${rec.reason}</div>` : ""}
         </div>
+        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:${badge.color};color:${badge.textColor};white-space:nowrap;flex-shrink:0">
+          ${badge.emoji} ${badge.label}
+        </span>
       </label>`;
-  }).join("") : '<p style="color:var(--muted);font-size:13px">Kategorik değişken bulunamadı.</p>';
+  }).join("") : '<p style="color:var(--muted);font-size:13px">Gruplandırma değişkeni bulunamadı.</p>';
 
-  contGrid.innerHTML = contCols.length ? contCols.map(col => {
+  contGrid.innerHTML = outcomeCols.length ? outcomeCols.map(col => {
+    const badge = STATUS_BADGE.recommended;
     const samples = [...new Set(parsedData.slice(0, 3).map(r => r[col]))].join(", ");
     const id = colDomId("cont", col);
     const c = escAttr(col);
     return `
       <label class="col-checkbox selected" id="${id}">
         <input type="checkbox" checked onchange="toggleCol('cont','${c}',this.checked)" />
-        <div>
+        <div style="flex:1">
           <div class="col-name">${col}</div>
           <div class="col-sample">${samples}</div>
         </div>
+        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:${badge.color};color:${badge.textColor};white-space:nowrap;flex-shrink:0">
+          ${badge.emoji} ${badge.label}
+        </span>
       </label>`;
-  }).join("") : '<p style="color:var(--muted);font-size:13px">Sürekli değişken bulunamadı.</p>';
+  }).join("") : '<p style="color:var(--muted);font-size:13px">Analiz değişkeni bulunamadı.</p>';
 }
 
 function toggleCol(type, col, checked) {
@@ -398,8 +479,8 @@ function checkNumericLabels(cols, data) {
     const uniqueCount = uniqueVals.length;
     if (uniqueCount <= 10) {
       const allNumeric = uniqueVals.every(v => {
-        const n = parseFloat(String(v));
-        return !isNaN(n) && isFinite(n);
+        const s = String(v).trim();
+        return /^-?\d+(\.\d+)?$/.test(s);
       });
       if (allNumeric) {
         suspicious.push({ col, values: uniqueVals.slice(0, 5) });
@@ -441,69 +522,147 @@ zone.addEventListener("drop", e => { e.preventDefault(); zone.classList.remove("
 function handleFile(file) {
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = async e => {
+  reader.onload = e => {
     const wb = XLSX.read(e.target.result, { type: "binary" });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
     if (!json.length) return alert("Dosya boş görünüyor.");
-    await loadData(json, file.name);
+
+    pendingJson = json;
+    pendingFileName = file.name;
+
+    document.getElementById("researchTopicBox").style.display = "block";
+    document.getElementById("researchTopicBox").scrollIntoView({ behavior: "smooth" });
   };
   reader.readAsBinaryString(file);
 }
 
-async function loadData(json, fileName) {
+function skipResearchTopic() {
+  loadData(pendingJson, pendingFileName, null);
+}
+
+async function analyzeWithTopic() {
+  const topic = document.getElementById("researchTopic").value.trim();
+  if (!topic) return loadData(pendingJson, pendingFileName, null);
+  loadData(pendingJson, pendingFileName, topic);
+}
+
+async function loadData(json, fileName, researchTopic) {
   columns = Object.keys(json[0]);
   parsedData = normalizeDataDecimals(json);
   cronbachResults = [];
+  detectedScales = [];
   selectedItems = new Set();
+  document.getElementById("cronbachInfo").style.display = "none";
+
+  const nonItemColumns = columns.filter(col =>
+    !EXCLUDE_PATTERNS.some(p => p.test(col))
+  );
+  const itemColumns = columns.filter(col =>
+    EXCLUDE_PATTERNS.some(p => p.test(col))
+  );
 
   const samples = {};
-  columns.forEach(col => {
+  nonItemColumns.forEach(col => {
     samples[col] = [...new Set(
       parsedData.slice(0, 5).map(r => r[col]).filter(v => v !== "" && v != null)
     )].slice(0, 4);
   });
 
-  document.getElementById("fileInfo").textContent = `${fileName} · Sütunlar analiz ediliyor...`;
+  document.getElementById("researchTopicBox").style.display = "none";
+  document.getElementById("fileInfo").textContent =
+    researchTopic ? `${fileName} · AI analiz ediyor...` : `${fileName} · Sütunlar analiz ediliyor...`;
   document.getElementById("catGrid").innerHTML = '<p style="color:var(--muted);font-size:13px">Yükleniyor...</p>';
   document.getElementById("contGrid").innerHTML = "";
   showPage(2);
 
-  let catCols, contCols, excludeCols;
+  let groupingCols, outcomeCols, excludeCols;
 
   try {
     const res = await fetch(`${API}/classify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ columns, samples }),
+      body: JSON.stringify({ columns: nonItemColumns, samples }),
     });
     if (!res.ok) throw new Error("classify hatası");
     const cls = await res.json();
-    catCols = cls.categorical || [];
-    contCols = cls.continuous || [];
-    excludeCols = cls.exclude || [];
+    const mapped = mapClassifyResponse(cls, parsedData);
+    groupingCols = mapped.groupingCols;
+    outcomeCols = mapped.outcomeCols;
+    excludeCols = [...new Set([...(cls.exclude || []), ...itemColumns])];
   } catch (e) {
     const fb = classifyColumns(columns, parsedData);
-    catCols = fb.catCols;
-    contCols = fb.contCols;
+    groupingCols = fb.groupingCols;
+    outcomeCols = fb.outcomeCols;
     excludeCols = fb.excludeCols;
   }
 
-  catColumns = catCols;
-  contColumns = contCols;
-  excludeColumns = excludeCols;
-  selectedCat = new Set(catCols);
-  selectedCont = new Set(contCols);
-  computeMissingData([...catCols, ...contCols]);
+  let recommendations = {};
+  if (researchTopic) {
+    try {
+      const recSamples = {};
+      groupingCols.forEach(col => {
+        recSamples[col] = samples[col] || [];
+      });
+      const res = await fetch(`${API}/recommend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          columns: groupingCols,
+          samples: recSamples,
+          research_topic: researchTopic,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        recommendations = data.recommendations || {};
+      }
+    } catch (e) {
+      // tavsiye alınamazsa devam et
+    }
+  }
 
-  const visible = catCols.length + contCols.length;
+  try {
+    const res = await fetch(`${API}/detect-scales`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ columns }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      detectedScales = data.scales || [];
+      if (detectedScales.length > 0) {
+        document.getElementById("cronbachInfo").style.display = "block";
+        document.getElementById("cronbachInfo").innerHTML = `
+          <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2); border-radius:8px; padding:12px 16px; font-size:13px; color:#34d399;">
+            ✅ ${detectedScales.length} ölçek tespit edildi:
+            <strong>${detectedScales.map(s => s.name).join(", ")}</strong>
+            — Cronbach alfa analizi otomatik yapılacak
+          </div>`;
+      }
+    }
+  } catch (e) {
+    detectedScales = [];
+  }
+
+  catColumns = groupingCols;
+  contColumns = outcomeCols;
+  excludeColumns = excludeCols;
+  selectedCat = new Set(groupingCols.filter(col => {
+    const rec = recommendations[col];
+    return !rec || rec.status !== "skip";
+  }));
+  selectedCont = new Set(outcomeCols);
+  computeMissingData([...groupingCols, ...outcomeCols]);
+
+  const visible = groupingCols.length + outcomeCols.length;
   document.getElementById("fileInfo").textContent =
     `${fileName} · ${json.length} satır · ${visible} analiz sütunu (${excludeCols.length} madde gizlendi)`;
 
-  renderSelectionGrids(catCols, contCols);
+  renderSelectionGrids(groupingCols, outcomeCols, recommendations);
   renderMissingWarnings();
 
-  const suspicious = checkNumericLabels(catCols, parsedData);
+  const suspicious = checkNumericLabels(groupingCols, parsedData);
   if (suspicious.length > 0) {
     showLabelWarning(suspicious);
   }
@@ -631,7 +790,7 @@ function loadSampleData() {
       ...(i % 7 === 0 ? { Stres: "" } : {}),
     });
   }
-  loadData(json, "ornek_veri.xlsx").catch(() => {});
+  loadData(json, "ornek_veri.xlsx", null).catch(() => {});
 }
 
 // ── Analiz ────────────────────────────────────────────────────────────────────
@@ -646,8 +805,21 @@ async function runAnalysis() {
   document.getElementById("resultsContainer").innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Analiz yapılıyor...</p></div>';
 
   const variables = [
-    ...[...selectedCat].map(col => ({ name: col, label: col, type: "categorical", included: true })),
-    ...[...selectedCont].map(col => ({ name: col, label: col, type: "continuous", included: true })),
+    ...[...selectedCat].map(col => ({
+      name: col, label: col, type: "categorical",
+      role: "grouping", included: true
+    })),
+    ...[...selectedCont].map(col => {
+      const isContNum = parsedData.slice(0, 10).some(r => {
+        const v = String(r[col] || "").replace(",", ".");
+        return !isNaN(parseFloat(v)) && parseFloat(v) > 10;
+      });
+      return {
+        name: col, label: col,
+        type: isContNum ? "continuous" : "categorical",
+        role: "outcome", included: true
+      };
+    }),
   ];
 
   const data = parsedData.map(row => {
@@ -671,6 +843,30 @@ async function runAnalysis() {
     analysisResults = [...cronbachResults, ...(json.results || [])];
     analysisMeta = json.meta || {};
     if (json.missing_data) missingData = json.missing_data;
+
+    if (detectedScales.length > 0) {
+      try {
+        const cbRes = await fetch(`${API}/analyze/cronbach-batch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            scales: detectedScales,
+            data: parsedData.map(row => ({ values: row })),
+          }),
+        });
+        if (cbRes.ok) {
+          const cbData = await cbRes.json();
+          if (cbData.results && cbData.results.length > 0) {
+            const normallikIdx = analysisResults.findIndex(r => r.type === "normality");
+            const insertIdx = normallikIdx >= 0 ? normallikIdx + 1 : 2;
+            analysisResults.splice(insertIdx, 0, ...cbData.results);
+          }
+        }
+      } catch (e) {
+        console.error("Cronbach batch hatası:", e);
+      }
+    }
+
     renderResults();
     document.getElementById("btnWord").disabled = !analysisResults.length;
   } catch(e) {
@@ -792,12 +988,18 @@ function reset() {
   catColumns = []; contColumns = []; excludeColumns = [];
   selectedCat = new Set(); selectedCont = new Set();
   selectedItems = new Set(); cronbachResults = [];
+  detectedScales = [];
+  pendingJson = null; pendingFileName = "";
   analysisResults = []; analysisMeta = {};
   missingData = []; bulgular = {};
   document.getElementById("btnWord").disabled = true;
   document.getElementById("labelWarningModal").classList.remove("open");
   document.getElementById("cronbachPanel").style.display = "none";
   document.getElementById("cronbachResult").innerHTML = "";
+  document.getElementById("cronbachInfo").style.display = "none";
+  document.getElementById("cronbachInfo").innerHTML = "";
+  document.getElementById("researchTopicBox").style.display = "none";
+  document.getElementById("researchTopic").value = "";
   showPage(1);
 }
 </script>
