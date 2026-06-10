@@ -2465,6 +2465,44 @@ false:
   versiyonu varsa: ham → outcome/continuous, kategorik → outcome/categorical
 - Etiket varsa kolon adından daha güvenilir — etiketi öncelikle kullan
 
+━━━ REASON YAZMA KURALLARI ━━━
+
+Her değişken için reason yazarken şu ilişkileri tespit et:
+
+1. BOY + KİLO + BKİ/VKİ İLİŞKİSİ:
+   Kolon listesinde hem boy/height hem kilo/weight hem de
+   bki/vki/bmi kolonu varsa:
+   - boy ve kilo kolonları için reason:
+     "BKİ/VKİ kolonu mevcut — boy ve kilo seçmeniz gerekmeyebilir"
+
+2. HAM SÜREKLI + KATEGORİK VERSİYON:
+   Aynı kavramın hem sürekli (yas, vki) hem kategorik versiyonu
+   (yas_grubu, vki_kategori) varsa:
+   - Sürekli versiyon için reason:
+     "Kategorik versiyonu mevcut — ikisi birden seçilmesi gerekmez,
+      biri yeterli"
+
+3. ÖLÇEK TOPLAM + ALT BOYUT:
+   Hem toplam puan (_toplam) hem alt boyut kolonları varsa:
+   - Alt boyutlar için reason:
+     "Toplam puan analizi yeterliyse alt boyutlar opsiyonel"
+
+4. İKİNCİL DEMOGRAFİK:
+   Araştırma konusuyla zayıf ilişkili demografikler için reason'a
+   neden ikincil olduğunu yaz:
+   "İkincil demografik — araştırma sorusuyla doğrudan ilişkisi zayıf"
+
+5. TEMEL DEMOGRAFİK:
+   Cinsiyet, bölüm/departman gibi temel gruplandırma değişkenleri için:
+   "Temel demografik gruplandırma değişkeni"
+
+6. ÖLÇEK PUANI:
+   Toplam puan kolonları için ölçeğin ne ölçtüğünü belirt:
+   Etiket varsa etiketten, yoksa kolon adından çıkar:
+   "Online yemek siparişi tutumunu ölçen ana bağımlı değişken"
+
+Reason maksimum 10 kelime, Türkçe, öz ve net olsun.
+
 SADECE JSON döndür:
 {
   "variables": {

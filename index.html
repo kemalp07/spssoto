@@ -305,6 +305,7 @@ let researchTopicText = "";
 let scaleInfo = {};
 let currentStep = 0;
 let variablesDataReady = false;
+let variablesPhase = 1;
 let lastRecommendations = {};
 let _skipNextAIClassify = false;
 let wizardFormState = { scaleNames: "", topic: "" };
@@ -486,7 +487,7 @@ function mapClassifyResponse(cls, data) {
   return { groupingCols, outcomeCols, recommendations: recs };
 }
 
-async function runAIClassify() {
+async function runAIClassify(skipInit = false) {
   const nonItemCols = columns.filter(col =>
     !EXCLUDE_PATTERNS.some(p => p.test(col))
   );
@@ -513,22 +514,34 @@ async function runAIClassify() {
     const cls = await res.json();
     const mapped = mapClassifyResponse(cls, parsedData);
 
+    if (!mapped.groupingCols.length && !mapped.outcomeCols.length) {
+      console.warn("AI classify boş sonuç döndürdü, mevcut sınıflandırma korunuyor");
+      return;
+    }
+
+    const prevSelectedCat = new Set(selectedCat);
+    const prevSelectedCont = new Set(selectedCont);
+
     catColumns = mapped.groupingCols;
     contColumns = mapped.outcomeCols;
     lastRecommendations = mapped.recommendations;
 
     selectedCat = new Set(catColumns.filter(col => {
+      if (prevSelectedCat.has(col)) return true;
       const rec = lastRecommendations[col];
       return !rec || rec.status !== "skip";
     }));
     selectedCont = new Set(contColumns.filter(col => {
+      if (prevSelectedCont.has(col)) return true;
       const rec = lastRecommendations[col];
       return !rec || rec.status !== "skip";
     }));
 
     computeMissingData([...catColumns, ...contColumns]);
-    _skipNextAIClassify = true;
-    initStep(currentStep);
+    if (!skipInit) {
+      _skipNextAIClassify = true;
+      initStep(currentStep);
+    }
   } catch (e) {
     console.warn("AI classify başarısız, pattern kullanılıyor");
   }
@@ -1063,11 +1076,56 @@ function renderTopicStep() {
     </div>`;
 }
 
-function renderVariablesStep() {
+function getNonItemColumns() {
+  return columns.filter(col => !EXCLUDE_PATTERNS.some(p => p.test(col)));
+}
+
+function renderLabelPhaseGrid() {
+  const grid = document.getElementById("labelPhaseGrid");
+  if (!grid) return;
+  const cols = getNonItemColumns().filter(col => !ITEM_COL_PATTERN.test(col));
+  grid.innerHTML = cols.map(col => {
+    const samples = [...new Set(
+      parsedData.slice(0, 5).map(r => r[col]).filter(v => v !== "" && v != null)
+    )].slice(0, 4);
+    const id = labelInputId(col);
+    const c = escAttr(col);
+    const val = escAttr(userLabels[col] || col);
+    return `
+      <div style="display:grid; grid-template-columns:140px 1fr 1fr; gap:12px; align-items:center; padding:10px 0; border-bottom:1px solid var(--border);">
+        <span style="font-size:12px; font-family:'JetBrains Mono',monospace; color:var(--muted);">${col}</span>
+        <span style="font-size:11px; color:var(--muted);">${escHtml(samples.join(", ") || "—")}</span>
+        <input type="text" id="${id}" data-col="${c}" data-label-col="${c}"
+          placeholder="Türkçe isim girin" value="${val}"
+          onchange="updateUserLabel(this)"
+          style="padding:6px 10px; font-size:12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px;" />
+      </div>`;
+  }).join("");
+}
+
+function renderVariablesPhase1() {
   return `
     <div class="wizard-card" style="max-width:900px;">
-      <div class="wizard-title">🔢 Değişkenler</div>
-      <div class="wizard-subtitle">Hangi sütunları analiz edeceğinizi seçin ve Türkçe isimlerini yazın.</div>
+      <div class="wizard-title">🏷️ Değişken İsimleri</div>
+      <div class="wizard-subtitle">
+        Her değişkene anlaşılır bir Türkçe isim verin.
+        Bu isimler analiz sonuçlarında ve bulgularda kullanılacak.
+      </div>
+      <div id="labelPhaseGrid" style="margin-top:16px;"></div>
+      <div class="wizard-nav">
+        <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
+        <button class="btn btn-success" onclick="proceedToPhase2()">Sınıflandır →</button>
+      </div>
+    </div>`;
+}
+
+function renderVariablesPhase2() {
+  return `
+    <div class="wizard-card" style="max-width:900px;">
+      <div class="wizard-title">🔢 Değişkenleri Seçin</div>
+      <div class="wizard-subtitle">
+        AI değişkenleri sınıflandırdı. Kontrol edin, yanlış olanları düzeltin.
+      </div>
       ${renderScaleMatchPanelHtml()}
       <div style="text-align:right; margin-bottom:12px;">
         <button class="btn btn-secondary" style="font-size:12px; padding:6px 14px"
@@ -1075,21 +1133,59 @@ function renderVariablesStep() {
           🤖 AI ile Yeniden Sınıflandır
         </button>
         <span style="font-size:11px; color:var(--muted); margin-left:8px">
-          Etiket girdikten sonra kullanın
+          Etiketleri düzenledikten sonra yeniden sınıflandırın
         </span>
       </div>
       <div id="selectionGridsContainer"></div>
-      <div style="margin-top:20px;">
-        <div style="font-size:14px; font-weight:600; margin-bottom:12px;">
-          📝 Değişken etiketleri <span style="font-size:12px; font-weight:400; color:var(--muted);">(* zorunlu)</span>
-        </div>
-        <div id="labelInputGrid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;"></div>
-      </div>
       <div class="wizard-nav">
-        <button class="btn btn-ghost" onclick="resetWizard()">← Başa Dön</button>
+        <button class="btn btn-ghost" onclick="backToPhase1()">← Etiketleri Düzenle</button>
         <button class="btn btn-success" onclick="nextStep()">Analiz Planı →</button>
       </div>
     </div>`;
+}
+
+function renderVariablesStep() {
+  return variablesPhase === 1
+    ? renderVariablesPhase1()
+    : renderVariablesPhase2();
+}
+
+function refreshCurrentStep() {
+  const slide = document.querySelector(".slide-active");
+  if (slide) slide.innerHTML = renderStep(currentStep);
+  initStep(currentStep);
+}
+
+async function proceedToPhase2() {
+  collectUserLabelsFromInputs();
+  const allCols = getNonItemColumns().filter(col => !ITEM_COL_PATTERN.test(col));
+  const missing = allCols.filter(col => {
+    const label = (userLabels[col] || "").trim();
+    return !label || label.toLowerCase() === col.toLowerCase();
+  });
+  if (missing.length > 0) {
+    alert(`Devam etmeden önce şu değişkenlere Türkçe isim verin: ${missing.join(", ")}`);
+    return;
+  }
+
+  const btn = document.querySelector("#labelPhaseGrid")
+    ?.closest(".wizard-card")
+    ?.querySelector(".btn-success");
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = "⏳ Sınıflandırılıyor...";
+  }
+
+  await runAIClassify(true);
+
+  variablesPhase = 2;
+  refreshCurrentStep();
+}
+
+function backToPhase1() {
+  collectUserLabelsFromInputs();
+  variablesPhase = 1;
+  refreshCurrentStep();
 }
 
 function renderPlanStep() {
@@ -1160,12 +1256,22 @@ function initStep(step) {
 
   if (name === "variables") {
     setTimeout(() => {
-      const container = document.getElementById("selectionGridsContainer");
-      if (!container) return;
       if (!variablesDataReady) {
-        container.innerHTML = '<p style="color:var(--muted);font-size:13px">Veriler yükleniyor...</p>';
+        const grid = document.getElementById("labelPhaseGrid");
+        const container = document.getElementById("selectionGridsContainer");
+        const loading = '<p style="color:var(--muted);font-size:13px">Veriler yükleniyor...</p>';
+        if (grid) grid.innerHTML = loading;
+        if (container) container.innerHTML = loading;
         return;
       }
+
+      if (variablesPhase === 1) {
+        renderLabelPhaseGrid();
+        return;
+      }
+
+      const container = document.getElementById("selectionGridsContainer");
+      if (!container) return;
       container.innerHTML = `
         <div class="info-bar">📁 <span id="fileInfo">${escAttr(fileInfoText)}</span></div>
         <div id="missingWarnBar" style="display:none" class="warn-bar"></div>
@@ -1192,17 +1298,7 @@ function initStep(step) {
         }
       }
       renderSelectionGrids(catColumns, contColumns, lastRecommendations);
-      renderLabelInputs([...catColumns, ...contColumns]);
-      applyScaleInfoToLabels();
       renderMissingWarnings();
-
-      const skipAI = _skipNextAIClassify;
-      _skipNextAIClassify = false;
-      const hasLabels = Object.values(userLabels)
-        .some(v => v && v.trim() && v !== v.toUpperCase());
-      if ((hasLabels || researchTopicText) && !skipAI) {
-        runAIClassify();
-      }
     }, 50);
   }
 
@@ -1276,6 +1372,7 @@ function validateStep(step) {
   }
 
   if (name === "variables") {
+    if (variablesPhase === 1) return false;
     if (!selectedCat.size && !selectedCont.size) {
       alert("En az bir değişken seçmelisiniz.");
       return false;
@@ -1292,6 +1389,11 @@ function validateStep(step) {
 }
 
 async function nextStep() {
+  if (STEPS[currentStep] === "variables" && variablesPhase === 1) {
+    await proceedToPhase2();
+    return;
+  }
+
   if (!validateStep(currentStep)) return;
 
   let next = currentStep + 1;
@@ -1309,20 +1411,23 @@ async function nextStep() {
     applyScaleInfoToLabels();
   }
 
-  if (STEPS[next] === "variables" && !variablesDataReady) {
-    const btn = document.querySelector(".slide-active .btn-success");
-    const prevText = btn ? btn.innerHTML : "";
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = "⏳ Değişkenler hazırlanıyor...";
-    }
-    try {
-      await loadData(pendingJson, pendingFileName, researchTopicText);
-      applyScaleMatchToColumns();
-    } finally {
+  if (STEPS[next] === "variables") {
+    variablesPhase = 1;
+    if (!variablesDataReady) {
+      const btn = document.querySelector(".slide-active .btn-success");
+      const prevText = btn ? btn.innerHTML : "";
       if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = prevText;
+        btn.disabled = true;
+        btn.innerHTML = "⏳ Değişkenler hazırlanıyor...";
+      }
+      try {
+        await loadData(pendingJson, pendingFileName, researchTopicText);
+        applyScaleMatchToColumns();
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = prevText;
+        }
       }
     }
   }
@@ -1358,6 +1463,7 @@ function resetWizard() {
   approvedCutoffs = [];
   researchTopicText = "";
   variablesDataReady = false;
+  variablesPhase = 1;
   lastRecommendations = {};
   wizardFormState = { scaleNames: "", topic: "" };
   fileInfoText = "";
