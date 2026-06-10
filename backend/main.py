@@ -97,6 +97,7 @@ class ClassifyRequest(BaseModel):
 
 class DetectScalesRequest(BaseModel):
     columns: List[str]
+    samples: Optional[Dict[str, List[Any]]] = None
 
 class CronbachBatchRequest(BaseModel):
     scales: List[dict]
@@ -2565,6 +2566,73 @@ async def analyze_cronbach(req: CronbachRequest):
     except Exception as e:
         print(traceback.format_exc())
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/detect-items")
+def detect_item_columns(req: DetectScalesRequest):
+    columns = req.columns
+    samples = req.samples or {}
+
+    item_pattern = re.compile(
+        r"^([a-zA-Z_]{1,10}?)(\d{1,3})(_ters|_t|_r|_T)?$",
+        re.I,
+    )
+    prefix_groups: Dict[str, list] = defaultdict(list)
+    for col in columns:
+        m = item_pattern.match(col)
+        if m:
+            prefix = m.group(1).rstrip("_").lower()
+            if prefix:
+                prefix_groups[prefix].append(col)
+
+    item_columns: set = set()
+    scale_groups: Dict[str, list] = {}
+
+    for prefix, cols in prefix_groups.items():
+        if len(cols) < 3:
+            continue
+
+        narrow_range_count = 0
+        for col in cols:
+            vals = [
+                v for v in (samples.get(col) or [])
+                if v is not None and str(v).replace(".", "").replace("-", "").isdigit()
+            ]
+            if vals:
+                try:
+                    nums = [float(v) for v in vals]
+                    val_range = max(nums) - min(nums)
+                    unique_count = len(set(nums))
+                    if val_range <= 10 and unique_count <= 8:
+                        narrow_range_count += 1
+                except Exception:
+                    pass
+
+        if narrow_range_count >= len(cols) * 0.5:
+            for col in cols:
+                item_columns.add(col)
+            scale_groups[prefix] = cols
+
+    total_pattern = re.compile(
+        r"(_toplam|_total|_score|_puan|_skor|_sum|_avg)$|^t[a-z]{2,}",
+        re.I,
+    )
+    total_columns = [
+        col for col in columns
+        if total_pattern.search(col) and col not in item_columns
+    ]
+
+    other_columns = [
+        col for col in columns
+        if col not in item_columns and col not in total_columns
+    ]
+
+    return {
+        "item_columns": list(item_columns),
+        "scale_groups": scale_groups,
+        "total_columns": total_columns,
+        "other_columns": other_columns,
+    }
 
 
 @app.post("/detect-scales")

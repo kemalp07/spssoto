@@ -1744,6 +1744,20 @@ function ensurePendingUserLabels() {
     });
 }
 
+async function detectItemColumns(columns, samples) {
+  try {
+    const res = await fetch(`${API}/detect-items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ columns, samples }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
 async function loadData(json, fileName, researchTopic) {
   variablesDataReady = false;
   columns = Object.keys(json[0]);
@@ -1751,24 +1765,33 @@ async function loadData(json, fileName, researchTopic) {
   cronbachResults = [];
   detectedScales = [];
   selectedItems = new Set();
-  const nonItemColumns = columns.filter(col =>
-    !EXCLUDE_PATTERNS.some(p => p.test(col))
-  );
-  const itemColumns = columns.filter(col =>
-    EXCLUDE_PATTERNS.some(p => p.test(col))
-  );
 
   const samples = {};
-  nonItemColumns.forEach(col => {
+  columns.forEach(col => {
     samples[col] = [...new Set(
       parsedData.slice(0, 5).map(r => r[col]).filter(v => v !== "" && v != null)
     )].slice(0, 4);
   });
 
-  const fb = classifyColumns(columns, parsedData);
+  const detection = await detectItemColumns(columns, samples);
+  let aiExcluded = new Set();
+  if (detection?.item_columns) {
+    aiExcluded = new Set(detection.item_columns);
+  }
+
+  const nonItemColumns = columns.filter(col =>
+    !aiExcluded.has(col) &&
+    !EXCLUDE_PATTERNS.some(p => p.test(col))
+  );
+  const itemColumns = columns.filter(col =>
+    aiExcluded.has(col) ||
+    EXCLUDE_PATTERNS.some(p => p.test(col))
+  );
+
+  const fb = classifyColumns(nonItemColumns, parsedData);
   const groupingCols = fb.groupingCols;
   const outcomeCols = fb.outcomeCols;
-  const excludeCols = fb.excludeCols;
+  const excludeCols = [...new Set([...itemColumns, ...fb.excludeCols])];
 
   try {
     const res = await fetch(`${API}/detect-scales`, {
