@@ -350,13 +350,6 @@ const OUTCOME_CAT_PATTERNS = [
   /_level$/i, /_seviye$/i,
 ];
 
-const REQUIRED_LABEL_PATTERNS = [
-  /_toplam$/i, /_total$/i, /_score$/i, /_puan$/i, /_skor$/i,
-  /_kategori$/i, /_category$/i,
-  /_grup(u)?$/i, /_group$/i,
-  /_binary$/i, /_risk$/i, /_sinif$/i,
-];
-
 const ITEM_COL_PATTERN = /^[a-zA-Z]+_\d+(_ters|_T)?$/i;
 
 const OUTCOME_CONT_PATTERNS = [
@@ -439,10 +432,31 @@ function classifyColumns(cols, data) {
   return { groupingCols, outcomeCols, excludeCols };
 }
 
+const FORCE_OUTCOME_SUFFIXES = [
+  /_toplam$/i, /_total$/i, /_score$/i, /_puan$/i, /_skor$/i,
+  /_sum$/i, /_mean$/i, /_avg$/i, /_ortalama$/i,
+  /_grubu?$/i, /_group$/i, /_binary$/i,
+  /_kategori$/i, /_category$/i, /_sinif$/i,
+  /_level$/i, /_seviye$/i, /_risk$/i, /_durum$/i,
+];
+
+const MEASUREMENT_LABEL_KEYWORDS = [
+  /\byaş\b/i, /\bage\b/i,
+  /\bboy\b/i, /\bheight\b/i,
+  /\bkilo\b/i, /\bweight\b/i, /\bağırlık\b/i,
+  /\bbeden kitle\b/i, /\bbmi\b/i, /\bbki\b/i, /\bvki\b/i,
+];
+
+function _isForcedOutcome(col, label) {
+  if (FORCE_OUTCOME_SUFFIXES.some(p => p.test(col))) return true;
+  const text = label || col;
+  return MEASUREMENT_LABEL_KEYWORDS.some(p => p.test(text));
+}
+
 function mapClassifyResponse(cls, data) {
   const recs = cls.recommendations || {};
 
-  const groupingCols = [
+  let groupingCols = [
     ...(cls.categorical || []).filter(col =>
       (recs[col]?.role || "grouping") === "grouping"
     ),
@@ -451,7 +465,7 @@ function mapClassifyResponse(cls, data) {
     ),
   ];
 
-  const outcomeCols = [
+  let outcomeCols = [
     ...(cls.continuous || []).filter(col =>
       (recs[col]?.role || "outcome") === "outcome"
     ),
@@ -459,6 +473,15 @@ function mapClassifyResponse(cls, data) {
       recs[col]?.role === "outcome"
     ),
   ];
+
+  const allCols = [...(cls.categorical || []), ...(cls.continuous || [])];
+  allCols.forEach(col => {
+    const label = userLabels?.[col] || "";
+    if (_isForcedOutcome(col, label)) {
+      groupingCols = groupingCols.filter(c => c !== col);
+      if (!outcomeCols.includes(col)) outcomeCols.push(col);
+    }
+  });
 
   return { groupingCols, outcomeCols, recommendations: recs };
 }
@@ -668,7 +691,7 @@ function getPdfContextForResult(result) {
 }
 
 function isRequiredLabelCol(col) {
-  return REQUIRED_LABEL_PATTERNS.some(p => p.test(col));
+  return true;
 }
 
 function renderLabelInputs(allCols) {
@@ -718,18 +741,12 @@ function renderLabelInputs(allCols) {
 }
 
 function checkRequiredLabels() {
-  collectUserLabelsFromInputs();
-  const allCols = [...selectedCat, ...selectedCont];
-  const missing = allCols
-    .filter(col => !ITEM_COL_PATTERN.test(col))
-    .filter(col => isRequiredLabelCol(col))
-    .filter(col => !userLabels[col] || userLabels[col] === col);
-
-  if (missing.length > 0) {
-    alert(`Lütfen şu değişkenler için Türkçe isim girin:\n${missing.join(", ")}`);
-    return false;
-  }
-  return true;
+  const allSelected = [...selectedCat, ...selectedCont];
+  const missing = allSelected.filter(col => {
+    const label = (userLabels[col] || "").trim();
+    return !label || label.toLowerCase() === col.toLowerCase();
+  });
+  return missing;
 }
 
 function toggleCol(type, col, checked) {
@@ -744,9 +761,14 @@ function toggleCol(type, col, checked) {
   }
 }
 
+const CONTINUOUS_EXEMPT = /yas|age|boy|height|kilo|weight|vki|bki|bmi|puan|skor|score|toplam|total/i;
+
 function checkNumericLabels(cols, data) {
   const suspicious = [];
-  cols.forEach(col => {
+  for (const col of cols) {
+    if (CONTINUOUS_EXEMPT.test(col)) continue;
+    if (contColumns.includes(col)) continue;
+
     const vals = data.slice(0, 50).map(r => r[col]).filter(v => v !== "" && v != null);
     const uniqueVals = [...new Set(vals)];
     const uniqueCount = uniqueVals.length;
@@ -759,7 +781,7 @@ function checkNumericLabels(cols, data) {
         suspicious.push({ col, values: uniqueVals.slice(0, 5) });
       }
     }
-  });
+  }
   return suspicious;
 }
 
@@ -1258,8 +1280,12 @@ function validateStep(step) {
       alert("En az bir değişken seçmelisiniz.");
       return false;
     }
-    if (!checkRequiredLabels()) return false;
     collectUserLabelsFromInputs();
+    const missingLabels = checkRequiredLabels();
+    if (missingLabels.length > 0) {
+      alert(`Devam etmeden önce şu değişkenlere Türkçe isim verin: ${missingLabels.join(", ")}`);
+      return false;
+    }
   }
 
   return true;

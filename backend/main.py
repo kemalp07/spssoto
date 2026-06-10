@@ -2406,41 +2406,73 @@ async def analyze_paired(req: PairedRequest):
 
 CLASSIFY_SYSTEM = """
 Sen akademik araştırma veri analisti yardımcısısın.
-Verilen sütun isimleri, kullanıcı etiketleri ve örnek değerlere bakarak
+Sütun adı, kullanıcı etiketi ve örnek değerlere bakarak
 her sütunu sınıflandır.
 
-KARAR MANTIĞI:
+━━━ TYPE KURALI ━━━
 
-TYPE:
-- continuous: Sayısal, geniş aralık (ölçek puanları, yaş, boy, kilo, VKİ vb.)
-- categorical: Metin değerli VEYA az benzersiz sayısal değer (≤8 farklı değer)
-  (cinsiyet, bölüm, evet/hayır, risk grubu, kategori vb.)
-- exclude: Sadece ID/sıra no kolonları ve ölçek maddeleri
-  (kolon adı: id, no, anket_no, sira — VEYA harf_rakam pattern: oys_1, bdi_3, sf36_12)
+continuous:
+- Sayısal, geniş aralıklı (ölçek puanı, yaş, boy, kilo, VKİ vb.)
+- Örnek değerler birbirinden farklı, aralık geniş
 
-ROLE:
-- grouping: Demografik veya bağımsız değişken
-  (cinsiyet, bölüm, eğitim, gelir, medeni durum, meslek,
-   sigara, alkol, kronik hastalık, ilaç kullanımı vb.)
-- outcome: Ölçek puanı, risk grubu, kategori, bağımlı değişken
-  (toplam puan, skor, risk grubu, BKİ kategorisi, yaş grubu vb.)
-- exclude: exclude olan kolonlar
+categorical:
+- Metin değerli (Erkek/Kadın, Evet/Hayır, bölüm adları vb.)
+- Sayısal ama ≤8 farklı benzersiz değer (kod sistemi)
 
-ÖNERİ (recommended):
-- Araştırma konusuyla doğrudan ilişkili → true
-- İkincil veya opsiyonel demografik → false
-- outcome kolonların hepsi → true
-- Temel demografikler (cinsiyet, bölüm) → true
-- İkincil demografikler (medeni durum, gelir, kronik hastalık) → false
+exclude:
+- Sadece kimlik/sıra kolonları: id, no, sira, anket_no, serial
+- Ölçek maddeleri: harf_rakam pattern (oys_1, bdi_3, sf36_12, sbito_6_ters)
 
-SADECE JSON döndür, başka hiçbir şey yazma:
+━━━ ROLE KURALI ━━━
+
+grouping (bağımsız/demografik değişken):
+- Katılımcıları gruplara ayıran kategorik değişkenler
+- Cinsiyet, bölüm, eğitim düzeyi, medeni durum, gelir,
+  meslek, yaşadığı yer, çalışma durumu gibi
+- Evet/Hayır tipi demografik sorular:
+  sigara kullanımı, alkol kullanımı, kronik hastalık,
+  ilaç kullanımı, spor yapma, diyet uygulama gibi
+- KURAL: categorical + demografik anlam = grouping
+
+outcome (bağımlı/sonuç değişkeni):
+- Ölçek toplam/alt boyut puanları (continuous)
+- Türetilmiş kategoriler: risk grubu, BKİ kategorisi,
+  yaş grubu, puan kategorisi, sınıflandırma (categorical)
+- Ham antropometrik ölçümler: yaş, boy, kilo, vücut ağırlığı,
+  BKİ/VKİ ham değeri (continuous) — bunlar tanımlayıcı
+  istatistikte raporlanır, gruplandırma için kullanılmaz
+- KURAL: continuous ölçüm = outcome
+- KURAL: _toplam/_total/_score/_puan/_skor ile biten = outcome
+- KURAL: _grubu/_grup/_group/_binary/_kategori/_sinif/_level
+  ile biten = outcome (categorical)
+
+━━━ RECOMMENDED KURALI ━━━
+
+true:
+- Tüm outcome değişkenler
+- Ana gruplandırma değişkenleri (cinsiyet, bölüm/departman/fakülte)
+- Araştırma konusuyla doğrudan ilişkili demografikler
+
+false:
+- İkincil demografikler (medeni durum, gelir, konut durumu)
+- Ham antropometrik ölçümler (boy, kilo) — VKİ zaten hesaplanmışsa
+- Araştırma sorusuyla zayıf ilişkili değişkenler
+
+━━━ ÖNEMLİ ━━━
+- Hiçbir kolon adını hardcode olarak tanıma
+- Karar her zaman: kolon adı + etiket + örnek değer kombinasyonuna göre
+- Aynı kavramın hem ham (vki=20.5) hem kategorik (vki_kategori=Normal)
+  versiyonu varsa: ham → outcome/continuous, kategorik → outcome/categorical
+- Etiket varsa kolon adından daha güvenilir — etiketi öncelikle kullan
+
+SADECE JSON döndür:
 {
   "variables": {
-    "kolon_adı": {
+    "kolon_adi": {
       "type": "categorical|continuous|exclude",
       "role": "grouping|outcome|exclude",
       "recommended": true|false,
-      "reason": "Kısa Türkçe açıklama"
+      "reason": "kısa Türkçe açıklama"
     }
   }
 }
