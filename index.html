@@ -304,16 +304,16 @@ let scaleInfo = {};
 let currentStep = 0;
 let variablesDataReady = false;
 let lastRecommendations = {};
-let wizardFormState = { scaleNames: "", topic: "", scaleInfoHtml: "" };
+let wizardFormState = { scaleNames: "", topic: "" };
 let fileInfoText = "";
 let scaleMatchResults = [];
 let pdfContextMap = {};
 let ethicsFileBase64 = null;
 let ethicsFileType = null;
 
-const STEPS = ["upload", "scales", "topic", "cutoffs", "variables", "plan", "results"];
-const STEP_LABELS = ["Dosya", "Ölçekler", "Konu", "Kesim", "Değişkenler", "Plan", "Sonuçlar"];
-const STEP_ICONS = ["📁", "📋", "🎯", "✂️", "🔢", "📊", "✅"];
+const STEPS = ["upload", "scales", "topic", "variables", "plan", "results"];
+const STEP_LABELS = ["Dosya", "Ölçekler", "Konu", "Değişkenler", "Plan", "Sonuçlar"];
+const STEP_ICONS = ["📁", "📋", "🎯", "🔢", "📊", "✅"];
 
 const EXCLUDE_PATTERNS = [
   /^(anket_no|id|no|sira|num|serial)$/i,
@@ -539,24 +539,15 @@ function saveEthicsFileBase64(file) {
       ethicsFileBase64 = e.target.result.split(",")[1];
       ethicsFileType = file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "docx";
       const status = document.getElementById("ethicsFileStatus");
-      const label = document.getElementById("ethicsFileLabel");
-      if (label) label.textContent = "📎 " + file.name;
-      if (status) status.style.display = "block";
+      if (status) {
+        status.style.display = "block";
+        status.textContent = "✅ " + file.name;
+      }
       resolve();
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-}
-
-async function handleEthicsFileSelect(file) {
-  if (!file) return;
-  const ext = file.name.toLowerCase();
-  if (!ext.endsWith(".pdf") && !ext.endsWith(".docx")) {
-    showEthicsReportStatus("❌ Sadece PDF veya DOCX dosyaları desteklenir.", "error");
-    return;
-  }
-  await saveEthicsFileBase64(file);
 }
 
 async function fetchPdfContext() {
@@ -724,10 +715,8 @@ function proceedWithNumbers() {
 function saveWizardFormState() {
   const si = document.getElementById("scaleNamesInput");
   const topic = document.getElementById("researchTopic");
-  const result = document.getElementById("scaleInfoResult");
   if (si) wizardFormState.scaleNames = si.value;
   if (topic) wizardFormState.topic = topic.value;
-  if (result) wizardFormState.scaleInfoHtml = result.innerHTML;
 }
 
 function suggestedScaleNames() {
@@ -837,54 +826,6 @@ async function runScaleMatching() {
   }
 }
 
-function updateScaleCutoff(key, value) {
-  if (scaleInfo[key]) scaleInfo[key].cutoff = parseInt(value, 10);
-}
-
-function shouldShowCutoffsStep() {
-  return getOutcomeScaleColumns().length > 0;
-}
-
-function findScaleInfoForColumn(col) {
-  for (const [key, info] of Object.entries(scaleInfo)) {
-    if (colMatchesScale(col, key)) return { key, info };
-  }
-  return null;
-}
-
-function ensureCutoffEntries() {
-  const cols = getOutcomeScaleColumns();
-  if (!cols.length) return;
-  const byCode = new Map(approvedCutoffs.map(c => [c.code, { ...c }]));
-  approvedCutoffs = cols.map(code => {
-    const existing = byCode.get(code);
-    const label = userLabels[code] || code;
-    const entry = existing ? { ...existing } : {
-      code,
-      label,
-      scale_name: label,
-      has_cutoff: false,
-      cutoff_ranges: "",
-      citation: "",
-      cutoff_score: null,
-    };
-    entry.label = entry.label || label;
-    entry.scale_name = entry.scale_name || entry.label;
-    const matched = findScaleInfoForColumn(code);
-    if (matched?.info) {
-      const si = matched.info;
-      if (si.full_name) entry.label = si.full_name;
-      if (si.reference && !entry.citation) entry.citation = si.reference;
-      if (si.cutoff != null && entry.cutoff_score == null) {
-        entry.cutoff_score = si.cutoff;
-        if (!entry.cutoff_ranges) entry.cutoff_ranges = `Kesim puanı: ${si.cutoff}`;
-        entry.has_cutoff = true;
-      }
-    }
-    return entry;
-  });
-}
-
 function initUploadZoneDragDrop() {
   const zone = document.getElementById("uploadZone");
   if (!zone || zone.dataset.dragBound) return;
@@ -948,13 +889,6 @@ function renderUploadStep() {
             <span class="format-badge">.docx</span>
           </div>
         </div>
-        <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;
-                      padding:8px 16px; border:1px dashed var(--border); border-radius:8px;
-                      font-size:13px; color:var(--muted)">
-          <span id="ethicsFileLabel">📎 Rapor seç (.pdf veya .docx)</span>
-          <input type="file" id="ethicsFileInputAlt" accept=".pdf,.docx"
-                 style="display:none" onchange="handleEthicsFileSelect(this.files[0])">
-        </label>
         <input type="file" id="ethicsFileInput" accept=".pdf,.docx" onchange="handleEthicsReport(this.files[0])" style="display:none" />
         <div id="ethicsFileStatus" style="display:none; font-size:12px; color:#34d399; margin-top:6px">✅ Rapor yüklendi</div>
       </div>
@@ -977,13 +911,9 @@ function renderScalesStep() {
     <div class="wizard-card">
       <div class="wizard-title">📋 Kullandığınız ölçekler</div>
       <div class="wizard-subtitle">Araştırmanızda kullandığınız ölçek/anket isimlerini yazın. Her birini virgülle ayırın.</div>
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <input type="text" id="scaleNamesInput" value="${escHtml(names)}"
-          placeholder="örn: OYŞTÖ, Gece Yeme Anketi, SBİTO"
-          style="flex:1; min-width:200px; padding:10px 14px; font-size:14px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:8px;" />
-        <button class="btn btn-primary" onclick="fetchScaleInfoFromInput()" id="btnFetchScales">🔍 Getir</button>
-      </div>
-      <div id="scaleInfoResult" style="margin-top:16px;">${wizardFormState.scaleInfoHtml}</div>
+      <input type="text" id="scaleNamesInput" value="${escHtml(names)}"
+        placeholder="örn: OYŞTÖ, Gece Yeme Anketi, SBİTO"
+        style="width:100%; padding:10px 14px; font-size:14px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:8px; box-sizing:border-box;" />
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
         <div style="font-size:12px; color:var(--muted);">Ölçek yoksa boş bırakabilirsiniz</div>
@@ -1004,60 +934,6 @@ function renderTopicStep() {
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
         <button class="btn btn-success" onclick="nextStep()">Devam →</button>
-      </div>
-    </div>`;
-}
-
-function renderCutoffsStep() {
-  ensureCutoffEntries();
-
-  return `
-    <div class="wizard-card" style="max-width:720px;">
-      <div class="wizard-title">✂️ Kesim Noktaları</div>
-      <div class="wizard-subtitle">
-        AI veya literatürden gelen değerleri kontrol edin; bulunamayan ölçekler için kesim puanı ve aralığı manuel girebilirsiniz.
-      </div>
-      ${approvedCutoffs.length ? approvedCutoffs.map((c, i) => `
-        <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:12px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
-            <div style="font-weight:700;">${escHtml(c.label || c.code)}</div>
-            <label style="font-size:13px; display:flex; align-items:center; gap:6px; cursor:pointer;">
-              <input type="checkbox" id="cutoff_use_${i}" ${c.has_cutoff ? "checked" : ""} />
-              Kesim noktası kullan
-            </label>
-          </div>
-          <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">Kod: ${escHtml(c.code)}</div>
-          <input type="hidden" id="cutoff_code_${i}" value="${escAttr(c.code)}" />
-          <div style="margin-bottom:10px;">
-            <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Ölçek adı</label>
-            <input type="text" id="cutoff_label_${i}" value="${escAttr(c.label || c.code)}"
-              style="width:100%; padding:8px 10px; font-size:13px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px; box-sizing:border-box;" />
-          </div>
-          <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
-            <div style="flex:0 0 140px;">
-              <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Kesim puanı</label>
-              <input type="number" id="cutoff_score_${i}" value="${c.cutoff_score != null ? c.cutoff_score : ""}" placeholder="örn. 18"
-                style="width:100%; padding:8px 10px; font-size:13px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px; box-sizing:border-box;" />
-            </div>
-            <div style="flex:1; min-width:200px;">
-              <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Atıf (isteğe bağlı)</label>
-              <input type="text" id="cutoff_citation_${i}" value="${escAttr(c.citation || "")}" placeholder="Yazar (yıl)"
-                style="width:100%; padding:8px 10px; font-size:13px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px; box-sizing:border-box;" />
-            </div>
-          </div>
-          <div>
-            <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Kesim aralıkları / risk tanımı</label>
-            <textarea id="cutoff_range_${i}" rows="3" placeholder="Örn: 18 puan ve üzeri riskli; &lt;18 düşük risk"
-              style="width:100%; padding:8px 10px; font-size:12px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px; box-sizing:border-box; resize:vertical;">${escAttr(c.cutoff_ranges || "")}</textarea>
-          </div>
-          ${!c.has_cutoff && !c.cutoff_ranges ? `<div style="font-size:11px; color:var(--warn); margin-top:8px;">AI kesim bulamadı — manuel girebilir veya boş bırakabilirsiniz.</div>` : ""}
-        </div>`).join("") : `
-        <div style="color:var(--muted); font-size:13px; padding:12px; background:var(--bg); border-radius:8px;">
-          Veri setinde _TOPLAM sütunu bulunamadı; kesim noktası adımı atlanacak.
-        </div>`}
-      <div class="wizard-nav">
-        <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
-        <button class="btn btn-success" onclick="nextStep()">${approvedCutoffs.length ? "Onayla →" : "Devam →"}</button>
       </div>
     </div>`;
 }
@@ -1115,7 +991,6 @@ function renderStep(step) {
     case "upload": return renderUploadStep();
     case "scales": return renderScalesStep();
     case "topic": return renderTopicStep();
-    case "cutoffs": return renderCutoffsStep();
     case "variables": return renderVariablesStep();
     case "plan": return renderPlanStep();
     case "results": return renderResultsStep();
@@ -1259,10 +1134,6 @@ function validateStep(step) {
     wizardFormState.topic = topic;
   }
 
-  if (name === "cutoffs" && shouldShowCutoffsStep()) {
-    approvedCutoffs = collectApprovedCutoffsFromForm();
-  }
-
   if (name === "variables") {
     if (!selectedCat.size && !selectedCont.size) {
       alert("En az bir değişken seçmelisiniz.");
@@ -1291,29 +1162,7 @@ async function nextStep() {
   if (STEPS[currentStep] === "topic") {
     ensurePendingUserLabels();
     applyScaleInfoToLabels();
-
-    const btn = document.querySelector(".slide-active .btn-success");
-    const prevText = btn ? btn.innerHTML : "";
-
-    const hasScaleCutoffs = Object.values(scaleInfo).some(s => s && s.cutoff != null);
-    if (!hasScaleCutoffs && shouldShowCutoffsStep()) {
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = "⏳ Kesim noktaları aranıyor...";
-      }
-      try {
-        await loadCutoffsForTopic(researchTopicText);
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = prevText;
-        }
-      }
-    }
-    ensureCutoffEntries();
   }
-
-  if (STEPS[next] === "cutoffs" && !shouldShowCutoffsStep()) next++;
 
   if (STEPS[next] === "variables" && !variablesDataReady) {
     const btn = document.querySelector(".slide-active .btn-success");
@@ -1337,8 +1186,7 @@ async function nextStep() {
 }
 
 function prevStep() {
-  let prev = currentStep - 1;
-  if (STEPS[prev] === "cutoffs" && !shouldShowCutoffsStep()) prev--;
+  const prev = currentStep - 1;
   if (prev >= 0) goToStep(prev, "backward");
 }
 
@@ -1366,7 +1214,7 @@ function resetWizard() {
   researchTopicText = "";
   variablesDataReady = false;
   lastRecommendations = {};
-  wizardFormState = { scaleNames: "", topic: "", scaleInfoHtml: "" };
+  wizardFormState = { scaleNames: "", topic: "" };
   fileInfoText = "";
   scaleMatchResults = [];
   pdfContextMap = {};
@@ -1404,29 +1252,6 @@ function ethicsScaleToScaleInfo(scale) {
   if (scale.adaptation) notes.push(`Uyarlama: ${scale.adaptation}`);
   if (notes.length) info.note = notes.join(" · ");
   return { key, info };
-}
-
-function renderScaleInfoHtml(scaleMap) {
-  if (!Object.keys(scaleMap).length) return "";
-  return `
-    <div style="font-size:13px; font-weight:600; margin-bottom:10px; color:var(--accent);">
-      ✅ ${Object.keys(scaleMap).length} ölçek bulundu — bilgileri kontrol edin:
-    </div>
-    ${Object.entries(scaleMap).map(([name, info]) => `
-      <div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:8px;">
-        <div style="font-weight:700; margin-bottom:4px;">${escHtml(name)}</div>
-        <div style="font-size:12px; color:var(--muted); line-height:1.8;">
-          ${info.full_name ? `<span>📖 ${escHtml(info.full_name)}</span><br>` : ""}
-          ${info.item_count ? `<span>📝 ${info.item_count} madde</span> · ` : ""}
-          ${(info.min_score != null && info.max_score != null) ? `<span>📊 Teorik aralık: ${info.min_score}–${info.max_score}</span> · ` : ""}
-          ${info.likert ? `<span>🔢 ${escHtml(info.likert)}</span>` : ""}
-          ${info.note ? `<br><span style="color:var(--text);">💡 ${escHtml(info.note)}</span>` : ""}
-        </div>
-      </div>
-    `).join("")}
-    <div style="font-size:12px; color:var(--muted); margin-top:8px;">
-      Bilgiler yanlışsa ölçek isimlerini düzeltin ve tekrar deneyin.
-    </div>`;
 }
 
 function mergeEthicsScalesIntoScaleInfo(scales) {
@@ -1511,12 +1336,6 @@ async function handleEthicsReport(file) {
       if (topicInput) topicInput.value = data.research_topic;
     }
 
-    if (Object.keys(scaleInfo).length) {
-      wizardFormState.scaleInfoHtml = renderScaleInfoHtml(scaleInfo);
-      const resultDiv = document.getElementById("scaleInfoResult");
-      if (resultDiv) resultDiv.innerHTML = wizardFormState.scaleInfoHtml;
-    }
-
     const ti = data.token_info || {};
     const n = scales.length;
     const fp = ti.filtered_pages ?? "?";
@@ -1549,16 +1368,15 @@ async function handleEthicsReport(file) {
 function resetEthicsUploadZone() {
   const zone = document.getElementById("ethicsUploadZone");
   const input = document.getElementById("ethicsFileInput");
-  const inputAlt = document.getElementById("ethicsFileInputAlt");
   ethicsFileBase64 = null;
   ethicsFileType = null;
   pdfContextMap = {};
   if (input) input.value = "";
-  if (inputAlt) inputAlt.value = "";
   const status = document.getElementById("ethicsFileStatus");
-  const label = document.getElementById("ethicsFileLabel");
-  if (status) status.style.display = "none";
-  if (label) label.textContent = "📎 Rapor seç (.pdf veya .docx)";
+  if (status) {
+    status.style.display = "none";
+    status.textContent = "✅ Rapor yüklendi";
+  }
   if (zone) {
     zone.innerHTML = `
       <div class="icon">📄</div>
@@ -1607,7 +1425,6 @@ function handleFile(file) {
       .filter(c => /_TOPLAM$/i.test(c))
       .map(c => c.split("_")[0].toUpperCase());
     wizardFormState.scaleNames = prefixes.length ? [...new Set(prefixes)].join(", ") : "";
-    wizardFormState.scaleInfoHtml = "";
     wizardFormState.topic = "";
     approvedCutoffs = [];
     scaleInfo = {};
@@ -1629,65 +1446,6 @@ function handleFile(file) {
   reader.readAsBinaryString(file);
 }
 
-function getOutcomeScaleColumns() {
-  if (!pendingJson || !pendingJson.length) return [];
-  return Object.keys(pendingJson[0]).filter(c => /_TOPLAM$/i.test(c));
-}
-
-function collectApprovedCutoffsFromForm() {
-  return approvedCutoffs.map((c, i) => {
-    const label = document.getElementById(`cutoff_label_${i}`)?.value?.trim() || c.label;
-    const ranges = document.getElementById(`cutoff_range_${i}`)?.value?.trim() || "";
-    const scoreRaw = document.getElementById(`cutoff_score_${i}`)?.value;
-    const score = scoreRaw !== "" && scoreRaw != null ? parseInt(scoreRaw, 10) : null;
-    const useCutoff = document.getElementById(`cutoff_use_${i}`)?.checked;
-    const has_cutoff = Boolean(useCutoff || ranges || (score != null && !Number.isNaN(score)));
-    let cutoff_ranges = ranges;
-    if (!cutoff_ranges && score != null && !Number.isNaN(score)) {
-      cutoff_ranges = `Kesim puanı: ${score}`;
-    }
-    return {
-      code: document.getElementById(`cutoff_code_${i}`)?.value || c.code,
-      label,
-      scale_name: label,
-      has_cutoff,
-      cutoff_ranges: has_cutoff
-        ? (cutoff_ranges || "Sayısal toplam puan üzerinden değerlendirilir")
-        : cutoff_ranges,
-      citation: document.getElementById(`cutoff_citation_${i}`)?.value?.trim() || c.citation || "",
-      cutoff_score: score != null && !Number.isNaN(score) ? score : null,
-    };
-  });
-}
-
-async function loadCutoffsForTopic(topic) {
-  const scaleCols = getOutcomeScaleColumns();
-  if (!scaleCols.length) return false;
-
-  try {
-    const scales = scaleCols.map(code => ({
-      code,
-      label: userLabels[code] || code,
-    }));
-    const res = await fetch(`${API}/research/cutoffs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scales, research_topic: topic }),
-    });
-    if (!res.ok) return false;
-    const json = await res.json();
-    approvedCutoffs = (json.cutoffs || []).map(c => ({
-      ...c,
-      cutoff_score: null,
-    }));
-    ensureCutoffEntries();
-    return true;
-  } catch (e) {
-    console.warn(e);
-    return false;
-  }
-}
-
 function ensurePendingUserLabels() {
   if (!pendingJson?.length) return;
   Object.keys(pendingJson[0])
@@ -1695,62 +1453,6 @@ function ensurePendingUserLabels() {
     .forEach(col => {
       if (!userLabels[col]) userLabels[col] = col;
     });
-}
-
-async function fetchScaleInfoFromInput() {
-  const input = document.getElementById("scaleNamesInput").value.trim();
-  if (!input) return alert("Lütfen ölçek isimlerini girin.");
-
-  const resultDiv = document.getElementById("scaleInfoResult");
-  resultDiv.innerHTML = `<div style="color:var(--muted); font-size:13px;">⏳ Ölçek bilgileri getiriliyor...</div>`;
-
-  const scaleNames = input.split(",").map(s => s.trim()).filter(Boolean);
-
-  try {
-    const res = await fetch(`${API}/scale-info`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        research_topic: document.getElementById("researchTopic")?.value || "",
-        scale_names: scaleNames,
-      }),
-    });
-    if (!res.ok) throw new Error("API hatası");
-    const data = await res.json();
-    scaleInfo = data.scales || {};
-
-    if (!Object.keys(scaleInfo).length) {
-      resultDiv.innerHTML = `<div style="color:var(--warn);">⚠️ Ölçek bilgisi bulunamadı. İsimler doğru mu?</div>`;
-      return;
-    }
-
-    resultDiv.innerHTML = `
-      <div style="font-size:13px; font-weight:600; margin-bottom:10px; color:var(--accent);">
-        ✅ ${Object.keys(scaleInfo).length} ölçek bulundu — bilgileri kontrol edin:
-      </div>
-      ${Object.entries(scaleInfo).map(([name, info]) => `
-        <div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:8px;">
-          <div style="font-weight:700; margin-bottom:4px;">${escHtml(name)}</div>
-          <div style="font-size:12px; color:var(--muted); line-height:1.8;">
-            ${info.full_name ? `<span>📖 ${escHtml(info.full_name)}</span><br>` : ""}
-            ${info.item_count ? `<span>📝 ${info.item_count} madde</span> · ` : ""}
-            ${(info.min_score != null && info.max_score != null) ? `<span>📊 Teorik aralık: ${info.min_score}–${info.max_score}</span> · ` : ""}
-            ${info.likert ? `<span>🔢 ${escHtml(info.likert)}</span>` : ""}
-            ${info.note ? `<br><span style="color:var(--text);">💡 ${escHtml(info.note)}</span>` : ""}
-          </div>
-        </div>
-      `).join("")}
-      <div style="font-size:12px; color:var(--muted); margin-top:8px;">
-        Bilgiler yanlışsa ölçek isimlerini düzeltin ve tekrar deneyin.
-      </div>
-    `;
-
-    ensurePendingUserLabels();
-    applyScaleInfoToLabels();
-    wizardFormState.scaleInfoHtml = resultDiv.innerHTML;
-  } catch (e) {
-    resultDiv.innerHTML = `<div style="color:var(--danger);">❌ Hata: ${escHtml(e.message)}</div>`;
-  }
 }
 
 async function loadData(json, fileName, researchTopic) {
