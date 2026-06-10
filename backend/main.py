@@ -53,6 +53,7 @@ class AnalysisRequest(BaseModel):
     variables: List[Variable]
     data: List[DataRow]
     active_types: Optional[List[str]] = None
+    enabled_tests: Optional[List[str]] = None
     missing_codes: Optional[List[str]] = None
     scale_info: Optional[dict] = None
 
@@ -1811,19 +1812,33 @@ Bu değişkenler için istatistiksel analiz planı oluştur."""
         return None
 
 
+def _test_enabled(test_id: str, enabled: Optional[List[str]]) -> bool:
+    if enabled is None:
+        return True
+    return test_id in enabled
+
+
 def run_analyze(
     df: pd.DataFrame,
     variables: List[Variable],
     active_types: Optional[List[str]] = None,
+    enabled_tests: Optional[List[str]] = None,
     scale_info: Optional[dict] = None,
     missing_codes: Optional[List[str]] = None,
 ) -> Tuple[List[dict], dict]:
     def enabled(test_key: str) -> bool:
+        if enabled_tests is not None:
+            return _test_enabled(test_key, enabled_tests)
         if active_types is None:
             return True
         return test_key in active_types
 
     def enabled_group(group_type: str, item_key: str) -> bool:
+        if enabled_tests is not None:
+            return (
+                _test_enabled(item_key, enabled_tests)
+                or _test_enabled(group_type, enabled_tests)
+            )
         if active_types is None:
             return True
         return group_type in active_types or item_key in active_types
@@ -2340,7 +2355,12 @@ async def analyze(req: AnalysisRequest):
     df = _prepare_analysis_df(df, variables, req.missing_codes)
     missing_data = missing_data_report(df, variables)
     results, meta = run_analyze(
-        df, variables, req.active_types, req.scale_info, req.missing_codes
+        df,
+        variables,
+        req.active_types,
+        req.enabled_tests,
+        req.scale_info,
+        req.missing_codes,
     )
     return sanitize({"results": results, "missing_data": missing_data, "meta": meta})
 

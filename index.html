@@ -2032,7 +2032,10 @@ async function loadAnalysisPlan() {
     });
     if (!res.ok) throw new Error("Plan hatası");
     const json = await res.json();
-    analysisPlan = json.tests || [];
+    analysisPlan = (json.tests || []).map(t => ({
+      ...t,
+      enabled: t.enabled !== false,
+    }));
     renderAnalysisPlan();
   } catch (e) {
     await runAnalysis(null);
@@ -2068,6 +2071,7 @@ function renderAnalysisPlan() {
 
 function togglePlan(i, checked) {
   analysisPlan[i].recommended = checked;
+  analysisPlan[i].enabled = checked;
   const card = document.getElementById(`plancard_${i}`);
   if (card) card.classList.toggle("disabled", !checked);
   const badge = card?.querySelector(".plan-badge-rec, .plan-badge-opt");
@@ -2079,12 +2083,14 @@ function togglePlan(i, checked) {
 }
 
 async function runAnalysisFromPlan() {
-  const activeTypes = new Set(analysisPlan.filter(t => t.recommended).map(t => t.id));
-  if (!activeTypes.size) return alert("En az bir test seçmelisiniz.");
-  await runAnalysis(activeTypes);
+  const enabledTests = analysisPlan
+    .filter(t => t.enabled !== false)
+    .map(t => t.id);
+  if (!enabledTests.length) return alert("En az bir test seçmelisiniz.");
+  await runAnalysis(null, enabledTests);
 }
 
-async function runAnalysis(activeTypes = null) {
+async function runAnalysis(activeTypes = null, enabledTests = null) {
   if (!selectedCat.size && !selectedCont.size) return alert("En az bir değişken seçmelisiniz.");
 
   bulgular = {};
@@ -2103,7 +2109,9 @@ async function runAnalysis(activeTypes = null) {
     missing_codes: getMissingCodes(),
     scale_info: scaleInfo,
   };
-  if (activeTypes && activeTypes.size) {
+  if (enabledTests && enabledTests.length) {
+    payload.enabled_tests = enabledTests;
+  } else if (activeTypes && activeTypes.size) {
     payload.active_types = [...activeTypes];
   }
 
