@@ -1109,49 +1109,66 @@ def missing_data_report(df: pd.DataFrame, variables: List[Variable]) -> list:
 # ── Normallik ─────────────────────────────────────────────────────────────────
 
 def assess_normality(series: pd.Series) -> dict:
-    s = series.dropna().astype(float)
+    from statsmodels.stats.diagnostic import lilliefors
+
+    s = pd.to_numeric(series, errors="coerce").dropna()
     n = len(s)
+
     if n < 3:
         return {
-            "n": n, "statistic": None, "stat_label": "W", "df": None, "p": None,
-            "skewness": None, "skew_se": None, "kurtosis": None, "kurt_se": None,
-            "is_parametric": True, "method": "yetersiz_veri",
+            "normal": True,
+            "n": n,
+            "test": "insufficient_data",
+            "method": "yetersiz_veri",
+            "statistic": None,
+            "stat_label": "W",
+            "p": None,
+            "df": n,
+            "skewness": None,
+            "skew_se": None,
+            "kurtosis": None,
+            "kurt_se": None,
+            "is_parametric": True,
         }
 
-    sk = float(skew(s))
-    ku = float(kurtosis(s, fisher=True))
-    se_sk = float(np.sqrt(6 / n))
-    se_ku = float(np.sqrt(24 / n))
-    skew_ok = abs(sk) <= 2.0
-    kurt_ok = abs(ku) <= 2.0
-
     if n <= 50:
-        stat, p = shapiro(s)
-        stat_label, method = "W", "Shapiro-Wilk"
+        stat, p = stats.shapiro(s)
+        test_name = "Shapiro-Wilk"
+        stat_label = "W"
     else:
-        stat, p = kstest(s, "norm", args=(s.mean(), s.std(ddof=1)))
-        stat_label, method = "D", "Kolmogorov-Smirnov"
+        try:
+            stat, p = lilliefors(s, dist="norm")
+            test_name = "Kolmogorov-Smirnov"
+            stat_label = "D"
+        except Exception:
+            stat, p = kstest(s, "norm", args=(float(s.mean()), float(s.std(ddof=1))))
+            test_name = "Kolmogorov-Smirnov"
+            stat_label = "D"
 
-    p = float(p)
-    if p >= 0.05:
-        is_parametric = True
-    elif skew_ok and kurt_ok:
-        is_parametric = True
+    skewness = float(s.skew())
+    kurt = float(s.kurtosis())
+    skew_se = (6 / n) ** 0.5
+    kurt_se = (24 / n) ** 0.5
+
+    if n > 200:
+        normal = abs(skewness) < 2 and abs(kurt) < 2
     else:
-        is_parametric = False
+        normal = float(p) > 0.05
 
     return {
+        "normal": normal,
         "n": n,
-        "statistic": round(float(stat), 3),
+        "test": test_name,
+        "method": test_name,
         "stat_label": stat_label,
+        "statistic": round(float(stat), 3),
+        "p": round(float(p), 3),
         "df": n,
-        "p": round(p, 3),
-        "skewness": round(sk, 2),
-        "skew_se": round(se_sk, 2),
-        "kurtosis": round(ku, 2),
-        "kurt_se": round(se_ku, 2),
-        "is_parametric": bool(is_parametric),
-        "method": method,
+        "skewness": round(skewness, 3),
+        "kurtosis": round(kurt, 3),
+        "skew_se": round(skew_se, 3),
+        "kurt_se": round(kurt_se, 3),
+        "is_parametric": bool(normal),
     }
 
 def build_intro(n_total: int) -> str:
@@ -1199,22 +1216,33 @@ def table_normality(tc: TableCounter, variables: List[Variable], df: pd.DataFram
         if v.name not in norm_map:
             continue
         nm = norm_map[v.name]
-        if nm["statistic"] is None:
+        if nm.get("statistic") is None:
             continue
-        rows.append([
-            v.label, f"{nm['stat_label']} = {nm['statistic']}", str(nm["df"]),
-            fmt_p_display(nm["p"]),
-            f"{nm['skewness']} / {nm['skew_se']}",
-            f"{nm['kurtosis']} / {nm['kurt_se']}",
-        ])
+        stat_str = f"{nm['stat_label']} = {nm['statistic']}"
+        p_str = fmt_p_display(nm["p"])
+        skew_ratio = (
+            f"{nm['skewness']} / {nm['skew_se']}"
+            if nm.get("skewness") is not None else "—"
+        )
+        kurt_ratio = (
+            f"{nm['kurtosis']} / {nm['kurt_se']}"
+            if nm.get("kurtosis") is not None else "—"
+        )
+        rows.append([v.label, stat_str, str(nm["df"]), p_str, skew_ratio, kurt_ratio])
     if not rows:
         return None
+    headers = [
+        "Değişken", "İstatistik", "df", "p",
+        "Çarpıklık / Std. Hata", "Basıklık / Std. Hata",
+    ]
+    note = (
+        "* p < .05; ** p < .01; *** p < .001. "
+        "Çarpıklık ve basıklık ±2.0 içindeyse "
+        "normal dağılım varsayımı karşılanmış kabul edilir."
+    )
     no, title = tc.next("Normallik Testi Sonuçları")
     return make_result(
-        "normality", no, title,
-        ["Değişken", "İstatistik", "df", "p", "Çarpıklık / Std. Hata", "Basıklık / Std. Hata"],
-        rows,
-        "Not. * p < .05; ** p < .01; *** p < .001. Çarpıklık ve basıklık ±2.0 içindeyse normal dağılım varsayımı karşılanmış kabul edilir.",
+        "normality", no, title, headers, rows, note,
         norm_map={v.name: norm_map[v.name] for v in variables if v.name in norm_map},
     )
 
@@ -1429,7 +1457,11 @@ def table_kruskal(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable
     )
 
 def table_correlation_matrix(
-    tc: TableCounter, variables: List[Variable], df: pd.DataFrame, norm_map: dict, use_pearson: bool
+    tc: TableCounter,
+    variables: List[Variable],
+    df: pd.DataFrame,
+    norm_map: Optional[dict] = None,
+    missing_codes: Optional[List[str]] = None,
 ) -> Optional[dict]:
     names = [v.name for v in variables if v.name in df.columns]
     labels = [v.label for v in variables if v.name in df.columns]
@@ -1437,6 +1469,16 @@ def table_correlation_matrix(
     if n_vars < 2:
         return None
 
+    all_normal = True
+    if norm_map:
+        for v in variables:
+            if v.name in norm_map:
+                nm = norm_map[v.name]
+                if not nm.get("normal", nm.get("is_parametric", True)):
+                    all_normal = False
+                    break
+
+    use_pearson = all_normal
     method = "Pearson" if use_pearson else "Spearman"
     corr_fn = stats.pearsonr if use_pearson else spearmanr
     matrix = np.eye(n_vars)
@@ -1471,10 +1513,12 @@ def table_correlation_matrix(
         rows.append(row)
 
     no, title = tc.next(f"Değişkenler Arası {method} Korelasyon Katsayıları")
-    star_note = "* p < .05; ** p < .01; *** p < .001"
+    note = (
+        f"Not. {method} korelasyon katsayıları. "
+        "* p < .05; ** p < .01; *** p < .001 (çift kuyruklu)."
+    )
     return make_result(
-        "correlation_matrix", no, title, headers, rows,
-        f"Not. {star_note} (çift kuyruklu).",
+        "correlation_matrix", no, title, headers, rows, note,
         method=method, variables=labels,
     )
 
@@ -1955,8 +1999,11 @@ def run_analyze(
     corr_vars = [v for v in outcome_cont if is_numeric_continuous(df, v, norm_map)]
     if enabled("correlation") and len(corr_vars) >= 2:
         try:
-            all_parametric = all(norm_map.get(v.name, {}).get("is_parametric", True) for v in corr_vars)
-            r = table_correlation_matrix(tc, corr_vars, df, norm_map, all_parametric)
+            r = table_correlation_matrix(
+                tc, corr_vars, df,
+                norm_map=norm_map,
+                missing_codes=missing_codes,
+            )
             if r:
                 results.append(r)
         except Exception:
