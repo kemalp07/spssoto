@@ -1441,6 +1441,18 @@ async function nextStep() {
     }
   }
 
+  // Dosya yüklendi, toplam kolon var mı kontrol et
+  const hasTotalCols = columns.some(col =>
+    /(_toplam|_total|_score|_sum|^t[a-z]{2,})$/i.test(col) &&
+    !EXCLUDE_PATTERNS.some(p => p.test(col))
+  );
+
+  // Toplam kolonlar varsa scales step'i atla
+  if (hasTotalCols && STEPS[currentStep + 1] === "scales") {
+    goToStep(currentStep + 2, "forward");
+    return;
+  }
+
   if (next < STEPS.length) goToStep(next, "forward");
 }
 

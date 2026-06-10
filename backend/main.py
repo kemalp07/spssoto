@@ -2825,6 +2825,33 @@ outcome (bağımlı/sonuç):
   - Sigara adedi (smokenum, cigarettes per day) → outcome/continuous
     (demografik ama sürekli ölçüm, tanımlayıcıda gösterilir)
 
+ÖZEL KURALLAR (hardcode isim yok, mantık bazlı):
+
+1. Hem ham sürekli hem kategorik grubu olan değişkenler:
+   Eğer veri setinde bir değişkenin hem ham hali (age=24,39,48)
+   hem kategorik grubu (agegp3=1,2,3) varsa:
+   - Ham hal (age) → role: outcome, type: continuous
+     (tanımlayıcıda gösterilir, t-test/ANOVA bağımsız değişkeni olma)
+   - Kategorik grup (agegp3) → role: grouping, type: categorical
+
+   Tespit: Kolon adı başka bir kolonun kısaltmasını içeriyorsa
+   ve o kolon kategorik ise, sürekli olanı outcome yap.
+   Örn: age + agegp3 → age=outcome, agegp3=grouping
+
+2. Sayısal miktar/frekans değişkenleri:
+   Sürekli, geniş aralıklı VE demografik bağlamda miktar belirten:
+   (sigara sayısı, içki miktarı, egzersiz süresi vb.)
+   → role: outcome, type: continuous
+
+   Tespit: Kolon adı veya etiketi 'num', 'number', 'amount',
+   'count', 'per day', 'günde', 'adet', 'sayı' içeriyorsa
+   VE değer aralığı > 20 ise → outcome/continuous
+
+3. Stres kaynağı, kaynak tipi gibi çok kategorili demografikler:
+   (source, stres kaynağı, kaynak, major source) → grouping
+   Tespit: Etiket 'source', 'kaynak', 'type', 'tür' içeriyorsa
+   ve kategorik ise → grouping
+
 ÖNEMLI KURALLAR:
 1. Etiket "Age", "Yaş", "age" → continuous + grouping
    (tanımlayıcıda gösterilir, t-test/ANOVA bağımsız değişkeni olur)
