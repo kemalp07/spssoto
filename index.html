@@ -641,9 +641,48 @@ function updateScaleCutoff(key, value) {
   if (scaleInfo[key]) scaleInfo[key].cutoff = parseInt(value, 10);
 }
 
-function hasCutoffData() {
-  if (Object.values(scaleInfo).some(s => s && s.cutoff != null)) return true;
-  return approvedCutoffs.some(c => c.has_cutoff);
+function shouldShowCutoffsStep() {
+  return getOutcomeScaleColumns().length > 0;
+}
+
+function findScaleInfoForColumn(col) {
+  for (const [key, info] of Object.entries(scaleInfo)) {
+    if (colMatchesScale(col, key)) return { key, info };
+  }
+  return null;
+}
+
+function ensureCutoffEntries() {
+  const cols = getOutcomeScaleColumns();
+  if (!cols.length) return;
+  const byCode = new Map(approvedCutoffs.map(c => [c.code, { ...c }]));
+  approvedCutoffs = cols.map(code => {
+    const existing = byCode.get(code);
+    const label = userLabels[code] || code;
+    const entry = existing ? { ...existing } : {
+      code,
+      label,
+      scale_name: label,
+      has_cutoff: false,
+      cutoff_ranges: "",
+      citation: "",
+      cutoff_score: null,
+    };
+    entry.label = entry.label || label;
+    entry.scale_name = entry.scale_name || entry.label;
+    const matched = findScaleInfoForColumn(code);
+    if (matched?.info) {
+      const si = matched.info;
+      if (si.full_name) entry.label = si.full_name;
+      if (si.reference && !entry.citation) entry.citation = si.reference;
+      if (si.cutoff != null && entry.cutoff_score == null) {
+        entry.cutoff_score = si.cutoff;
+        if (!entry.cutoff_ranges) entry.cutoff_ranges = `Kesim puanı: ${si.cutoff}`;
+        entry.has_cutoff = true;
+      }
+    }
+    return entry;
+  });
 }
 
 function initUploadZoneDragDrop() {
@@ -727,34 +766,55 @@ function renderTopicStep() {
 }
 
 function renderCutoffsStep() {
-  const cutoffKeys = Object.keys(scaleInfo).filter(k => scaleInfo[k]?.cutoff != null);
-  const litCutoffs = approvedCutoffs.filter(c => c.has_cutoff);
-  if (!cutoffKeys.length && !litCutoffs.length) return renderTopicStep();
+  ensureCutoffEntries();
 
   return `
-    <div class="wizard-card">
+    <div class="wizard-card" style="max-width:720px;">
       <div class="wizard-title">✂️ Kesim Noktaları</div>
-      <div class="wizard-subtitle">Literatürden bulunan kesim/risk eşiklerini kontrol edin.</div>
-      ${cutoffKeys.map(k => `
-        <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:10px;">
-          <div style="font-weight:700; margin-bottom:8px;">${escHtml(scaleInfo[k].full_name || k)}</div>
-          <div style="display:flex; gap:12px; align-items:center;">
-            <label style="font-size:13px; color:var(--muted);">Kesim puanı:</label>
-            <input type="number" value="${scaleInfo[k].cutoff}" data-key="${escHtml(k)}"
-              onchange="updateScaleCutoff(this.dataset.key, this.value)"
-              style="width:80px; padding:6px 10px; font-size:14px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px;" />
+      <div class="wizard-subtitle">
+        AI veya literatürden gelen değerleri kontrol edin; bulunamayan ölçekler için kesim puanı ve aralığı manuel girebilirsiniz.
+      </div>
+      ${approvedCutoffs.length ? approvedCutoffs.map((c, i) => `
+        <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+            <div style="font-weight:700;">${escHtml(c.label || c.code)}</div>
+            <label style="font-size:13px; display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="cutoff_use_${i}" ${c.has_cutoff ? "checked" : ""} />
+              Kesim noktası kullan
+            </label>
           </div>
-        </div>`).join("")}
-      ${litCutoffs.map((c, i) => `
-        <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:10px;">
-          <div style="font-weight:700; margin-bottom:8px;">${escAttr(c.label || c.code)}</div>
-          <textarea id="cutoff_range_${i}" rows="2" style="width:100%; padding:8px; font-size:12px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px;">${escAttr(c.cutoff_ranges || "")}</textarea>
+          <div style="font-size:11px; color:var(--muted); margin-bottom:10px;">Kod: ${escHtml(c.code)}</div>
           <input type="hidden" id="cutoff_code_${i}" value="${escAttr(c.code)}" />
-          <input type="hidden" id="cutoff_label_${i}" value="${escAttr(c.label || c.code)}" />
-        </div>`).join("")}
+          <div style="margin-bottom:10px;">
+            <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Ölçek adı</label>
+            <input type="text" id="cutoff_label_${i}" value="${escAttr(c.label || c.code)}"
+              style="width:100%; padding:8px 10px; font-size:13px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px; box-sizing:border-box;" />
+          </div>
+          <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+            <div style="flex:0 0 140px;">
+              <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Kesim puanı</label>
+              <input type="number" id="cutoff_score_${i}" value="${c.cutoff_score != null ? c.cutoff_score : ""}" placeholder="örn. 18"
+                style="width:100%; padding:8px 10px; font-size:13px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px; box-sizing:border-box;" />
+            </div>
+            <div style="flex:1; min-width:200px;">
+              <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Atıf (isteğe bağlı)</label>
+              <input type="text" id="cutoff_citation_${i}" value="${escAttr(c.citation || "")}" placeholder="Yazar (yıl)"
+                style="width:100%; padding:8px 10px; font-size:13px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px; box-sizing:border-box;" />
+            </div>
+          </div>
+          <div>
+            <label style="font-size:12px; color:var(--muted); display:block; margin-bottom:4px;">Kesim aralıkları / risk tanımı</label>
+            <textarea id="cutoff_range_${i}" rows="3" placeholder="Örn: 18 puan ve üzeri riskli; &lt;18 düşük risk"
+              style="width:100%; padding:8px 10px; font-size:12px; background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:6px; box-sizing:border-box; resize:vertical;">${escAttr(c.cutoff_ranges || "")}</textarea>
+          </div>
+          ${!c.has_cutoff && !c.cutoff_ranges ? `<div style="font-size:11px; color:var(--warn); margin-top:8px;">AI kesim bulamadı — manuel girebilir veya boş bırakabilirsiniz.</div>` : ""}
+        </div>`).join("") : `
+        <div style="color:var(--muted); font-size:13px; padding:12px; background:var(--bg); border-radius:8px;">
+          Veri setinde _TOPLAM sütunu bulunamadı; kesim noktası adımı atlanacak.
+        </div>`}
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
-        <button class="btn btn-success" onclick="nextStep()">Onayla →</button>
+        <button class="btn btn-success" onclick="nextStep()">${approvedCutoffs.length ? "Onayla →" : "Devam →"}</button>
       </div>
     </div>`;
 }
@@ -798,7 +858,7 @@ function renderResultsStep() {
         <div class="wizard-title" style="margin:0;">✅ Analiz Sonuçları</div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
-          <button class="btn btn-primary" onclick="generateAllBulgu()">✨ Tüm Bulguları Yaz</button>
+          <button class="btn btn-primary" id="btnAllBulgu" onclick="generateAllBulgu()">✨ Tüm Bulguları Yaz</button>
           <button class="btn btn-success" id="btnWord" onclick="downloadWord()">📄 Word İndir</button>
         </div>
       </div>
@@ -890,10 +950,14 @@ function initStep(step) {
   if (name === "results") {
     setTimeout(() => {
       renderResults();
-      const btnWord = document.getElementById("btnWord");
-      if (btnWord) btnWord.disabled = !analysisResults.length;
+      updateWordButtonState();
     }, 50);
   }
+}
+
+function updateWordButtonState() {
+  const btnWord = document.getElementById("btnWord");
+  if (btnWord) btnWord.disabled = !analysisResults.length;
 }
 
 function goToStep(targetStep, direction = "forward") {
@@ -948,7 +1012,7 @@ function validateStep(step) {
     wizardFormState.topic = topic;
   }
 
-  if (name === "cutoffs" && approvedCutoffs.length) {
+  if (name === "cutoffs" && shouldShowCutoffsStep()) {
     approvedCutoffs = collectApprovedCutoffsFromForm();
   }
 
@@ -977,7 +1041,7 @@ async function nextStep() {
     const prevText = btn ? btn.innerHTML : "";
 
     const hasScaleCutoffs = Object.values(scaleInfo).some(s => s && s.cutoff != null);
-    if (!hasScaleCutoffs) {
+    if (!hasScaleCutoffs && shouldShowCutoffsStep()) {
       if (btn) {
         btn.disabled = true;
         btn.innerHTML = "⏳ Kesim noktaları aranıyor...";
@@ -990,23 +1054,11 @@ async function nextStep() {
           btn.innerHTML = prevText;
         }
       }
-    } else {
-      approvedCutoffs = Object.entries(scaleInfo)
-        .filter(([, s]) => s && s.cutoff != null)
-        .map(([name, s]) => ({
-          code: name,
-          label: s.full_name || name,
-          scale_name: s.full_name || name,
-          cutoff_ranges: `Kesim puanı: ${s.cutoff}`,
-          citation: s.reference || "",
-          has_cutoff: true,
-        }));
     }
-
-    if (STEPS[next] === "cutoffs" && !hasCutoffData()) next++;
+    ensureCutoffEntries();
   }
 
-  if (STEPS[next] === "cutoffs" && !hasCutoffData()) next++;
+  if (STEPS[next] === "cutoffs" && !shouldShowCutoffsStep()) next++;
 
   if (STEPS[next] === "variables" && !variablesDataReady) {
     const btn = document.querySelector(".slide-active .btn-success");
@@ -1030,7 +1082,7 @@ async function nextStep() {
 
 function prevStep() {
   let prev = currentStep - 1;
-  if (STEPS[prev] === "cutoffs" && !hasCutoffData()) prev--;
+  if (STEPS[prev] === "cutoffs" && !shouldShowCutoffsStep()) prev--;
   if (prev >= 0) goToStep(prev, "backward");
 }
 
@@ -1128,14 +1180,29 @@ function getOutcomeScaleColumns() {
 }
 
 function collectApprovedCutoffsFromForm() {
-  return approvedCutoffs.map((c, i) => ({
-    code: document.getElementById(`cutoff_code_${i}`)?.value || c.code,
-    label: document.getElementById(`cutoff_label_${i}`)?.value || c.label,
-    scale_name: c.scale_name || c.label,
-    has_cutoff: c.has_cutoff,
-    cutoff_ranges: document.getElementById(`cutoff_range_${i}`)?.value?.trim() || c.cutoff_ranges,
-    citation: c.citation || "",
-  }));
+  return approvedCutoffs.map((c, i) => {
+    const label = document.getElementById(`cutoff_label_${i}`)?.value?.trim() || c.label;
+    const ranges = document.getElementById(`cutoff_range_${i}`)?.value?.trim() || "";
+    const scoreRaw = document.getElementById(`cutoff_score_${i}`)?.value;
+    const score = scoreRaw !== "" && scoreRaw != null ? parseInt(scoreRaw, 10) : null;
+    const useCutoff = document.getElementById(`cutoff_use_${i}`)?.checked;
+    const has_cutoff = Boolean(useCutoff || ranges || (score != null && !Number.isNaN(score)));
+    let cutoff_ranges = ranges;
+    if (!cutoff_ranges && score != null && !Number.isNaN(score)) {
+      cutoff_ranges = `Kesim puanı: ${score}`;
+    }
+    return {
+      code: document.getElementById(`cutoff_code_${i}`)?.value || c.code,
+      label,
+      scale_name: label,
+      has_cutoff,
+      cutoff_ranges: has_cutoff
+        ? (cutoff_ranges || "Sayısal toplam puan üzerinden değerlendirilir")
+        : cutoff_ranges,
+      citation: document.getElementById(`cutoff_citation_${i}`)?.value?.trim() || c.citation || "",
+      cutoff_score: score != null && !Number.isNaN(score) ? score : null,
+    };
+  });
 }
 
 async function loadCutoffsForTopic(topic) {
@@ -1154,8 +1221,12 @@ async function loadCutoffsForTopic(topic) {
     });
     if (!res.ok) return false;
     const json = await res.json();
-    approvedCutoffs = (json.cutoffs || []).map(c => ({ ...c }));
-    return approvedCutoffs.some(c => c.has_cutoff);
+    approvedCutoffs = (json.cutoffs || []).map(c => ({
+      ...c,
+      cutoff_score: null,
+    }));
+    ensureCutoffEntries();
+    return true;
   } catch (e) {
     console.warn(e);
     return false;
@@ -1670,8 +1741,7 @@ async function runAnalysis(activeTypes = null) {
 
     goToStep(6, "forward");
     renderResults();
-    const btnWord = document.getElementById("btnWord");
-    if (btnWord) btnWord.disabled = !analysisResults.length;
+    updateWordButtonState();
   } catch(e) {
     const errHtml = `
       <div class="empty">
@@ -1763,17 +1833,52 @@ function renderResult(r, i) {
 }
 
 async function generateAllBulgu() {
-  for (let i = 0; i < analysisResults.length; i++) {
-    await generateBulgu(i);
+  const total = analysisResults.length;
+  if (!total) return;
+
+  const btnAll = document.getElementById("btnAllBulgu");
+  const btnWord = document.getElementById("btnWord");
+  const prevAllText = btnAll ? btnAll.innerHTML : "";
+
+  if (btnAll) btnAll.disabled = true;
+  if (btnWord) btnWord.disabled = true;
+
+  for (let i = 0; i < total; i++) {
+    const el = document.getElementById(`bulgu_${i}`);
+    if (!el || bulgular[String(i)]) continue;
+    const p = el.querySelector("p");
+    if (p) {
+      p.textContent = `Sırada... (${i + 1}/${total})`;
+      p.className = "bulgu-loading";
+    }
+  }
+
+  try {
+    for (let i = 0; i < total; i++) {
+      if (bulgular[String(i)]) continue;
+      if (btnAll) btnAll.innerHTML = `⏳ Bulgu yazılıyor... (${i + 1}/${total})`;
+      await generateBulgu(i, i + 1, total);
+    }
+  } finally {
+    if (btnAll) {
+      btnAll.disabled = false;
+      btnAll.innerHTML = prevAllText || "✨ Tüm Bulguları Yaz";
+    }
+    updateWordButtonState();
   }
 }
 
-async function generateBulgu(i) {
+async function generateBulgu(i, current = null, total = null) {
   const r = analysisResults[i];
   const el = document.getElementById(`bulgu_${i}`);
   if (!el) return;
-  el.querySelector("p").textContent = "Bulgu yazılıyor...";
-  el.querySelector("p").className = "bulgu-loading";
+  const n = total ?? analysisResults.length;
+  const cur = current ?? (i + 1);
+  const p = el.querySelector("p");
+  if (p) {
+    p.textContent = `Bulgu yazılıyor... (${cur}/${n})`;
+    p.className = "bulgu-loading";
+  }
 
   try {
     const res = await fetch(`${API}/ai/bulgu`, {
@@ -1802,6 +1907,15 @@ async function generateBulgu(i) {
 }
 
 async function downloadWord() {
+  const btnWord = document.getElementById("btnWord");
+  const btnAll = document.getElementById("btnAllBulgu");
+  const prevWordText = btnWord ? btnWord.innerHTML : "";
+  if (btnWord) {
+    btnWord.disabled = true;
+    btnWord.innerHTML = "⏳ Word hazırlanıyor...";
+  }
+  if (btnAll) btnAll.disabled = true;
+
   try {
     const res = await fetch(`${API}/export/word`, {
       method: "POST",
@@ -1823,6 +1937,12 @@ async function downloadWord() {
     URL.revokeObjectURL(url);
   } catch(e) {
     alert("Word indirme hatası: " + e.message);
+  } finally {
+    if (btnWord) {
+      btnWord.innerHTML = prevWordText || "📄 Word İndir";
+    }
+    if (btnAll) btnAll.disabled = false;
+    updateWordButtonState();
   }
 }
 

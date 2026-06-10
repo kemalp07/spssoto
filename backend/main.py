@@ -21,7 +21,10 @@ from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+import asyncio
 import httpx
+from urllib.parse import quote_plus
+from bs4 import BeautifulSoup
 from config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL, CUTOFF_MODEL, BULGU_MODEL
 
 app = FastAPI(title="StatAI - Akademik Analiz API")
@@ -538,6 +541,164 @@ def apply_missing_codes(
     return df
 
 
+def is_missing_value(val, code_set: Optional[set] = None) -> bool:
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return True
+    s = str(val).strip()
+    if s in ("", "nan", "None", "NaN", "<NA>", "NaT"):
+        return True
+    codes = code_set if code_set is not None else set(DEFAULT_MISSING_CODES)
+    return matches_missing_code(val, codes)
+
+
+def normalize_categorical_columns(
+    df: pd.DataFrame, variables: List[Variable]
+) -> pd.DataFrame:
+    """Boş / geçersiz metin değerlerini kategorik sütunlarda NaN yap."""
+    df = df.copy()
+    for v in variables:
+        if v.type != "categorical" or v.name not in df.columns:
+            continue
+        col = df[v.name]
+        blank = col.apply(
+            lambda x: x is None
+            or (isinstance(x, float) and np.isnan(x))
+            or str(x).strip() in ("", "nan", "None", "NaN", "<NA>", "NaT")
+        )
+        df.loc[blank, v.name] = np.nan
+    return df
+
+
+def _infer_valid_categories(series: pd.Series, code_set: set) -> set:
+    """Beklenen kategori kümesini frekans profiline göre çıkar; nadir hatalı kodları dışla."""
+    valid_s = series.dropna()
+    valid_s = valid_s[~valid_s.apply(lambda x: matches_missing_code(x, code_set))]
+    if len(valid_s) == 0:
+        return set()
+
+    counts = valid_s.value_counts()
+    threshold = max(2, int(len(valid_s) * 0.005))
+
+    numeric_map: Dict[float, object] = {}
+    for val in counts.index:
+        try:
+            num = float(str(val).strip().replace(",", "."))
+            if num == int(num):
+                numeric_map[int(num)] = val
+        except ValueError:
+            pass
+
+    if numeric_map and len(numeric_map) == len(counts):
+        ints = sorted(numeric_map.keys())
+        if ints == [1, 2]:
+            return {str(numeric_map[i]).strip() for i in ints}
+        if 1 in ints and 2 in ints:
+            main_count = int(counts[numeric_map[1]]) + int(counts[numeric_map[2]])
+            if main_count / len(valid_s) >= 0.95:
+                return {str(numeric_map[1]).strip(), str(numeric_map[2]).strip()}
+        valid_keys = set()
+        for i in ints:
+            raw = numeric_map[i]
+            if int(counts[raw]) >= threshold:
+                valid_keys.add(str(raw).strip())
+        return valid_keys
+
+    return {str(v).strip() for v, c in counts.items() if int(c) >= threshold}
+
+
+def sanitize_invalid_categorical_codes(
+    df: pd.DataFrame,
+    variables: List[Variable],
+    codes: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    """Beklenen kategori dışındaki hatalı girişleri (örn. Evet/Hayır'da 3) NaN yap."""
+    code_set = parse_missing_codes(codes)
+    df = df.copy()
+    for v in variables:
+        if v.type != "categorical" or v.name not in df.columns:
+            continue
+        if v.categories:
+            valid = {str(c).strip() for c in v.categories}
+        else:
+            valid = _infer_valid_categories(df[v.name], code_set)
+        if not valid:
+            continue
+        mask = df[v.name].notna() & ~df[v.name].apply(
+            lambda x: is_missing_value(x, code_set)
+            or str(x).strip() in valid
+        )
+        df.loc[mask, v.name] = np.nan
+    return df
+
+
+def _likert_bounds_from_scale_info(si: dict) -> Tuple[Optional[float], Optional[float]]:
+    item_count = si.get("item_count")
+    if not item_count:
+        return None, None
+    try:
+        n_items = int(item_count)
+    except (TypeError, ValueError):
+        return None, None
+    if n_items <= 0:
+        return None, None
+    likert_max = 5
+    if si.get("likert"):
+        m = re.search(r"(\d+)", str(si["likert"]))
+        if m:
+            likert_max = int(m.group(1))
+    return float(n_items), float(n_items * likert_max)
+
+
+def infer_theoretical_range(
+    variable: Variable,
+    df: pd.DataFrame,
+    scale_info: Optional[dict] = None,
+) -> Optional[str]:
+    si = resolve_scale_info(variable, scale_info)
+    if si and si.get("min_score") is not None and si.get("max_score") is not None:
+        return f"{fmt_num(si['min_score'])} – {fmt_num(si['max_score'])}"
+    if si:
+        inferred_min, inferred_max = _likert_bounds_from_scale_info(si)
+        if inferred_min is not None and inferred_max is not None:
+            return f"{fmt_num(inferred_min)} – {fmt_num(inferred_max)}"
+    if variable.scale_min is not None and variable.scale_max is not None:
+        return f"{fmt_num(variable.scale_min)} – {fmt_num(variable.scale_max)}"
+
+    prefix = re.match(r"^([a-zA-Z]+)", variable.name or "", re.I)
+    prefix_key = prefix.group(1).lower() if prefix else ""
+    groups = detect_scale_groups(list(df.columns))
+    items = groups.get(prefix_key, [])
+    if items:
+        n_items = len(items)
+        likert_max = 5
+        if si and si.get("likert"):
+            m = re.search(r"(\d+)", str(si["likert"]))
+            if m:
+                likert_max = int(m.group(1))
+        return f"{fmt_num(n_items)} – {fmt_num(n_items * likert_max)}"
+    return None
+
+
+def filter_chi_square_data(
+    df: pd.DataFrame,
+    v1: Variable,
+    v2: Variable,
+    codes: Optional[List[str]] = None,
+) -> Tuple[pd.DataFrame, int]:
+    """Ki-kare matrisine yalnızca her iki değişkende de geçerli değeri olan satırları al."""
+    code_set = parse_missing_codes(codes)
+    sub = df[[v1.name, v2.name]].copy()
+    invalid_mask = sub.apply(
+        lambda row: is_missing_value(row[v1.name], code_set)
+        or is_missing_value(row[v2.name], code_set)
+        or format_category_value(row[v1.name]) == "Kayıp Veri"
+        or format_category_value(row[v2.name]) == "Kayıp Veri",
+        axis=1,
+    )
+    excluded = int(invalid_mask.sum())
+    return sub.loc[~invalid_mask], excluded
+
+
 def apa_italicize_stats(text: str) -> str:
     """İstatistiksel sembolleri APA 7 için italik (HTML em) yap."""
     if not text or "<em>" in str(text):
@@ -626,10 +787,18 @@ def apply_scale_info_to_variables(
     out: List[Variable] = []
     for v in variables:
         si = resolve_scale_info(v, scale_info)
-        if si and si.get("min_score") is not None and si.get("max_score") is not None:
+        if not si:
+            out.append(v)
+            continue
+        min_s, max_s = si.get("min_score"), si.get("max_score")
+        if min_s is None or max_s is None:
+            inferred_min, inferred_max = _likert_bounds_from_scale_info(si)
+            if inferred_min is not None:
+                min_s, max_s = inferred_min, inferred_max
+        if min_s is not None and max_s is not None:
             v = v.model_copy(update={
-                "scale_min": float(si["min_score"]),
-                "scale_max": float(si["max_score"]),
+                "scale_min": float(min_s),
+                "scale_max": float(max_s),
             })
         out.append(v)
     return out
@@ -865,40 +1034,23 @@ Kullanıcıya uzun açıklamalar yapma, sadece ve sadece aşağıdaki JSON forma
 KURAL:
 Eğer arama sonuçlarında net bir kesim noktası bulamazsan "has_cutoff" değerini false yap ve "cutoff_ranges" kısmına "Sayısal toplam puan üzerinden değerlendirilir" yaz. Asla uydurma aralık türetme."""
 
-RESULTS_SYSTEM = """GÖREV:
-Sen uzman bir Biyoistatistikçi ve Akademik Metin Yazarı öğretmenisin. Verilen analiz tablosunu, uluslararası APA 7 standartlarına uyumlu, yalnızca "BULGULAR (RESULTS)" prensibiyle 2-4 cümlelik Türkçe bulgu paragrafı olarak yaz.
+RESULTS_SYSTEM = """Sen biyoistatistiksel tabloları APA 7 tez formatında Bulgular düz yazısına dönüştüren bir asistansın. Yalnızca tablodaki verilere dayanarak 2-4 cümle Türkçe bulgu yaz; Tartışma yazma; madde işareti/başlık kullanma.
 
-KATI RAPORLAMA KURALLARI:
+GENEL: Geçmiş zaman (-miştir/-mıştır). Ham kod (OYS_TOPLAM vb.) yasak; sözlükteki akademik adları kullan. kilo→Vücut ağırlığı, boy→Boy uzunluğu, VKI→BKİ. Tablodaki sayıları aynen aktar; yuvarlama yapma. Semboller: x̄, SS, n, %, p, t, F, χ², η², r, U, H, df.
 
-1. TÜRKÇE AKADEMİK LOKALİZASYON (VİRGÜL):
-   - Ondalık sayıları NOKTA yerine VİRGÜL ile yaz (20,66; 51,58).
-   - p, η², Cohen's d, r değerlerinde baştaki sıfırı yazma; virgül kullan (p = ,011; p < ,001; r = −,196).
+1) TANIMLAYICI (descriptive): "[Ölçek] ortalama puanı x̄ ± SS (n = ..., medyan = ...) olarak hesaplanmıştır." Teorik aralık varsa: "ölçeğin teorik puan aralığı ... – ... arasındadır."
 
-2. KOD KULLANIMI KESİNLİKLE YASAKTIR:
-   - OYS_TOPLAM, NEQ_TOPLAM, SBITO_TOPLAM gibi ham kodlar kullanma.
-   - Sana verilen sözlükteki akademik isimleri kullan; akıcı Türkçe çekim ekiyle yaz.
+2) NORMALLİK (normality): p < .05 → "dağılımın normal dağılımdan anlamlı sapma gösterdiği saptanmıştır (D = ..., p < .05)." p ≥ .05 → "değişkenin normal dağılım gösterdiği belirlenmiştir (D = ..., p = ...)." Çarpıklık/basıklık verilirken: "Çarpıklık/Std. Hata ve Basıklık/Std. Hata değerlerinin ±2.0 sınırları içinde kalması sebebiyle parametrik testlerin uygulanmasına karar verilmiştir."
 
-3. DEMOGRAFİK VE ANTROPOMETRİK DEĞİŞKENLERİN AKADEMİK DÖNÜŞÜMÜ:
-   - Veri setinden veya tablodan gelen ham değişken isimlerini bulgular metninde ve tablo başlıklarında şu şekilde akademikleştir:
-     * 'kilo' veya 'dbf_kilo' gördüğünde -> "Vücut Ağırlığı (kg)" veya cümle akışına göre "Vücut ağırlığı" ifadesini kullan.
-     * 'boy' veya 'dbf_boy' gördüğünde -> "Boy Uzunluğu (cm)" veya cümle akışına göre "Boy uzunluğu" ifadesini kullan.
-     * 'vki' veya 'VKI' gördüğünde -> "Beden Kitle İndeksi (BKİ)" veya "BKİ (kg/m²)" ifadesini kullan. (Asla Türkçe metinde İngilizce 'BMI' veya ham 'VKİ' bırakma, 'BKİ' olarak standardize et).
-   - YANLIŞ: "Tablo 18. Kilo'in Bölüm'e Göre Karşılaştırması" veya "Fizyoterapist bölümü kilo medyanı..."
-   - DOĞRU: "Tablo 18. Katılımcıların Vücut Ağırlıklarının Bölümlere Göre Karşılaştırılması" veya "Fizyoterapi programında öğrenim gören öğrencilerin vücut ağırlığı medyan değerinin..."
-   - YANLIŞ: "Tablo 19. VKİ'in Bölüm'e Göre Karşılaştırması"
-   - DOĞRU: "Tablo 19. Katılımcıların Beden Kitle İndeksi (BKİ) Değerlerinin Bölümlere Göre Karşılaştırılması"
+3) FREKANS/Kİ-KARE (frequency, chi_square): Frekansta en yüksek n'li kategori önce. Ki-kare p ≥ .05 → anlamlı ilişki/fark yok (χ² = ..., p = ...). p < .05 → anlamlı ilişki var; en baskın yüzdeyi vurgula. Kayıp Veri kategorisini yorumlama; gerekirse "X katılımcıya ait veri eksik olduğundan geçerli n = ... üzerinden analiz yapılmıştır." Yüzdeler valid n üzerinden.
 
-4. ONAYLANMIŞ KESİM NOKTALARI:
-   - Ortalama veya frekans yorumlarken onaylanmış kesim noktalarını ve atıfı doğal biçimde metne göm.
+4) ANOVA + TUKEY (anova, tukey): "[Bağımlı] toplam puanlarının [Bağımsız]'e göre tek yönlü ANOVA sonucunda gruplar arasında anlamlı fark saptanmıştır/saptanmamıştır [F = ..., p = ...; η² = ...]." Tukey post-hoc anlamlıysa x̄ BÜYÜK olan grup yüksek yazılır; küçük ortalama asla yüksek raporlanamaz.
 
-5. SEMBOL VE İTALİK:
-   - İstatistik sembollerini italik yaz: n, N, p, F, t, df, r, d, H, U, χ².
-   - Aritmetik ortalama için M (italik), standart sapma için SD (italik) kullan; x̄ veya "ortalama" kelimesi kullanma.
+5) t-TEST / NON-PARAMETRİK (ttest, mann_whitney, kruskal_wallis): t-testi: "[Değişken] puanlarının ... karşılaştırılması amacıyla bağımsız örneklem t-testi sonucunda ... [t(df) = ..., p = ...; Cohen's d = ...]." Mann-Whitney/Kruskal: medyan ve U veya H; p formatında.
 
-6. KAPSAM:
-   - Yalnızca tablodaki sayısal verileri objektif yaz; Tartışma (Discussion) yazma.
-   - Tabloda olmayan bilgi ekleme; başlık veya madde işareti kullanma.
-   - p değerlerini APA 7 ile ver; anlamlılığı nesnel bildir."""
+6) KORELASYON (correlation, correlation_matrix): r pozitif/negatif yön + anlamlılık (r = ..., p ...). Büyüklük: zayıf (r < .30), orta (.30–.70), güçlü (r > .70).
+
+7) KESİM NOKTASI: Verilmişse ortalama/frekans yorumuna doğal biçimde göm."""
 
 
 def find_scale_cutoff(
@@ -938,6 +1090,83 @@ def find_scale_cutoff(
     }
 
 
+def _bulgu_context_blob(result: dict) -> str:
+    chunks = [
+        str(result.get("title", "")),
+        str(result.get("type", "")),
+        str(result.get("var1", "")),
+        str(result.get("var2", "")),
+        str(result.get("variable", "")),
+    ]
+    chunks.extend(str(h) for h in result.get("headers", []))
+    for row in result.get("rows", []):
+        chunks.extend(str(c) for c in row)
+    chunks.append(str(result.get("note", "")))
+    return " ".join(chunks).lower()
+
+
+def _compact_bulgu_result(result: dict) -> dict:
+    compact = {
+        "type": result.get("type"),
+        "table_number": result.get("table_number"),
+        "title": result.get("title"),
+        "headers": result.get("headers"),
+        "rows": result.get("rows"),
+        "note": result.get("note"),
+    }
+    for key in (
+        "chi2", "p", "dof", "F", "eta2", "t", "df", "r", "d", "U", "H",
+        "significant", "var1", "var2", "variable", "n",
+    ):
+        if key in result and result[key] is not None:
+            compact[key] = result[key]
+    return compact
+
+
+def _filter_label_map(label_map: Optional[Dict[str, str]], blob: str) -> Optional[Dict[str, str]]:
+    if not label_map:
+        return None
+    matched = {
+        code: label
+        for code, label in label_map.items()
+        if code.lower() in blob or (label and label.lower() in blob)
+    }
+    return matched or None
+
+
+def _filter_scale_info(scale_info: Optional[dict], blob: str) -> Optional[dict]:
+    if not scale_info:
+        return None
+    matched = {}
+    for key, info in scale_info.items():
+        if not isinstance(info, dict):
+            continue
+        full = str(info.get("full_name") or "")
+        if (
+            key.lower() in blob
+            or full.lower() in blob
+            or any(tok in blob for tok in key.lower().split() if len(tok) > 2)
+        ):
+            matched[key] = {
+                k: info[k]
+                for k in ("full_name", "item_count", "min_score", "max_score", "cutoff", "likert")
+                if k in info
+            }
+    return matched or None
+
+
+def _filter_cutoffs(cutoffs: Optional[List[dict]], blob: str) -> Optional[List[dict]]:
+    if not cutoffs:
+        return None
+    matched = [
+        c for c in cutoffs
+        if str(c.get("code", "")).lower() in blob
+        or str(c.get("label", "")).lower() in blob
+        or str(c.get("scale_name", "")).lower() in blob
+    ]
+    return matched or None
+
+
 def build_bulgu_user_message(
     result: dict,
     research_topic: Optional[str] = None,
@@ -945,26 +1174,21 @@ def build_bulgu_user_message(
     approved_cutoffs: Optional[List[dict]] = None,
     scale_info: Optional[dict] = None,
 ) -> str:
+    blob = _bulgu_context_blob(result)
     parts = []
     if research_topic:
-        parts.append(f"1. Araştırma Konusu: {research_topic}")
-    if label_map:
-        parts.append(
-            "2. Değişken Eşleşmeleri (Sözlük): "
-            + json.dumps(label_map, ensure_ascii=False)
-        )
-    if approved_cutoffs:
-        parts.append(
-            "3. Onaylanmış Kesim Noktaları: "
-            + json.dumps(approved_cutoffs, ensure_ascii=False)
-        )
-    if scale_info:
-        parts.append(
-            "4. Ölçek Bilgileri (Teorik Aralık / Kesim / Not): "
-            + json.dumps(scale_info, ensure_ascii=False)
-        )
-    parts.append("Analiz Tablosu (JSON):\n" + json.dumps(result, ensure_ascii=False))
-    return "\n\n".join(parts)
+        parts.append(f"Konu: {research_topic}")
+    labels = _filter_label_map(label_map, blob)
+    if labels:
+        parts.append("Etiketler: " + json.dumps(labels, ensure_ascii=False))
+    cutoffs = _filter_cutoffs(approved_cutoffs, blob)
+    if cutoffs:
+        parts.append("Kesim: " + json.dumps(cutoffs, ensure_ascii=False))
+    scales = _filter_scale_info(scale_info, blob)
+    if scales:
+        parts.append("Ölçek: " + json.dumps(scales, ensure_ascii=False))
+    parts.append("Tablo: " + json.dumps(_compact_bulgu_result(result), ensure_ascii=False))
+    return "\n".join(parts)
 
 
 def _generate_bulgu_text(
@@ -1109,12 +1333,7 @@ def table_descriptive(
         s = pd.to_numeric(df[v.name], errors="coerce").dropna()
         if len(s) == 0:
             continue
-        theory = "—"
-        si = resolve_scale_info(v, scale_info)
-        if si and si.get("min_score") is not None and si.get("max_score") is not None:
-            theory = f"{fmt_num(si['min_score'])} – {fmt_num(si['max_score'])}"
-        elif v.scale_min is not None and v.scale_max is not None:
-            theory = f"{fmt_num(v.scale_min)} – {fmt_num(v.scale_max)}"
+        theory = infer_theoretical_range(v, df, scale_info) or "—"
         rows.append([
             v.label, str(len(s)),
             f"{fmt_num(s.mean())} ± {fmt_num(s.std(ddof=1))}",
@@ -1156,30 +1375,51 @@ def table_normality(tc: TableCounter, variables: List[Variable], df: pd.DataFram
 
 def table_frequency(tc: TableCounter, series: pd.Series, label: str) -> dict:
     total_n = int(len(series))
-    missing_n = int(series.isna().sum())
     valid = series.dropna()
     counts = valid.value_counts()
     rows = []
+    missing_n = int(series.isna().sum())
     for val, cnt in counts.items():
         cat = format_category_value(val)
         if cat == "Kayıp Veri":
+            missing_n += int(cnt)
             continue
-        pct = round(int(cnt) / total_n * 100, 1) if total_n else 0
-        rows.append([label, cat, str(int(cnt)), fmt_num(pct, 1)])
+        rows.append([label, cat, str(int(cnt)), ""])
+    valid_n = sum(int(cnt) for val, cnt in counts.items() if format_category_value(val) != "Kayıp Veri")
+    for i, row in enumerate(rows):
+        cnt = int(row[2])
+        pct = round(cnt / valid_n * 100, 1) if valid_n else 0
+        rows[i][3] = fmt_num(pct, 1)
     if missing_n > 0:
         pct_miss = round(missing_n / total_n * 100, 1) if total_n else 0
         rows.append([label, "Kayıp Veri", str(missing_n), fmt_num(pct_miss, 1)])
-    rows.append([label, "Toplam", str(total_n), "100.0"])
+    rows.append([label, "Toplam", str(valid_n), "100.0"])
+    note = "Not. Değerler frekans (n) ve yüzde (%) olarak verilmiştir."
+    if missing_n > 0:
+        note += (
+            f" Kategori yüzdeleri geçerli örneklem (Valid N={valid_n}) üzerinden hesaplanmıştır;"
+            f" analize dahil edilmeyen {missing_n} kayıp veri ayrı gösterilmiştir."
+        )
     no, title = tc.next(f"{label} Dağılımı")
     return make_result(
         "frequency", no, title,
         ["Değişken", "Kategori", "n", "%"],
-        rows, "Not. Değerler frekans (n) ve yüzde (%) olarak verilmiştir.",
-        variable=label, n=total_n,
+        rows, note,
+        variable=label, n=valid_n,
     )
 
-def table_chi_square(tc: TableCounter, df: pd.DataFrame, v1: Variable, v2: Variable) -> dict:
-    ct = pd.crosstab(df[v1.name], df[v2.name])
+def table_chi_square(
+    tc: TableCounter,
+    df: pd.DataFrame,
+    v1: Variable,
+    v2: Variable,
+    missing_codes: Optional[List[str]] = None,
+) -> dict:
+    sub, excluded_n = filter_chi_square_data(df, v1, v2, missing_codes)
+    ct = pd.crosstab(sub[v1.name], sub[v2.name])
+    valid_cols = [c for c in ct.columns if format_category_value(c) != "Kayıp Veri"]
+    valid_rows = [i for i in ct.index if format_category_value(i) != "Kayıp Veri"]
+    ct = ct.loc[valid_rows, valid_cols]
     chi2, p, dof, _ = stats.chi2_contingency(ct)
     col_headers = [format_category_value(c) for c in ct.columns]
     rows = []
@@ -1193,14 +1433,21 @@ def table_chi_square(tc: TableCounter, df: pd.DataFrame, v1: Variable, v2: Varia
         cells.append(str(row_total))
         cells.extend(["", ""])
         rows.append(cells)
-    summary_row = ["Toplam"] + [str(int(ct[c].sum())) for c in ct.columns] + [str(int(ct.values.sum()))]
+    valid_n = int(ct.values.sum())
+    summary_row = ["Toplam"] + [str(int(ct[c].sum())) for c in ct.columns] + [str(valid_n)]
     summary_row += [f"χ² = {fmt_num(chi2)}", fmt_p_display(p)]
     rows.append(summary_row)
     headers = [v1.label] + col_headers + ["Toplam", "χ²", "p"]
     no, title = tc.next(f"{v1.label} × {v2.label} Dağılımı (Ki-Kare Testi)")
+    note = "Not. * p < .05. Değerler n (kişi sayısı) ve satır yüzdesi (%) olarak verilmiştir."
+    if excluded_n > 0:
+        note += (
+            f" Ki-kare analizine dahil edilmeyen {excluded_n} kayıp/hatalı kayıt"
+            f" matristen çıkarılmıştır (Valid N={valid_n})."
+        )
     return make_result(
         "chi_square", no, title, headers, rows,
-        "Not. * p < .05. Değerler n (kişi sayısı) ve satır yüzdesi (%) olarak verilmiştir.",
+        note,
         chi2=round(float(chi2), 3), p=round(float(p), 3), dof=int(dof),
         significant=bool(p < 0.05), var1=v1.label, var2=v2.label,
     )
@@ -1603,6 +1850,7 @@ def run_analyze(
     variables: List[Variable],
     active_types: Optional[List[str]] = None,
     scale_info: Optional[dict] = None,
+    missing_codes: Optional[List[str]] = None,
 ) -> Tuple[List[dict], dict]:
     def enabled(test_key: str) -> bool:
         if active_types is None:
@@ -1688,7 +1936,7 @@ def run_analyze(
         for ov in outcome_cat:
             if cv.name in df.columns and ov.name in df.columns:
                 try:
-                    results.append(table_chi_square(tc, df, cv, ov))
+                    results.append(table_chi_square(tc, df, cv, ov, missing_codes))
                 except Exception:
                     pass
 
@@ -2038,7 +2286,9 @@ def _prepare_analysis_df(
     missing_codes: Optional[List[str]] = None,
 ) -> pd.DataFrame:
     df = normalize_continuous_columns(df, variables)
+    df = normalize_categorical_columns(df, variables)
     df = apply_missing_codes(df, variables, missing_codes)
+    df = sanitize_invalid_categorical_codes(df, variables, missing_codes)
     for v in variables:
         if re.match(r"^vki$", v.name, re.I) and v.name in df.columns:
             max_val = df[v.name].max()
@@ -2091,55 +2341,276 @@ async def import_spss_tables_endpoint(req: SpssTableRequest):
     })
 
 
-@app.post("/scale-info")
-async def get_scale_info(req: ScaleInfoRequest):
-    if not ANTHROPIC_API_KEY or not req.scale_names:
-        return {"scales": {}}
+TOAD_BASE = "https://toad.halileksi.net"
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    scale_list = ", ".join(req.scale_names)
+TOAD_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+}
 
-    msg = client.messages.create(
-        model=ANTHROPIC_MODEL,
-        max_tokens=1500,
-        tools=[{
-            "type": "web_search_20250305",
-            "name": "web_search",
-            "max_uses": 3,
-        }],
-        system="""Türk akademik ölçek uzmanısın. Verilen ölçekleri web'de ara (özellikle toad.halileksi.net ve dergipark.org.tr) ve bilgilerini bul.
 
-Aradığın bilgiler: tam isim, madde sayısı, teorik puan aralığı (min-max), kesim puanı (varsa), Likert tipi, kaynak (yazar, yıl).
-
-En son SADECE JSON döndür:
-{
-  "ÖLÇEK_ADI": {
-    "full_name": "...",
-    "item_count": 15,
-    "min_score": 15,
-    "max_score": 75,
-    "cutoff": null,
-    "likert": "5'li Likert",
-    "reference": "Yavuz & Arslan (2024)",
-    "note": "kısa açıklama"
-  }
-}""",
-        messages=[{
-            "role": "user",
-            "content": f"Şu ölçekleri ara ve bilgilerini bul: {scale_list}",
-        }],
+def _toad_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        timeout=12.0,
+        follow_redirects=True,
+        headers=TOAD_BROWSER_HEADERS,
     )
 
-    text_blocks = [b.text for b in msg.content if hasattr(b, "text")]
-    full_text = "\n".join(text_blocks)
 
-    match = re.search(r"\{.*\}", full_text, re.DOTALL)
+def make_toad_slug(scale_name: str) -> str:
+    s = scale_name.lower().strip()
+    tr_map = str.maketrans("şıüöçğâî", "siuocgai")
+    s = s.translate(tr_map)
+    s = s.replace("i̇", "i")
+    s = re.sub(r"\([^)]*\)", "", s)
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    return s
+
+
+def _normalize_scale_match(text: str) -> str:
+    return make_toad_slug(text).replace("-", "")
+
+
+def _score_toad_link(scale_name: str, url: str) -> int:
+    target = _normalize_scale_match(scale_name)
+    slug = _normalize_scale_match(url.split("/olcek/")[-1].strip("/"))
+    if not target or not slug:
+        return 0
+    if target == slug:
+        return 100
+    if target in slug or slug in target:
+        return 50
+    overlap = sum(1 for i in range(0, min(len(target), len(slug)) - 2)
+                if target[i:i + 3] in slug)
+    return overlap
+
+
+def _infer_scale_bounds(result: Dict[str, Any]) -> None:
+    item_count = result.get("item_count")
+    likert_m = re.search(r"(\d+)", str(result.get("likert", "")))
+    likert_n = int(likert_m.group(1)) if likert_m else None
+    if item_count and likert_n and result.get("min_score") is None:
+        result["min_score"] = int(item_count)
+        result["max_score"] = int(item_count) * likert_n
+
+
+def _parse_toad_page(soup: BeautifulSoup) -> dict:
+    result: Dict[str, Any] = {}
+
+    h1 = soup.find("h1")
+    if h1:
+        result["full_name"] = h1.get_text(strip=True)
+
+    for p in soup.select("p"):
+        strong = p.find("strong")
+        if not strong:
+            continue
+        key = strong.get_text(strip=True).rstrip(":").lower()
+        val = p.get_text(" ", strip=True)
+        val = val.replace(strong.get_text(strip=True), "", 1).strip(" :-")
+        if "kaynak" in key or "referans" in key:
+            result["reference"] = re.sub(r"\s+", " ", val)[:300]
+
+    content = soup.get_text(" ", strip=True)
+
+    m = re.search(r"(\d+)\s*madde", content, re.IGNORECASE)
+    if m:
+        result["item_count"] = int(m.group(1))
+
+    m = re.search(
+        r"puan aral[ıi][gğ][ıi]\s*[:\-]?\s*(\d+)\s*[\-–]\s*(\d+)",
+        content,
+        re.IGNORECASE,
+    )
+    if m:
+        result["min_score"] = int(m.group(1))
+        result["max_score"] = int(m.group(2))
+
+    m = re.search(r"(\d+)['\s]li?\s*Likert", content, re.IGNORECASE)
+    if m:
+        result["likert"] = f"{m.group(1)}'li Likert"
+
+    m = re.search(r"kesim\s*(?:noktas[ıi]|puan[ıi])\s*[:\-]?\s*(\d+)", content, re.IGNORECASE)
+    if not m:
+        m = re.search(r"sınır\s*de[gğ]er\s*[:\-]?\s*(\d+)", content, re.IGNORECASE)
+    if m:
+        result["cutoff"] = int(m.group(1))
+
+    _infer_scale_bounds(result)
+    return result if len(result) >= 2 else {}
+
+
+async def fetch_toad_page(client: httpx.AsyncClient, url: str) -> dict:
+    try:
+        if url.startswith("/"):
+            url = TOAD_BASE + url
+        r = await client.get(url, headers={**TOAD_BROWSER_HEADERS, "Referer": f"{TOAD_BASE}/"})
+        if r.status_code != 200:
+            return {}
+        return _parse_toad_page(BeautifulSoup(r.text, "html.parser"))
+    except Exception:
+        return {}
+
+
+def _extract_toad_search_links(html: str) -> List[str]:
+    links = re.findall(r'href="(https://toad\.halileksi\.net/olcek/[^"]+)"', html)
+    soup = BeautifulSoup(html, "html.parser")
+    for a in soup.select("a[href*='/olcek/']"):
+        href = a.get("href", "")
+        if (
+            "/olcek/" in href
+            and "olcek-ekle" not in href
+            and "olcek-yazar" not in href
+            and "olcek-kategori" not in href
+        ):
+            if not href.startswith("http"):
+                href = TOAD_BASE + href
+            links.append(href)
+    return list(dict.fromkeys(links))
+
+
+async def search_toad(scale_name: str, client: httpx.AsyncClient) -> dict:
+    slug = make_toad_slug(scale_name)
+    result = await fetch_toad_page(client, f"{TOAD_BASE}/olcek/{slug}/")
+    if result:
+        result["source"] = "toad"
+        return result
+
+    try:
+        r = await client.get(
+            f"{TOAD_BASE}/",
+            params={"s": scale_name},
+            headers={**TOAD_BROWSER_HEADERS, "Referer": f"{TOAD_BASE}/"},
+        )
+        if r.status_code != 200:
+            return {}
+        links = _extract_toad_search_links(r.text)
+        best_url = ""
+        best_score = -1
+        for url in links:
+            score = _score_toad_link(scale_name, url)
+            if score > best_score:
+                best_score = score
+                best_url = url
+        if best_url:
+            result = await fetch_toad_page(client, best_url)
+            if result:
+                result["source"] = "toad"
+                return result
+    except Exception:
+        pass
+    return {}
+
+
+async def search_dergipark(scale_name: str) -> dict:
+    try:
+        query = f"{scale_name} ölçek geçerlilik güvenilirlik"
+        url = f"https://dergipark.org.tr/tr/search?q={quote_plus(query)}&section=article"
+        headers = {
+            **TOAD_BROWSER_HEADERS,
+            "Referer": "https://dergipark.org.tr/",
+            "Sec-Fetch-Site": "cross-site",
+        }
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=True, headers=headers) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                return {}
+            soup = BeautifulSoup(r.text, "html.parser")
+            article_link = soup.select_one("a.article-title, h3.title a, .article-item a")
+            if not article_link:
+                return {}
+            article_url = article_link.get("href", "")
+            if not article_url.startswith("http"):
+                article_url = "https://dergipark.org.tr" + article_url
+            r2 = await client.get(article_url)
+            if r2.status_code != 200:
+                return {}
+            content = BeautifulSoup(r2.text, "html.parser").get_text(" ", strip=True)
+            result: Dict[str, Any] = {}
+            m = re.search(r"(\d+)\s*madde", content, re.IGNORECASE)
+            if m:
+                result["item_count"] = int(m.group(1))
+            m = re.search(r"(\d+)\s*[\-–]\s*(\d+)\s*aras[ıi]nda\s*puan", content, re.IGNORECASE)
+            if m:
+                result["min_score"] = int(m.group(1))
+                result["max_score"] = int(m.group(2))
+            m = re.search(r"(\d+)['\s]li?\s*Likert", content, re.IGNORECASE)
+            if m:
+                result["likert"] = f"{m.group(1)}'li Likert"
+            m = re.search(r"kesim\s*(?:noktas[ıi]|puan[ıi])\s*[:\-]?\s*(\d+)", content, re.IGNORECASE)
+            if m:
+                result["cutoff"] = int(m.group(1))
+            _infer_scale_bounds(result)
+            if len(result) >= 2:
+                result["source"] = "dergipark"
+                return result
+    except Exception:
+        pass
+    return {}
+
+
+def get_scale_info_ai(scale_name: str, research_topic: str, client: anthropic.Anthropic) -> dict:
+    """Ucuz Haiku fallback — web search yok."""
+    msg = client.messages.create(
+        model=ANTHROPIC_MODEL,
+        max_tokens=200,
+        system=(
+            "Türkiye'de kullanılan akademik ölçekler uzmanısın. "
+            "SADECE JSON döndür: "
+            '{"full_name":"...","item_count":20,"min_score":20,"max_score":100,'
+            '"cutoff":null,"likert":"5\'li Likert","reference":null,"note":"..."}'
+        ),
+        messages=[{
+            "role": "user",
+            "content": f"Araştırma: {research_topic}\nÖlçek: {scale_name}",
+        }],
+    )
+    text = msg.content[0].text.strip()
+    match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         try:
-            return {"scales": json.loads(match.group())}
+            parsed = json.loads(match.group())
+            parsed["source"] = "ai"
+            return parsed
         except Exception:
             pass
-    return {"scales": {}}
+    return {}
+
+
+@app.post("/scale-info")
+async def get_scale_info(req: ScaleInfoRequest):
+    """TOAD → DergiPark → ucuz AI fallback (web search yok)."""
+    if not req.scale_names:
+        return {"scales": {}}
+
+    scales_result: Dict[str, dict] = {}
+    ai_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+
+    async with _toad_client() as client:
+        await client.get(f"{TOAD_BASE}/")
+        for i, scale_name in enumerate(req.scale_names):
+            if i > 0:
+                await asyncio.sleep(0.35)
+            result = await search_toad(scale_name, client)
+            if not result:
+                result = await search_dergipark(scale_name)
+            if not result and ai_client:
+                result = get_scale_info_ai(scale_name, req.research_topic, ai_client)
+            if result:
+                result.pop("source", None)
+                scales_result[scale_name] = result
+
+    return {"scales": scales_result}
 
 
 @app.post("/research/cutoffs")
@@ -2189,7 +2660,9 @@ async def analyze(req: AnalysisRequest):
     variables = apply_scale_info_to_variables(variables, req.scale_info)
     df = _prepare_analysis_df(df, variables, req.missing_codes)
     missing_data = missing_data_report(df, variables)
-    results, meta = run_analyze(df, variables, req.active_types, req.scale_info)
+    results, meta = run_analyze(
+        df, variables, req.active_types, req.scale_info, req.missing_codes
+    )
     return sanitize({"results": results, "missing_data": missing_data, "meta": meta})
 
 
