@@ -88,11 +88,8 @@ class PairedRequest(BaseModel):
 class ClassifyRequest(BaseModel):
     columns: List[str]
     samples: Dict[str, List[Any]]
-
-class RecommendRequest(BaseModel):
-    columns: List[str]
-    samples: Dict[str, List[Any]]
-    research_topic: str
+    labels: Optional[Dict[str, str]] = None
+    research_topic: Optional[str] = None
 
 class DetectScalesRequest(BaseModel):
     columns: List[str]
@@ -339,86 +336,29 @@ ANTHROPOMETRIC_META: Dict[str, Dict[str, str]] = {
     },
 }
 
-CODE_LABEL_ALIASES: Dict[str, str] = {
-    "vki": "Beden Kitle İndeksi (BKİ)",
-    "kilo": "Vücut Ağırlığı (kg)",
-    "boy": "Boy Uzunluğu (cm)",
-    "bolum": "Bölüm",
-    "cinsiyet": "Cinsiyet",
-    "yas": "Yaş",
-    "dbf_yas": "Yaş",
-    "dbf_boy": "Boy Uzunluğu (cm)",
-    "dbf_kilo": "Vücut Ağırlığı (kg)",
-    "dbf_cinsiyet": "Cinsiyet",
-    "dbf_md": "Medeni Durum",
-    "dbf_ed": "Eğitim Durumu",
-    "dbf_gd": "Gelir Durumu",
-    "dbf_kh": "Konut Hali",
-    "dbf_ik": "İş Kolu",
-    "dbf_sk": "Sosyal Konum",
-    "dbf_ak": "Aile Yapısı",
-}
-
-SCALE_LABEL_ALIASES: Dict[str, str] = {
-    "oys_toplam": "Online Yemek Siparişi Ölçeği",
-    "neq_toplam": "Negatif Duygulanım Ölçeği",
-    "sbito_toplam": "Sosyal Bilişsel İnternet Tutum Ölçeği",
-}
-
-def anthro_canonical(name: str) -> Optional[str]:
-    key = name.strip().lower()
-    if key in ("kilo", "dbf_kilo"):
-        return "kilo"
-    if key in ("boy", "dbf_boy"):
-        return "boy"
-    if key == "vki":
-        return "vki"
-    return None
-
-
 def academic_short_label(v: Variable) -> str:
-    canon = anthro_canonical(v.name)
-    if canon:
-        return ANTHROPOMETRIC_META[canon]["label"]
     return format_display_label(v.name, v.label)
 
 
 def academic_group_target(v: Variable) -> str:
-    key = v.name.strip().lower()
-    if key == "bolum":
-        return "Bölümlere"
-    if key == "cinsiyet":
-        return "Cinsiyet Gruplarına"
-    if key in ("yas", "dbf_yas"):
-        return "Yaş Gruplarına"
     label = format_display_label(v.name, v.label)
     return f"{label} Gruplarına"
 
 
 def build_group_comparison_title(cv: Variable, sv: Variable, test_name: str) -> str:
-    """Örn: Katılımcıların Vücut Ağırlıklarının Bölümlere Göre Karşılaştırılması"""
     group_part = academic_group_target(cv)
-    canon = anthro_canonical(sv.name)
-    if canon:
-        poss = ANTHROPOMETRIC_META[canon]["possessive"]
-        return f"Katılımcıların {poss} {group_part} Göre Karşılaştırılması ({test_name})"
     sv_label = academic_short_label(sv)
     return (
-        f"Katılımcıların {sv_label} Değerlerinin {group_part} "
-        f"Göre Karşılaştırılması ({test_name})"
+        f"Katılımcıların {sv_label} Değerlerinin "
+        f"{group_part} Göre Karşılaştırılması ({test_name})"
     )
 
 
 def build_measure_analysis_title(sv: Variable, suffix: str) -> str:
-    canon = anthro_canonical(sv.name)
-    if canon:
-        poss = ANTHROPOMETRIC_META[canon]["possessive"]
-        return f"Katılımcıların {poss} {suffix}"
     return f"Katılımcıların {academic_short_label(sv)} Değerlerinin {suffix}"
 
 
 def apply_academic_text_rules(text: str) -> str:
-    """Ham kilo/boy/vki/VKİ/BMI ifadelerini akademik Türkçeye çevir."""
     if not text:
         return text
     result = _strip_apa_html(str(text))
@@ -426,11 +366,6 @@ def apply_academic_text_rules(text: str) -> str:
         (re.compile(r"\bBMI\b", re.I), "BKİ"),
         (re.compile(r"\bVKİ\b"), "BKİ"),
         (re.compile(r"\bVKI\b", re.I), "BKİ"),
-        (re.compile(r"\bdbf_kilo\b", re.I), "Vücut Ağırlığı (kg)"),
-        (re.compile(r"\bdbf_boy\b", re.I), "Boy Uzunluğu (cm)"),
-        (re.compile(r"\bkilo\b", re.I), "vücut ağırlığı"),
-        (re.compile(r"\bboy\b", re.I), "boy uzunluğu"),
-        (re.compile(r"\bvki\b", re.I), "beden kitle indeksi (BKİ)"),
     ]
     for pattern, repl in replacements:
         result = pattern.sub(repl, result)
@@ -438,41 +373,18 @@ def apply_academic_text_rules(text: str) -> str:
 
 
 def format_display_label(name: str, label: str) -> str:
-    """Ham kod adını kullanıcı etiketi veya akademik kısa ada çevir."""
-    canon = anthro_canonical(name)
-    if canon:
-        return ANTHROPOMETRIC_META[canon]["label"]
     if label and label.strip() and label.strip().upper() != name.strip().upper():
         return label.strip()
-    key = name.strip().lower()
-    if key in CODE_LABEL_ALIASES:
-        return CODE_LABEL_ALIASES[key]
-    if key in SCALE_LABEL_ALIASES:
-        return SCALE_LABEL_ALIASES[key]
-    if key.startswith("dbf_"):
-        return key[4:].replace("_", " ").title()
-    if "_" in name:
-        return name
-    return name[:1].upper() + name[1:] if name else name
+    cleaned = name.replace("_", " ").strip()
+    return cleaned[:1].upper() + cleaned[1:] if cleaned else name
 
 
 def build_resolved_label_map(custom: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-    """Kod → görünen ad haritası (kullanıcı etiketleri öncelikli)."""
     resolved: Dict[str, str] = {}
-    for code, alias in SCALE_LABEL_ALIASES.items():
-        resolved[code.upper()] = alias
-    for code, meta in ANTHROPOMETRIC_META.items():
-        resolved[code.upper()] = meta["label"]
-        resolved[f"DBF_{code.upper()}"] = meta["label"]
-    resolved["DBF_KILO"] = ANTHROPOMETRIC_META["kilo"]["label"]
-    resolved["DBF_BOY"] = ANTHROPOMETRIC_META["boy"]["label"]
     if custom:
         for code, label in custom.items():
-            canon = anthro_canonical(code)
-            if canon:
-                resolved[str(code).strip().upper()] = ANTHROPOMETRIC_META[canon]["label"]
-            elif label and str(label).strip() and str(label).strip().upper() != str(code).strip().upper():
-                resolved[str(code).strip().upper()] = str(label).strip()
+            if label and label.strip():
+                resolved[code.upper()] = label.strip()
     return resolved
 
 
@@ -1666,6 +1578,22 @@ def is_primary_grouping(var: Variable) -> bool:
     return any(key in name for key in PRIMARY_GROUPING_KEYS)
 
 
+DEMO_LABEL_KEYWORDS = re.compile(
+    r"\b(yaş|yas|boy|kilo|ağırlık|agirlik|beden|bmi|bki|vki|"
+    r"height|weight|age)\b", re.I
+)
+
+SCALE_SCORE_RE = re.compile(
+    r"_toplam$|_puan$|_skor$|_score$|_total$|_sum$", re.I
+)
+
+
+def _is_demographic_continuous(v: Variable) -> bool:
+    """Sürekli ama demografik olan değişkenleri etiket/kolon adından tespit et."""
+    text = f"{v.name} {v.label or ''}".lower()
+    return bool(DEMO_LABEL_KEYWORDS.search(text))
+
+
 def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
     active = [v for v in variables if v.included]
     cat_vars = [v for v in active if v.type == "categorical"]
@@ -1675,10 +1603,6 @@ def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
     grouping_cont = [v for v in cont_vars if v.role == "grouping"]
     outcome_cont = [v for v in cont_vars if v.role == "outcome"]
     all_cont = outcome_cont + grouping_cont
-    CONT_SUFFIX_RE = re.compile(r"_toplam$|_puan$|_skor$|_score$|_total$", re.I)
-    DEMO_CONT_RE = re.compile(
-        r"^(dbf_yas|dbf_boy|dbf_kilo|yas|boy|kilo|bmi|bki|vki)$", re.I
-    )
 
     tests: List[dict] = []
 
@@ -1720,7 +1644,7 @@ def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
             f"{cv.label} × {ov.label}"
             for ov in outcome_cat
             if ov.name in df.columns
-            and not CONT_SUFFIX_RE.search(ov.name)
+            and not SCALE_SCORE_RE.search(ov.name)
         ]
         if not kare_pairs:
             continue
@@ -1737,7 +1661,7 @@ def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
         v for v in outcome_cont + grouping_cont
         if v.name in df.columns
         and is_numeric_continuous(df, v, {})
-        and not DEMO_CONT_RE.match(v.name)
+        and not _is_demographic_continuous(v)
     ]
     for cv in grouping_cat:
         if cv.name not in df.columns:
@@ -2480,26 +2404,47 @@ async def analyze_paired(req: PairedRequest):
     return {"result": result}
 
 
-CLASSIFY_SYSTEM = """Sen bir veri analisti yardımcısısın. Verilen sütun isimlerini ve örnek değerleri inceleyerek her sütunu sınıflandır.
+CLASSIFY_SYSTEM = """
+Sen akademik araştırma veri analisti yardımcısısın.
+Verilen sütun isimleri, kullanıcı etiketleri ve örnek değerlere bakarak
+her sütunu sınıflandır.
 
-ÖNEMLİ: Sadece açıkça madde olan sütunları exclude et. Şüphe durumunda categorical veya continuous seç.
+KARAR MANTIĞI:
 
-EXCLUDE — sadece bunlar:
-- Tam olarak: anket_no, id, no, sira, num, serial
-- Madde pattern: oys_1, oys_2, neq_1, sbito_6, sbito_6_ters, SBITO_6_T gibi (harf_rakam formatı)
+TYPE:
+- continuous: Sayısal, geniş aralık (ölçek puanları, yaş, boy, kilo, VKİ vb.)
+- categorical: Metin değerli VEYA az benzersiz sayısal değer (≤8 farklı değer)
+  (cinsiyet, bölüm, evet/hayır, risk grubu, kategori vb.)
+- exclude: Sadece ID/sıra no kolonları ve ölçek maddeleri
+  (kolon adı: id, no, anket_no, sira — VEYA harf_rakam pattern: oys_1, bdi_3, sf36_12)
 
-CATEGORICAL — bunlar:
-- Metin değerli sütunlar: Kadın/Erkek, Evet/Hayır, bölüm adları
-- Sayısal ama az benzersiz değer (≤6): cinsiyet, bolum, md, ed, gd, kh, ik, sk, ak
-- _grup, _binary, _kategori, YAS_GRUBU, GYA_RISK_GRUBU, VKI_Kategori gibi
+ROLE:
+- grouping: Demografik veya bağımsız değişken
+  (cinsiyet, bölüm, eğitim, gelir, medeni durum, meslek,
+   sigara, alkol, kronik hastalık, ilaç kullanımı vb.)
+- outcome: Ölçek puanı, risk grubu, kategori, bağımlı değişken
+  (toplam puan, skor, risk grubu, BKİ kategorisi, yaş grubu vb.)
+- exclude: exclude olan kolonlar
 
-CONTINUOUS — bunlar:
-- _TOPLAM, _toplam ile bitenler: OYS_TOPLAM, NEQ_TOPLAM, SBITO_TOPLAM
-- Sayısal, geniş aralık: dbf_yas, dbf_boy, dbf_kilo, vki, VKI
-- Ölçüm değerleri
+ÖNERİ (recommended):
+- Araştırma konusuyla doğrudan ilişkili → true
+- İkincil veya opsiyonel demografik → false
+- outcome kolonların hepsi → true
+- Temel demografikler (cinsiyet, bölüm) → true
+- İkincil demografikler (medeni durum, gelir, kronik hastalık) → false
 
-SADECE JSON döndür:
-{"categorical": ["sütun1"], "continuous": ["sütun2"], "exclude": ["sütun3"]}"""
+SADECE JSON döndür, başka hiçbir şey yazma:
+{
+  "variables": {
+    "kolon_adı": {
+      "type": "categorical|continuous|exclude",
+      "role": "grouping|outcome|exclude",
+      "recommended": true|false,
+      "reason": "Kısa Türkçe açıklama"
+    }
+  }
+}
+"""
 
 
 @app.post("/classify")
@@ -2508,78 +2453,62 @@ async def classify_columns(req: ClassifyRequest):
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY ortam değişkeni ayarlanmamış")
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    col_info = "\n".join([
-        f"- {col}: örnek değerler = {req.samples.get(col, [])}"
-        for col in req.columns
-    ])
+    col_info = []
+    for col in req.columns:
+        samples = req.samples.get(col, [])
+        label = (req.labels or {}).get(col, "")
+        label_str = f", etiket='{label}'" if label and label != col else ""
+        col_info.append(f"- {col}{label_str}: örnek={samples}")
+
+    topic_str = f"\nAraştırma konusu: {req.research_topic}" if req.research_topic else ""
+    user_msg = f"Sütunları sınıflandır:{topic_str}\n\n" + "\n".join(col_info)
 
     msg = client.messages.create(
         model=ANTHROPIC_MODEL,
-        max_tokens=800,
+        max_tokens=1500,
         system=CLASSIFY_SYSTEM,
-        messages=[{"role": "user", "content": f"Şu sütunları sınıflandır:\n{col_info}"}],
+        messages=[{"role": "user", "content": user_msg}],
     )
 
-    text = msg.content[0].text.strip()
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group())
-        except Exception:
-            pass
-    return {"categorical": [], "continuous": [], "exclude": []}
+    parsed = _parse_llm_json(msg.content[0].text.strip())
+    variables = parsed.get("variables", {})
 
+    categorical: List[str] = []
+    continuous: List[str] = []
+    exclude: List[str] = []
+    recommendations: Dict[str, dict] = {}
 
-RECOMMEND_SYSTEM = """Sen akademik araştırma metodolojisi uzmanısın. Verilen araştırma konusu ve sütun listesine göre hangi değişkenlerin analiz için önemli olduğuna karar ver.
+    for col, info in variables.items():
+        if col not in req.columns:
+            continue
+        t = info.get("type", "exclude")
+        role = info.get("role", "exclude")
+        rec = info.get("recommended", False)
+        reason = info.get("reason", "")
 
-Her sütun için üç kategoriden birini seç:
-- "recommended": Bu araştırma için mutlaka analiz edilmeli
-- "optional": Analiz edilebilir ama öncelikli değil
-- "skip": Bu araştırma için gereksiz veya anlamsız
+        if t == "exclude" or role == "exclude":
+            exclude.append(col)
+        elif t == "categorical":
+            categorical.append(col)
+        else:
+            continuous.append(col)
 
-Gruplandırma değişkenleri (kategorik demografik) için tavsiye ver.
-Analiz değişkenleri (ölçek puanları, risk grupları) hepsini "recommended" olarak işaretle.
+        recommendations[col] = {
+            "status": "recommended" if rec else "optional",
+            "role": role,
+            "reason": reason,
+        }
 
-SADECE JSON döndür:
-{
-  "recommendations": {
-    "sütun_adı": {
-      "status": "recommended|optional|skip",
-      "reason": "Kısa Türkçe açıklama"
+    for col in req.columns:
+        if col not in variables:
+            exclude.append(col)
+
+    return {
+        "categorical": categorical,
+        "continuous": continuous,
+        "exclude": exclude,
+        "recommendations": recommendations,
     }
-  }
-}"""
-
-
-@app.post("/recommend")
-async def recommend_variables(req: RecommendRequest):
-    if not ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY ayarlanmamış")
-
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    col_info = "\n".join([
-        f"- {col}: örnek değerler = {req.samples.get(col, [])}"
-        for col in req.columns
-    ])
-
-    msg = client.messages.create(
-        model=ANTHROPIC_MODEL,
-        max_tokens=1000,
-        system=RECOMMEND_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": f"Araştırma konusu: {req.research_topic}\n\nSütunlar:\n{col_info}",
-        }],
-    )
-
-    text = msg.content[0].text.strip()
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group())
-        except Exception:
-            pass
-    return {"recommendations": {}}
 
 
 @app.post("/ai/bulgu")
