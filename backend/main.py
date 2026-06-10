@@ -1675,6 +1675,10 @@ def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
     grouping_cont = [v for v in cont_vars if v.role == "grouping"]
     outcome_cont = [v for v in cont_vars if v.role == "outcome"]
     all_cont = outcome_cont + grouping_cont
+    CONT_SUFFIX_RE = re.compile(r"_toplam$|_puan$|_skor$|_score$|_total$", re.I)
+    DEMO_CONT_RE = re.compile(
+        r"^(dbf_yas|dbf_boy|dbf_kilo|yas|boy|kilo|bmi|bki|vki)$", re.I
+    )
 
     tests: List[dict] = []
 
@@ -1716,6 +1720,7 @@ def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
             f"{cv.label} × {ov.label}"
             for ov in outcome_cat
             if ov.name in df.columns
+            and not CONT_SUFFIX_RE.search(ov.name)
         ]
         if not kare_pairs:
             continue
@@ -1730,7 +1735,9 @@ def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
 
     cont_targets = [
         v for v in outcome_cont + grouping_cont
-        if v.name in df.columns and is_numeric_continuous(df, v, {})
+        if v.name in df.columns
+        and is_numeric_continuous(df, v, {})
+        and not DEMO_CONT_RE.match(v.name)
     ]
     for cv in grouping_cat:
         if cv.name not in df.columns:
@@ -2623,7 +2630,8 @@ def normalize_for_match(text: str) -> str:
     """Eşleştirme için string normalize et."""
     if not text:
         return ""
-    s = str(text).lower().translate(_TR_ASCII)
+    s = str(text).translate(_TR_ASCII)
+    s = s.lower()
     s = re.sub(r"[\s\-._]+", " ", s)
     words = []
     for word in s.split():
@@ -2953,9 +2961,15 @@ async def extract_context(req: ExtractContextRequest):
 # ── Etik Kurul Raporu ─────────────────────────────────────────────────────────
 
 ETHICS_KEYWORDS = [
-    "ölçek", "anket", "form", "cronbach", "alfa", "alpha", "güvenilirlik",
-    "geçerlilik", "madde", "alt boyut", "subscale", "kesim", "cutoff",
-    "veri toplama", "ölçüm aracı", "likert", "puan",
+    # Türkçe
+    "ölçek", "olcek", "anket", "cronbach", "alfa", "güvenilirlik",
+    "geçerlilik", "gecerlilik", "madde", "alt boyut", "likert", "puan",
+    "veri toplama", "ölçüm", "olcum", "kesim noktası",
+    # İngilizce
+    "alpha", "scale", "questionnaire", "inventory", "reliability",
+    "validity", "subscale", "cutoff", "instrument",
+    # Yaygın ölçek kısaltmaları (büyük/küçük harf fark etmez)
+    "neq", "oysto", "sbito", "gya", "bdi", "bai", "phq", "gad",
 ]
 ETHICS_MAX_FILTERED_CHARS = 24000
 ETHICS_FALLBACK_CHARS = 16000
@@ -2968,15 +2982,23 @@ ETHICS_SYSTEM_PROMPT = (
 
 def _section_matches_keywords(text: str) -> bool:
     lower = text.lower()
-    return any(kw in lower for kw in ETHICS_KEYWORDS)
+    normalized = lower.translate(_TR_ASCII)
+    normalized_keywords = [kw.translate(_TR_ASCII) for kw in ETHICS_KEYWORDS]
+    return (
+        any(kw in lower for kw in ETHICS_KEYWORDS) or
+        any(kw in normalized for kw in normalized_keywords)
+    )
 
 
 def _extract_pdf_sections(file_bytes: bytes) -> Tuple[List[str], int]:
     reader = PdfReader(io.BytesIO(file_bytes))
     sections = []
     for page in reader.pages:
-        text = (page.extract_text() or "").strip()
-        if text:
+        try:
+            text = (page.extract_text() or "").strip()
+        except Exception:
+            text = ""
+        if len(text) > 50:
             sections.append(text)
     return sections, len(reader.pages)
 
@@ -3005,7 +3027,16 @@ def _filter_ethics_sections(sections: List[str]) -> Tuple[str, int, int]:
         return combined, filtered_count, total
 
     full_text = "\n\n".join(sections)
-    return full_text[:ETHICS_FALLBACK_CHARS], 0, total
+    if len(full_text) <= ETHICS_FALLBACK_CHARS:
+        return full_text, 0, total
+
+    chunk = ETHICS_FALLBACK_CHARS // 3
+    start = full_text[:chunk]
+    mid_start = len(full_text) // 2 - chunk // 2
+    middle = full_text[mid_start:mid_start + chunk]
+    end = full_text[-chunk:]
+    combined = f"{start}\n\n[...]\n\n{middle}\n\n[...]\n\n{end}"
+    return combined, 0, total
 
 
 def _build_ethics_user_prompt(filtered_text: str) -> str:

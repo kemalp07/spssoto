@@ -332,14 +332,14 @@ const GROUPING_PATTERNS = [
 ];
 
 const OUTCOME_CAT_PATTERNS = [
-  /kategori/i, /_grup/i, /_binary/i,
+  /kategori/i, /_grup(u)?$/i, /_binary/i,
   /yas_grubu/i, /risk_grup/i, /risk_binary/i, /oys_grup/i,
-  /gya_risk/i,
+  /gya_risk/i, /_sinif$/i, /_durum$/i,
 ];
 
 const REQUIRED_LABEL_PATTERNS = [
   /^bolum$/i, /cinsiyet/i, /^dbf_/i, /vki/i,
-  /_toplam$/i, /_kategori$/i, /_grup/i, /_binary/i, /yas_grubu/i,
+  /_toplam$/i, /_kategori$/i, /_grup(u)?$/i, /_binary/i, /yas_grubu/i, /risk/i,
 ];
 
 const ITEM_COL_PATTERN = /^[a-zA-Z]+_\d+(_ters|_T)?$/i;
@@ -616,7 +616,11 @@ function renderLabelInputs(allCols) {
     const c = escAttr(col);
     const val = escAttr(userLabels[col] || col);
     const isRequired = isRequiredLabelCol(col);
-    const ph = isRequired ? "Zorunlu — Türkçe isim girin" : col;
+    let ph = isRequired ? "Zorunlu — Türkçe isim girin" : "Açıklama ekle (opsiyonel)";
+    if (/_toplam$/i.test(col)) ph = "Ölçek adını girin (toplam puan)";
+    if (/_grup(u)?$/i.test(col)) ph = "Risk grubu açıklaması (örn: Düşük / Yüksek Risk)";
+    if (/_binary$/i.test(col)) ph = "İkili sınıflama açıklaması";
+    if (/_kategori$/i.test(col)) ph = "Kategori açıklaması (örn: Zayıf / Normal / Obez)";
     return `
       <div style="display:flex; align-items:center; gap:8px;">
         <span style="font-size:12px; color:${isRequired ? "var(--accent)" : "var(--muted)"};
@@ -902,6 +906,7 @@ function renderEthicsStep() {
         <div class="icon">📄</div>
         <h2>Etik Kurul Raporu Yükle (PDF/Word)</h2>
         <p>Ölçek bilgileri otomatik çıkarılır</p>
+        <p style="font-size:11px; color:var(--warn); margin-top:8px;">⚠️ Taranmış PDF'lerde metin okunamayabilir — mümkünse Word (.docx) yükleyin</p>
         <div class="formats">
           <span class="format-badge">.pdf</span>
           <span class="format-badge">.docx</span>
@@ -1419,6 +1424,7 @@ function resetEthicsUploadZone() {
       <div class="icon">📄</div>
       <h2>Etik Kurul Raporu Yükle (PDF/Word)</h2>
       <p>Ölçek bilgileri otomatik çıkarılır</p>
+      <p style="font-size:11px; color:var(--warn); margin-top:8px;">⚠️ Taranmış PDF'lerde metin okunamayabilir — mümkünse Word (.docx) yükleyin</p>
       <div class="formats">
         <span class="format-badge">.pdf</span>
         <span class="format-badge">.docx</span>
@@ -1736,11 +1742,22 @@ function buildVariables() {
       const numericCount = vals.filter(v => !isNaN(parseFloat(String(v).replace(",", ".")))).length;
       const isNumeric = vals.length > 0 && numericCount / vals.length > 0.8;
       const hasWideRange = isNumeric && vals.some(v => (parseFloat(String(v).replace(",", ".")) || 0) > 10);
+      let type, role;
+      if (OUTCOME_CAT_PATTERNS.some(p => p.test(col))) {
+        type = "categorical";
+        role = "outcome";
+      } else if (OUTCOME_CONT_PATTERNS.some(p => p.test(col))) {
+        type = "continuous";
+        role = "outcome";
+      } else {
+        type = (isNumeric && hasWideRange) ? "continuous" : "categorical";
+        role = isGroupingMeas ? "grouping" : "outcome";
+      }
       return {
         name: col,
         label: userLabels[col] || col,
-        type: (isNumeric && hasWideRange) ? "continuous" : "categorical",
-        role: isGroupingMeas ? "grouping" : "outcome",
+        type,
+        role,
         included: true
       };
     }),
