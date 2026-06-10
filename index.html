@@ -68,6 +68,8 @@
   .btn-success:hover { background: #059669; }
   .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
   .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--text); }
   .btn-lg { padding: 14px 28px; font-size: 16px; }
   .btn-sm { padding: 6px 14px; font-size: 13px; }
 
@@ -310,10 +312,11 @@ let scaleMatchResults = [];
 let pdfContextMap = {};
 let ethicsFileBase64 = null;
 let ethicsFileType = null;
+let ethicsFileName = "";
 
-const STEPS = ["upload", "scales", "topic", "variables", "plan", "results"];
-const STEP_LABELS = ["Dosya", "Ölçekler", "Konu", "Değişkenler", "Plan", "Sonuçlar"];
-const STEP_ICONS = ["📁", "📋", "🎯", "🔢", "📊", "✅"];
+const STEPS = ["upload", "ethics", "scales", "topic", "variables", "plan", "results"];
+const STEP_LABELS = ["Dosya", "Rapor", "Ölçekler", "Konu", "Değişkenler", "Plan", "Sonuçlar"];
+const STEP_ICONS = ["📁", "📄", "📋", "🎯", "🔢", "📊", "✅"];
 
 const EXCLUDE_PATTERNS = [
   /^(anket_no|id|no|sira|num|serial)$/i,
@@ -538,6 +541,7 @@ function saveEthicsFileBase64(file) {
     reader.onload = (e) => {
       ethicsFileBase64 = e.target.result.split(",")[1];
       ethicsFileType = file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "docx";
+      ethicsFileName = file.name;
       const status = document.getElementById("ethicsFileStatus");
       if (status) {
         status.style.display = "block";
@@ -860,7 +864,7 @@ function renderUploadStep() {
       <div class="wizard-title">StatAI'ya Hoş Geldiniz</div>
       <div class="wizard-subtitle">Excel veya CSV dosyanızı yükleyin, gerisini biz halledelim</div>
       <div id="uploadZone" class="upload-zone" onclick="document.getElementById('fileInput').click()"
-           style="margin:0 0 20px; cursor:pointer;">
+           style="margin:0 0 24px; cursor:pointer;">
         <div class="icon">📁</div>
         <h2>Veri dosyanı yükle</h2>
         <p>Sürükle bırak veya tıkla</p>
@@ -871,28 +875,6 @@ function renderUploadStep() {
         </div>
       </div>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFile(this.files[0])" style="display:none" />
-      <div style="margin:20px 0; color:var(--muted); font-size:13px;">— veya —</div>
-      <div style="margin-top:20px; padding-top:20px; border-top:1px solid var(--border); text-align:left;">
-        <div style="font-size:13px; font-weight:600; margin-bottom:8px; color:var(--muted)">
-          📄 İsteğe bağlı: Etik Kurul Raporu / Anket Formu
-        </div>
-        <div style="font-size:12px; color:var(--muted); margin-bottom:10px">
-          PDF veya Word yüklerseniz ölçek bilgileri çıkarılır ve bulgular daha zengin akademik dille yazılır
-        </div>
-        <div id="ethicsUploadZone" class="upload-zone" onclick="document.getElementById('ethicsFileInput').click()"
-             style="margin:0 0 10px; cursor:pointer;">
-          <div class="icon">📄</div>
-          <h2 style="font-size:16px;">Etik Kurul Raporu Yükle (PDF/Word)</h2>
-          <p>Ölçek bilgileri otomatik çıkarılır</p>
-          <div class="formats">
-            <span class="format-badge">.pdf</span>
-            <span class="format-badge">.docx</span>
-          </div>
-        </div>
-        <input type="file" id="ethicsFileInput" accept=".pdf,.docx" onchange="handleEthicsReport(this.files[0])" style="display:none" />
-        <div id="ethicsFileStatus" style="display:none; font-size:12px; color:#34d399; margin-top:6px">✅ Rapor yüklendi</div>
-      </div>
-      <div id="ethicsReportStatus" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:8px; font-size:13px; text-align:left;"></div>
       <div style="padding:12px 16px; background:rgba(37,99,235,0.06); border:1px solid rgba(37,99,235,0.2); border-radius:8px; text-align:left; font-size:13px;">
         <strong>SPSS'den export için:</strong> File → Export → CSV →
         <em>"Save value labels where defined"</em> seçeneğini işaretle
@@ -903,6 +885,56 @@ function renderUploadStep() {
           style="margin-left:8px; padding:5px 10px; font-size:12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px; width:140px;" />
       </div>
     </div>`;
+}
+
+function renderEthicsStep() {
+  const hasEthics = Boolean(ethicsFileBase64);
+  const zoneHtml = hasEthics ? `
+      <div id="ethicsUploadZone" class="upload-zone" style="margin:0 0 12px; cursor:default;">
+        <div style="font-size:32px">✅</div>
+        <div style="font-weight:700; font-size:16px; margin:8px 0 4px">${escHtml(ethicsFileName)}</div>
+        <div style="font-size:12px; color:var(--muted)">Rapor yüklendi</div>
+        <div style="margin-top:10px; font-size:12px; color:var(--accent); cursor:pointer; text-decoration:underline"
+             onclick="event.stopPropagation(); resetEthicsUploadZone()">Farklı rapor yükle</div>
+      </div>` : `
+      <div id="ethicsUploadZone" class="upload-zone" onclick="document.getElementById('ethicsFileInput').click()"
+           style="margin:0 0 12px; cursor:pointer;">
+        <div class="icon">📄</div>
+        <h2>Etik Kurul Raporu Yükle (PDF/Word)</h2>
+        <p>Ölçek bilgileri otomatik çıkarılır</p>
+        <div class="formats">
+          <span class="format-badge">.pdf</span>
+          <span class="format-badge">.docx</span>
+        </div>
+      </div>`;
+  return `
+    <div class="wizard-card" style="max-width:600px;">
+      <div class="wizard-title">📄 Etik Kurul Raporu</div>
+      <div class="wizard-subtitle">
+        Varsa yükleyin — ölçek bilgileri otomatik çıkarılır ve
+        bulgular daha zengin akademik dille yazılır
+      </div>
+      ${zoneHtml}
+      <input type="file" id="ethicsFileInput" accept=".pdf,.docx" onchange="handleEthicsReport(this.files[0])" style="display:none" />
+      <div id="ethicsFileStatus" style="display:${hasEthics ? "block" : "none"}; font-size:12px; color:#34d399; margin-bottom:8px">✅ Rapor yüklendi</div>
+      <div id="ethicsReportStatus" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:8px; font-size:13px; text-align:left;"></div>
+      <div class="wizard-nav">
+        <button class="btn btn-secondary" onclick="prevStep()">← Geri</button>
+        <button class="btn btn-secondary" id="btnEthicsSkip" onclick="skipEthicsStep()"
+                style="opacity:0.6;${hasEthics ? " display:none;" : ""}">Atla →</button>
+        <button class="btn btn-success" id="btnEthicsNext"
+                style="${hasEthics ? "" : "display:none;"}"
+                onclick="nextStep()">Devam →</button>
+      </div>
+    </div>`;
+}
+
+function skipEthicsStep() {
+  ethicsFileBase64 = null;
+  ethicsFileType = null;
+  ethicsFileName = "";
+  pdfContextMap = {};
+  goToStep(currentStep + 1, "forward");
 }
 
 function renderScalesStep() {
@@ -989,6 +1021,7 @@ function renderResultsStep() {
 function renderStep(step) {
   switch (STEPS[step]) {
     case "upload": return renderUploadStep();
+    case "ethics": return renderEthicsStep();
     case "scales": return renderScalesStep();
     case "topic": return renderTopicStep();
     case "variables": return renderVariablesStep();
@@ -1020,10 +1053,8 @@ function updateProgress() {
 
 function initStep(step) {
   const name = STEPS[step];
-  if (name === "upload") {
-    initUploadZoneDragDrop();
-    initEthicsUploadZoneDragDrop();
-  }
+  if (name === "upload") initUploadZoneDragDrop();
+  if (name === "ethics") initEthicsUploadZoneDragDrop();
 
   if (name === "variables") {
     setTimeout(() => {
@@ -1220,6 +1251,7 @@ function resetWizard() {
   pdfContextMap = {};
   ethicsFileBase64 = null;
   ethicsFileType = null;
+  ethicsFileName = "";
   document.getElementById("labelWarningModal")?.classList.remove("open");
   const container = document.getElementById("slideContainer");
   if (container) container.innerHTML = "";
@@ -1341,10 +1373,14 @@ async function handleEthicsReport(file) {
     const fp = ti.filtered_pages ?? "?";
     const tp = ti.total_pages ?? "?";
     showEthicsReportStatus(
-      `✅ ${n} ölçek bulundu, ${fp}/${tp} sayfa tarandı. ` +
-      `<span style="color:var(--muted)">Veri dosyası (Excel/CSV) yüklemeyi unutmayın — zorunludur.</span>`,
+      `✅ ${n} ölçek bulundu, ${fp}/${tp} sayfa tarandı.`,
       "success"
     );
+
+    const btnNext = document.getElementById("btnEthicsNext");
+    const btnSkip = document.getElementById("btnEthicsSkip");
+    if (btnNext) btnNext.style.display = "";
+    if (btnSkip) btnSkip.style.display = "none";
 
     if (zone) {
       zone.innerHTML = `
@@ -1370,6 +1406,7 @@ function resetEthicsUploadZone() {
   const input = document.getElementById("ethicsFileInput");
   ethicsFileBase64 = null;
   ethicsFileType = null;
+  ethicsFileName = "";
   pdfContextMap = {};
   if (input) input.value = "";
   const status = document.getElementById("ethicsFileStatus");
@@ -1391,6 +1428,10 @@ function resetEthicsUploadZone() {
     delete zone.dataset.dragBound;
     initEthicsUploadZoneDragDrop();
   }
+  const btnNext = document.getElementById("btnEthicsNext");
+  const btnSkip = document.getElementById("btnEthicsSkip");
+  if (btnNext) btnNext.style.display = "none";
+  if (btnSkip) btnSkip.style.display = "";
 }
 
 function handleFile(file) {
