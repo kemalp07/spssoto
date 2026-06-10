@@ -306,6 +306,10 @@ let variablesDataReady = false;
 let lastRecommendations = {};
 let wizardFormState = { scaleNames: "", topic: "", scaleInfoHtml: "" };
 let fileInfoText = "";
+let scaleMatchResults = [];
+let pdfContextMap = {};
+let ethicsFileBase64 = null;
+let ethicsFileType = null;
 
 const STEPS = ["upload", "scales", "topic", "cutoffs", "variables", "plan", "results"];
 const STEP_LABELS = ["Dosya", "Ölçekler", "Konu", "Kesim", "Değişkenler", "Plan", "Sonuçlar"];
@@ -505,6 +509,103 @@ function collectUserLabelsFromInputs() {
   });
 }
 
+function collectUserLabelsAsArray() {
+  const result = [];
+  document.querySelectorAll("#labelInputGrid input[data-col]").forEach(input => {
+    const col = input.getAttribute("data-col") || input.getAttribute("data-label-col");
+    const label = input.value.trim();
+    if (col && label) result.push({ column: col, label });
+  });
+  return result;
+}
+
+function showToast(msg) {
+  let el = document.getElementById("stataiToast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "stataiToast";
+    el.style.cssText = "position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 18px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:opacity 0.3s;color:var(--text);";
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = "1";
+  setTimeout(() => { el.style.opacity = "0"; }, 4000);
+}
+
+function saveEthicsFileBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      ethicsFileBase64 = e.target.result.split(",")[1];
+      ethicsFileType = file.name.toLowerCase().endsWith(".pdf") ? "pdf" : "docx";
+      const status = document.getElementById("ethicsFileStatus");
+      const label = document.getElementById("ethicsFileLabel");
+      if (label) label.textContent = "📎 " + file.name;
+      if (status) status.style.display = "block";
+      resolve();
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleEthicsFileSelect(file) {
+  if (!file) return;
+  const ext = file.name.toLowerCase();
+  if (!ext.endsWith(".pdf") && !ext.endsWith(".docx")) {
+    showEthicsReportStatus("❌ Sadece PDF veya DOCX dosyaları desteklenir.", "error");
+    return;
+  }
+  await saveEthicsFileBase64(file);
+}
+
+async function fetchPdfContext() {
+  if (!ethicsFileBase64) return;
+
+  const columnLabels = collectUserLabelsAsArray();
+  const filled = columnLabels.filter(cl => cl.label.trim().length > 2);
+  if (!filled.length) return;
+
+  try {
+    const res = await fetch(`${API}/extract-context`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_base64: ethicsFileBase64,
+        file_type: ethicsFileType,
+        column_labels: filled,
+      }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    pdfContextMap = data.context_map || {};
+    if (data.matched_count > 0) {
+      showToast(`📄 ${data.matched_count} değişken için rapor bağlamı bulundu`);
+    }
+  } catch (e) {
+    console.warn("PDF context çekilemedi:", e);
+  }
+}
+
+function getPdfContextForResult(result) {
+  const candidates = [result.column, result.var1, result.var2, result.variable].filter(Boolean);
+  const seen = new Set();
+  const parts = [];
+  for (const c of candidates) {
+    let col = c;
+    if (!pdfContextMap[col]) {
+      const byLabel = Object.keys(userLabels).find(k => userLabels[k] === c);
+      if (byLabel) col = byLabel;
+      else if (columns.includes(c)) col = c;
+    }
+    if (pdfContextMap[col] && !seen.has(col)) {
+      seen.add(col);
+      parts.push(pdfContextMap[col]);
+    }
+  }
+  return parts.length ? parts.join("\n\n") : null;
+}
+
 function isRequiredLabelCol(col) {
   return REQUIRED_LABEL_PATTERNS.some(p => p.test(col));
 }
@@ -531,6 +632,7 @@ function renderLabelInputs(allCols) {
           type="text"
           id="${id}"
           data-col="${c}"
+          data-label-col="${c}"
           data-required="${isRequired ? "1" : "0"}"
           placeholder="${escAttr(ph)}"
           value="${val}"
@@ -637,6 +739,104 @@ function suggestedScaleNames() {
   return prefixes.length ? [...new Set(prefixes)].join(", ") : "";
 }
 
+function getScaleNamesArray() {
+  const input = document.getElementById("scaleNamesInput");
+  const raw = input ? input.value.trim() : (wizardFormState.scaleNames || "");
+  return raw.split(",").map(s => s.trim()).filter(Boolean);
+}
+
+function unmatchedColumnsForDisplay() {
+  return scaleMatchResults._unmatched || [];
+}
+
+function renderScaleMatchPanelHtml() {
+  if (!scaleMatchResults.length) return "";
+  const unmatched = unmatchedColumnsForDisplay();
+  return `
+    <div id="scaleMatchPanel" style="margin-bottom:16px;">
+      <div class="panel">
+        <div class="panel-title">🔗 Ölçek → Kolon Eşleştirmesi</div>
+        <p style="font-size:13px; color:var(--muted); margin-bottom:12px">
+          Yazdığınız ölçek adlarına göre kolonlar otomatik eşleştirildi.
+          Yanlış eşleşmeleri düzeltebilirsiniz.
+        </p>
+        ${scaleMatchResults.map(match => `
+          <div style="border:1px solid var(--border); border-radius:8px;
+                      padding:12px; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+              <span style="font-weight:600">${escHtml(match.scale_name)}</span>
+              <span style="font-size:11px; padding:2px 8px; border-radius:99px;
+                    background:${match.confidence === "high" ? "rgba(16,185,129,0.15)" :
+                                 match.confidence === "medium" ? "rgba(251,191,36,0.15)" :
+                                 "rgba(239,68,68,0.15)"};
+                    color:${match.confidence === "high" ? "#34d399" :
+                            match.confidence === "medium" ? "#fbbf24" : "#f87171"}">
+                ${match.confidence === "high" ? "✓ Güvenilir" :
+                  match.confidence === "medium" ? "~ Olası" : "? Belirsiz"}
+              </span>
+            </div>
+            ${match.total_columns?.length ? `
+              <div style="font-size:12px; color:var(--muted); margin-bottom:4px">
+                Toplam puan: ${match.total_columns.map(c => `<code>${escHtml(c)}</code>`).join(", ")}
+              </div>` : ""}
+            ${match.item_columns?.length ? `
+              <div style="font-size:12px; color:var(--muted)">
+                Maddeler (${match.item_columns.length}):
+                ${match.item_columns.slice(0, 5).map(c => `<code>${escHtml(c)}</code>`).join(", ")}
+                ${match.item_columns.length > 5 ? `<span>+${match.item_columns.length - 5} daha</span>` : ""}
+              </div>` : ""}
+            ${!match.matched_columns?.length ? `
+              <div style="font-size:12px; color:#f87171">
+                ⚠️ Eşleşen kolon bulunamadı — kolon adlarını kontrol edin
+              </div>` : ""}
+          </div>
+        `).join("")}
+        ${unmatched.length ? `
+          <div style="font-size:12px; color:var(--muted); margin-top:8px">
+            Eşleşmeyen kolonlar (demografik/diğer):
+            ${unmatched.slice(0, 8).map(c => escHtml(c)).join(", ")}${unmatched.length > 8 ? "..." : ""}
+          </div>` : ""}
+      </div>
+    </div>`;
+}
+
+function applyScaleMatchToColumns() {
+  if (!scaleMatchResults.length) return;
+  scaleMatchResults.forEach(match => {
+    if (match.total_columns?.length) {
+      match.total_columns.forEach(col => {
+        if (!contColumns.includes(col)) contColumns.push(col);
+        selectedCont.add(col);
+      });
+    }
+  });
+}
+
+async function runScaleMatching() {
+  const scaleNames = getScaleNamesArray();
+  const dataSource = parsedData?.length ? parsedData : pendingJson;
+  if (!scaleNames.length || !dataSource?.length) return;
+
+  const columnNames = Object.keys(dataSource[0]);
+  try {
+    const res = await fetch(`${API}/match-scales`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scale_names: scaleNames,
+        column_names: columnNames,
+      }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    scaleMatchResults = data.matches || [];
+    scaleMatchResults._unmatched = data.unmatched_columns || [];
+  } catch (e) {
+    scaleMatchResults = [];
+    scaleMatchResults._unmatched = [];
+  }
+}
+
 function updateScaleCutoff(key, value) {
   if (scaleInfo[key]) scaleInfo[key].cutoff = parseInt(value, 10);
 }
@@ -698,6 +898,20 @@ function initUploadZoneDragDrop() {
   });
 }
 
+function initEthicsUploadZoneDragDrop() {
+  const zone = document.getElementById("ethicsUploadZone");
+  if (!zone || zone.dataset.dragBound) return;
+  zone.dataset.dragBound = "1";
+  zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", e => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    const file = e.dataTransfer.files[0];
+    if (file) handleEthicsReport(file);
+  });
+}
+
 function renderUploadStep() {
   return `
     <div class="wizard-card" style="text-align:center; max-width:600px;">
@@ -716,6 +930,35 @@ function renderUploadStep() {
         </div>
       </div>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFile(this.files[0])" style="display:none" />
+      <div style="margin:20px 0; color:var(--muted); font-size:13px;">— veya —</div>
+      <div style="margin-top:20px; padding-top:20px; border-top:1px solid var(--border); text-align:left;">
+        <div style="font-size:13px; font-weight:600; margin-bottom:8px; color:var(--muted)">
+          📄 İsteğe bağlı: Etik Kurul Raporu / Anket Formu
+        </div>
+        <div style="font-size:12px; color:var(--muted); margin-bottom:10px">
+          PDF veya Word yüklerseniz ölçek bilgileri çıkarılır ve bulgular daha zengin akademik dille yazılır
+        </div>
+        <div id="ethicsUploadZone" class="upload-zone" onclick="document.getElementById('ethicsFileInput').click()"
+             style="margin:0 0 10px; cursor:pointer;">
+          <div class="icon">📄</div>
+          <h2 style="font-size:16px;">Etik Kurul Raporu Yükle (PDF/Word)</h2>
+          <p>Ölçek bilgileri otomatik çıkarılır</p>
+          <div class="formats">
+            <span class="format-badge">.pdf</span>
+            <span class="format-badge">.docx</span>
+          </div>
+        </div>
+        <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+                      padding:8px 16px; border:1px dashed var(--border); border-radius:8px;
+                      font-size:13px; color:var(--muted)">
+          <span id="ethicsFileLabel">📎 Rapor seç (.pdf veya .docx)</span>
+          <input type="file" id="ethicsFileInputAlt" accept=".pdf,.docx"
+                 style="display:none" onchange="handleEthicsFileSelect(this.files[0])">
+        </label>
+        <input type="file" id="ethicsFileInput" accept=".pdf,.docx" onchange="handleEthicsReport(this.files[0])" style="display:none" />
+        <div id="ethicsFileStatus" style="display:none; font-size:12px; color:#34d399; margin-top:6px">✅ Rapor yüklendi</div>
+      </div>
+      <div id="ethicsReportStatus" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:8px; font-size:13px; text-align:left;"></div>
       <div style="padding:12px 16px; background:rgba(37,99,235,0.06); border:1px solid rgba(37,99,235,0.2); border-radius:8px; text-align:left; font-size:13px;">
         <strong>SPSS'den export için:</strong> File → Export → CSV →
         <em>"Save value labels where defined"</em> seçeneğini işaretle
@@ -824,6 +1067,7 @@ function renderVariablesStep() {
     <div class="wizard-card" style="max-width:900px;">
       <div class="wizard-title">🔢 Değişkenler</div>
       <div class="wizard-subtitle">Hangi sütunları analiz edeceğinizi seçin ve Türkçe isimlerini yazın.</div>
+      ${renderScaleMatchPanelHtml()}
       <div id="selectionGridsContainer"></div>
       <div style="margin-top:20px;">
         <div style="font-size:14px; font-weight:600; margin-bottom:12px;">
@@ -901,7 +1145,10 @@ function updateProgress() {
 
 function initStep(step) {
   const name = STEPS[step];
-  if (name === "upload") initUploadZoneDragDrop();
+  if (name === "upload") {
+    initUploadZoneDragDrop();
+    initEthicsUploadZoneDragDrop();
+  }
 
   if (name === "variables") {
     setTimeout(() => {
@@ -1033,6 +1280,14 @@ async function nextStep() {
 
   let next = currentStep + 1;
 
+  if (STEPS[currentStep] === "scales") {
+    await runScaleMatching();
+  }
+
+  if (STEPS[currentStep] === "variables") {
+    await fetchPdfContext();
+  }
+
   if (STEPS[currentStep] === "topic") {
     ensurePendingUserLabels();
     applyScaleInfoToLabels();
@@ -1069,6 +1324,7 @@ async function nextStep() {
     }
     try {
       await loadData(pendingJson, pendingFileName, researchTopicText);
+      applyScaleMatchToColumns();
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -1112,6 +1368,10 @@ function resetWizard() {
   lastRecommendations = {};
   wizardFormState = { scaleNames: "", topic: "", scaleInfoHtml: "" };
   fileInfoText = "";
+  scaleMatchResults = [];
+  pdfContextMap = {};
+  ethicsFileBase64 = null;
+  ethicsFileType = null;
   document.getElementById("labelWarningModal")?.classList.remove("open");
   const container = document.getElementById("slideContainer");
   if (container) container.innerHTML = "";
@@ -1119,6 +1379,201 @@ function resetWizard() {
 }
 
 // ── Upload ────────────────────────────────────────────────────────────────────
+
+function ethicsScaleToScaleInfo(scale) {
+  const key = (scale.short_name || scale.name || "").trim();
+  if (!key) return null;
+  const info = {
+    full_name: scale.name || key,
+    item_count: scale.item_count ?? null,
+    min_score: scale.min_score ?? null,
+    max_score: scale.max_score ?? null,
+    likert: scale.likert_range ? `${scale.likert_range} Likert` : null,
+    reference: scale.citation || null,
+  };
+  if (Array.isArray(scale.cutoffs) && scale.cutoffs.length) {
+    const withScore = scale.cutoffs.find(c => c && c.score != null);
+    if (withScore) info.cutoff = withScore.score;
+  }
+  const notes = [];
+  if (Array.isArray(scale.subscales) && scale.subscales.length) {
+    notes.push(`Alt boyutlar: ${scale.subscales.join(", ")}`);
+  }
+  if (scale.cronbach != null) notes.push(`Cronbach α: ${scale.cronbach}`);
+  if (scale.developer) notes.push(`Geliştiren: ${scale.developer}`);
+  if (scale.adaptation) notes.push(`Uyarlama: ${scale.adaptation}`);
+  if (notes.length) info.note = notes.join(" · ");
+  return { key, info };
+}
+
+function renderScaleInfoHtml(scaleMap) {
+  if (!Object.keys(scaleMap).length) return "";
+  return `
+    <div style="font-size:13px; font-weight:600; margin-bottom:10px; color:var(--accent);">
+      ✅ ${Object.keys(scaleMap).length} ölçek bulundu — bilgileri kontrol edin:
+    </div>
+    ${Object.entries(scaleMap).map(([name, info]) => `
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:8px;">
+        <div style="font-weight:700; margin-bottom:4px;">${escHtml(name)}</div>
+        <div style="font-size:12px; color:var(--muted); line-height:1.8;">
+          ${info.full_name ? `<span>📖 ${escHtml(info.full_name)}</span><br>` : ""}
+          ${info.item_count ? `<span>📝 ${info.item_count} madde</span> · ` : ""}
+          ${(info.min_score != null && info.max_score != null) ? `<span>📊 Teorik aralık: ${info.min_score}–${info.max_score}</span> · ` : ""}
+          ${info.likert ? `<span>🔢 ${escHtml(info.likert)}</span>` : ""}
+          ${info.note ? `<br><span style="color:var(--text);">💡 ${escHtml(info.note)}</span>` : ""}
+        </div>
+      </div>
+    `).join("")}
+    <div style="font-size:12px; color:var(--muted); margin-top:8px;">
+      Bilgiler yanlışsa ölçek isimlerini düzeltin ve tekrar deneyin.
+    </div>`;
+}
+
+function mergeEthicsScalesIntoScaleInfo(scales) {
+  const merged = { ...scaleInfo };
+  (scales || []).forEach(scale => {
+    const mapped = ethicsScaleToScaleInfo(scale);
+    if (mapped) merged[mapped.key] = { ...(merged[mapped.key] || {}), ...mapped.info };
+  });
+  return merged;
+}
+
+function showEthicsReportStatus(message, type = "info") {
+  const el = document.getElementById("ethicsReportStatus");
+  if (!el) return;
+  const styles = {
+    info: "background:rgba(37,99,235,0.08); border:1px solid rgba(37,99,235,0.25); color:var(--text);",
+    success: "background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); color:var(--text);",
+    error: "background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); color:var(--danger);",
+    loading: "background:rgba(37,99,235,0.06); border:1px solid rgba(37,99,235,0.2); color:var(--muted);",
+  };
+  el.style.cssText = `display:block; margin-bottom:12px; padding:10px 14px; border-radius:8px; font-size:13px; text-align:left; ${styles[type] || styles.info}`;
+  el.innerHTML = message;
+}
+
+async function handleEthicsReport(file) {
+  if (!file) return;
+  const ext = file.name.toLowerCase();
+  if (!ext.endsWith(".pdf") && !ext.endsWith(".docx")) {
+    showEthicsReportStatus("❌ Sadece PDF veya DOCX dosyaları desteklenir.", "error");
+    return;
+  }
+
+  try {
+    await saveEthicsFileBase64(file);
+  } catch (e) {
+    showEthicsReportStatus("❌ Dosya okunamadı.", "error");
+    return;
+  }
+
+  const zone = document.getElementById("ethicsUploadZone");
+  const prevZoneHtml = zone ? zone.innerHTML : "";
+  if (zone) {
+    zone.innerHTML = `
+      <div style="font-size:32px">⏳</div>
+      <div style="font-weight:600; font-size:15px; margin:8px 0 4px">📄 Rapor analiz ediliyor...</div>
+      <div style="font-size:12px; color:var(--muted)">İlgili bölümler taranıyor</div>`;
+    zone.style.cursor = "default";
+    zone.onclick = null;
+  }
+  showEthicsReportStatus("📄 Rapor analiz ediliyor... (ilgili bölümler taranıyor)", "loading");
+
+  const formData = new FormData();
+  formData.append("file", file);
+  if (researchTopicText) formData.append("research_topic", researchTopicText);
+
+  try {
+    const res = await fetch(`${API}/import-ethics-report`, { method: "POST", body: formData });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = Array.isArray(data.detail)
+        ? data.detail.map(d => d.msg || String(d)).join(", ")
+        : (data.detail || "Rapor analiz edilemedi");
+      throw new Error(detail);
+    }
+
+    const scales = data.scales || [];
+    scaleInfo = mergeEthicsScalesIntoScaleInfo(scales);
+
+    const scaleNames = scales
+      .map(s => (s.short_name || s.name || "").trim())
+      .filter(Boolean);
+    if (scaleNames.length) {
+      wizardFormState.scaleNames = scaleNames.join(", ");
+      const scaleInput = document.getElementById("scaleNamesInput");
+      if (scaleInput) scaleInput.value = wizardFormState.scaleNames;
+    }
+
+    if (data.research_topic) {
+      researchTopicText = data.research_topic;
+      wizardFormState.topic = data.research_topic;
+      const topicInput = document.getElementById("researchTopic");
+      if (topicInput) topicInput.value = data.research_topic;
+    }
+
+    if (Object.keys(scaleInfo).length) {
+      wizardFormState.scaleInfoHtml = renderScaleInfoHtml(scaleInfo);
+      const resultDiv = document.getElementById("scaleInfoResult");
+      if (resultDiv) resultDiv.innerHTML = wizardFormState.scaleInfoHtml;
+    }
+
+    const ti = data.token_info || {};
+    const n = scales.length;
+    const fp = ti.filtered_pages ?? "?";
+    const tp = ti.total_pages ?? "?";
+    showEthicsReportStatus(
+      `✅ ${n} ölçek bulundu, ${fp}/${tp} sayfa tarandı. ` +
+      `<span style="color:var(--muted)">Veri dosyası (Excel/CSV) yüklemeyi unutmayın — zorunludur.</span>`,
+      "success"
+    );
+
+    if (zone) {
+      zone.innerHTML = `
+        <div style="font-size:32px">✅</div>
+        <div style="font-weight:700; font-size:16px; margin:8px 0 4px">${escHtml(file.name)}</div>
+        <div style="font-size:12px; color:var(--muted)">${n} ölçek çıkarıldı</div>
+        <div style="margin-top:10px; font-size:12px; color:var(--accent); cursor:pointer; text-decoration:underline"
+             onclick="event.stopPropagation(); resetEthicsUploadZone()">Farklı rapor yükle</div>`;
+    }
+  } catch (e) {
+    showEthicsReportStatus(`❌ Hata: ${escHtml(e.message)}`, "error");
+    if (zone) {
+      zone.innerHTML = prevZoneHtml;
+      zone.style.cursor = "pointer";
+      zone.onclick = () => document.getElementById("ethicsFileInput").click();
+      initEthicsUploadZoneDragDrop();
+    }
+  }
+}
+
+function resetEthicsUploadZone() {
+  const zone = document.getElementById("ethicsUploadZone");
+  const input = document.getElementById("ethicsFileInput");
+  const inputAlt = document.getElementById("ethicsFileInputAlt");
+  ethicsFileBase64 = null;
+  ethicsFileType = null;
+  pdfContextMap = {};
+  if (input) input.value = "";
+  if (inputAlt) inputAlt.value = "";
+  const status = document.getElementById("ethicsFileStatus");
+  const label = document.getElementById("ethicsFileLabel");
+  if (status) status.style.display = "none";
+  if (label) label.textContent = "📎 Rapor seç (.pdf veya .docx)";
+  if (zone) {
+    zone.innerHTML = `
+      <div class="icon">📄</div>
+      <h2>Etik Kurul Raporu Yükle (PDF/Word)</h2>
+      <p>Ölçek bilgileri otomatik çıkarılır</p>
+      <div class="formats">
+        <span class="format-badge">.pdf</span>
+        <span class="format-badge">.docx</span>
+      </div>`;
+    zone.style.cursor = "pointer";
+    zone.onclick = () => document.getElementById("ethicsFileInput").click();
+    delete zone.dataset.dragBound;
+    initEthicsUploadZoneDragDrop();
+  }
+}
 
 function handleFile(file) {
   if (!file) return;
@@ -1890,6 +2345,7 @@ async function generateBulgu(i, current = null, total = null) {
         label_map: userLabels,
         approved_cutoffs: approvedCutoffs,
         scale_info: scaleInfo,
+        pdf_context: getPdfContextForResult(r),
       })
     });
     if (!res.ok) {

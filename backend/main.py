@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Tuple
+import base64
 import json
 import math
 import re
@@ -17,6 +18,7 @@ from scipy.stats import (
 import anthropic
 import io
 from docx import Document
+from pypdf import PdfReader
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
@@ -80,6 +82,7 @@ class BulguRequest(BaseModel):
     label_map: Optional[Dict[str, str]] = None
     approved_cutoffs: Optional[List[dict]] = None
     scale_info: Optional[dict] = None
+    pdf_context: Optional[str] = None
 
 
 class ScaleInfoRequest(BaseModel):
@@ -120,6 +123,19 @@ class CronbachBatchRequest(BaseModel):
 class SpssTableRequest(BaseModel):
     content: str
     auto_bulgu: bool = True
+
+class ScaleMatchRequest(BaseModel):
+    scale_names: List[str]
+    column_names: List[str]
+
+class ColumnLabel(BaseModel):
+    column: str
+    label: str
+
+class ExtractContextRequest(BaseModel):
+    file_base64: str
+    file_type: str
+    column_labels: List[ColumnLabel]
 
 # ── SPSS Tablo → Markdown ─────────────────────────────────────────────────────
 
@@ -1173,6 +1189,7 @@ def build_bulgu_user_message(
     label_map: Optional[Dict[str, str]] = None,
     approved_cutoffs: Optional[List[dict]] = None,
     scale_info: Optional[dict] = None,
+    pdf_context: Optional[str] = None,
 ) -> str:
     blob = _bulgu_context_blob(result)
     parts = []
@@ -1188,7 +1205,15 @@ def build_bulgu_user_message(
     if scales:
         parts.append("Ölçek: " + json.dumps(scales, ensure_ascii=False))
     parts.append("Tablo: " + json.dumps(_compact_bulgu_result(result), ensure_ascii=False))
-    return "\n".join(parts)
+    message = "\n".join(parts)
+    if pdf_context:
+        message += f"""
+
+--- ÖLÇEK KAYNAK BİLGİSİ (etik kurul / araştırma raporundan) ---
+{pdf_context}
+--- Bu bilgiyi bulgularda ölçeği tanıtırken ve yorumlarken kullan.
+Birebir kopyalama, kendi cümlelerinle akademik dille yeniden yaz. ---"""
+    return message
 
 
 def _generate_bulgu_text(
@@ -1197,6 +1222,7 @@ def _generate_bulgu_text(
     label_map: Optional[Dict[str, str]] = None,
     approved_cutoffs: Optional[List[dict]] = None,
     scale_info: Optional[dict] = None,
+    pdf_context: Optional[str] = None,
 ) -> str:
     if not ANTHROPIC_API_KEY:
         return ""
@@ -1208,7 +1234,7 @@ def _generate_bulgu_text(
         messages=[{
             "role": "user",
             "content": build_bulgu_user_message(
-                result, research_topic, label_map, approved_cutoffs, scale_info
+                result, research_topic, label_map, approved_cutoffs, scale_info, pdf_context
             ),
         }],
     )
@@ -2957,6 +2983,7 @@ async def ai_bulgu(req: BulguRequest):
         req.label_map,
         req.approved_cutoffs,
         req.scale_info,
+        req.pdf_context,
     )
     return {"bulgu": text}
 
@@ -2974,6 +3001,504 @@ async def export_word(req: WordExportRequest):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": "attachment; filename=statai_bulgular.docx"},
     )
+
+
+# ── Ölçek → Kolon Eşleştirme ───────────────────────────────────────────────────
+
+_TR_ASCII = str.maketrans({
+    "ş": "s", "Ş": "s",
+    "ı": "i", "İ": "i",
+    "ğ": "g", "Ğ": "g",
+    "ü": "u", "Ü": "u",
+    "ö": "o", "Ö": "o",
+    "ç": "c", "Ç": "c",
+})
+_TOTAL_MARKERS = ("toplam", "total", "puan", "skor", "score")
+_ITEM_COL_RE = re.compile(r"(?:^|_)\d+(?:_ters|_t)?$", re.I)
+
+
+def normalize_for_match(text: str) -> str:
+    """Eşleştirme için string normalize et."""
+    if not text:
+        return ""
+    s = str(text).lower().translate(_TR_ASCII)
+    s = re.sub(r"[\s\-._]+", " ", s)
+    words = []
+    for word in s.split():
+        word = re.sub(r"\d+$", "", word)
+        if word:
+            words.append(word)
+    s = " ".join(words)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _keyword_prefixes(keyword: str, min_len: int = 3) -> List[str]:
+    if " " in keyword or len(keyword) < min_len:
+        return []
+    return [keyword[:i] for i in range(min_len, len(keyword) + 1)]
+
+
+def extract_scale_keywords(scale_name: str) -> List[str]:
+    """Kullanıcının yazdığı ölçek adından eşleştirme keyword'leri üret."""
+    keywords: List[str] = []
+    raw = (scale_name or "").strip()
+    if not raw:
+        return []
+
+    raw_no_paren = re.sub(r"\([^)]*\)", " ", raw)
+    normalized_full = normalize_for_match(raw_no_paren)
+    if normalized_full and " " not in normalized_full:
+        keywords.append(normalized_full)
+
+    paren_match = re.search(r"\(([^)]+)\)", raw)
+    if paren_match:
+        inner = normalize_for_match(paren_match.group(1))
+        if inner:
+            keywords.append(inner)
+
+    words_raw = re.sub(r"\([^)]*\)", "", raw)
+    words_raw = re.sub(r"[^\w\sğüşıöçĞÜŞİÖÇ]", " ", words_raw, flags=re.I)
+    word_tokens = [w for w in words_raw.split() if w]
+    if word_tokens:
+        acronym = "".join(normalize_for_match(w)[:1] for w in word_tokens if w)
+        if acronym:
+            keywords.append(acronym)
+
+    for word in word_tokens:
+        norm_word = normalize_for_match(word)
+        if len(norm_word) >= 3:
+            keywords.append(norm_word)
+
+    if word_tokens:
+        first = normalize_for_match(word_tokens[0])
+        if first:
+            keywords.append(first)
+
+    expanded: List[str] = []
+    for kw in keywords:
+        expanded.append(kw)
+        expanded.extend(_keyword_prefixes(kw))
+
+    seen = set()
+    result: List[str] = []
+    for kw in expanded:
+        kw = kw.strip()
+        if kw and kw not in seen:
+            seen.add(kw)
+            result.append(kw)
+    return result
+
+
+def _column_stem(col: str) -> str:
+    base = re.split(r"[_\-\s]", col, maxsplit=1)[0]
+    return normalize_for_match(base)
+
+
+def _keyword_matches_column(kw: str, col: str) -> bool:
+    norm_col = normalize_for_match(col)
+    stem = _column_stem(col)
+    if not kw or not stem:
+        return False
+    if stem == kw:
+        return True
+    if kw.startswith(stem) and len(kw) - len(stem) <= 2:
+        return True
+    if stem.startswith(kw) and len(stem) - len(kw) <= 1:
+        return True
+    if len(kw) >= 4 and kw in norm_col:
+        return True
+    return False
+
+
+def _column_matches_keywords(col: str, keywords: List[str]) -> bool:
+    return any(_keyword_matches_column(kw, col) for kw in keywords)
+
+
+def _best_keyword_len(col: str, keywords: List[str]) -> int:
+    matched = [len(kw) for kw in keywords if _keyword_matches_column(kw, col)]
+    return max(matched) if matched else 0
+
+
+def _classify_matched_column(col: str) -> str:
+    norm = normalize_for_match(col)
+    if any(marker in norm for marker in _TOTAL_MARKERS):
+        return "total"
+    if _ITEM_COL_RE.search(col):
+        return "item"
+    return "subscale"
+
+
+def _match_confidence(
+    total_columns: List[str],
+    item_columns: List[str],
+    subscale_columns: List[str],
+) -> str:
+    if total_columns:
+        return "high"
+    if item_columns:
+        return "medium"
+    if subscale_columns:
+        return "low"
+    return "low"
+
+
+def match_scale_to_columns(scale_name: str, all_columns: List[str]) -> dict:
+    """Tek ölçeği kolon listesiyle eşleştir."""
+    keywords = extract_scale_keywords(scale_name)
+    matched_columns: List[str] = []
+
+    for col in all_columns:
+        if _column_matches_keywords(col, keywords):
+            matched_columns.append(col)
+
+    item_columns = [c for c in matched_columns if _classify_matched_column(c) == "item"]
+    total_columns = [c for c in matched_columns if _classify_matched_column(c) == "total"]
+    subscale_columns = [
+        c for c in matched_columns
+        if c not in item_columns and c not in total_columns
+    ]
+
+    return {
+        "scale_name": scale_name,
+        "keywords_used": keywords,
+        "matched_columns": matched_columns,
+        "item_columns": item_columns,
+        "total_columns": total_columns,
+        "subscale_columns": subscale_columns,
+        "confidence": _match_confidence(total_columns, item_columns, subscale_columns),
+    }
+
+
+def match_all_scales(scale_names: List[str], all_columns: List[str]) -> dict:
+    """Tüm ölçekleri eşleştir; her kolon en fazla bir ölçeğe gitsin."""
+    raw_matches = [
+        match_scale_to_columns(name.strip(), all_columns)
+        for name in scale_names
+        if name and name.strip()
+    ]
+
+    col_owner: Dict[str, Tuple[int, int]] = {}
+    for scale_idx, match in enumerate(raw_matches):
+        for col in match["matched_columns"]:
+            kw_len = _best_keyword_len(col, match["keywords_used"])
+            if col not in col_owner or kw_len > col_owner[col][1]:
+                col_owner[col] = (scale_idx, kw_len)
+
+    final_matches: List[dict] = []
+    for scale_idx, match in enumerate(raw_matches):
+        owned = [
+            col for col, (owner_idx, _) in col_owner.items()
+            if owner_idx == scale_idx
+        ]
+        item_columns = [c for c in owned if _classify_matched_column(c) == "item"]
+        total_columns = [c for c in owned if _classify_matched_column(c) == "total"]
+        subscale_columns = [
+            c for c in owned
+            if c not in item_columns and c not in total_columns
+        ]
+        final_matches.append({
+            "scale_name": match["scale_name"],
+            "keywords_used": match["keywords_used"],
+            "matched_columns": owned,
+            "item_columns": item_columns,
+            "total_columns": total_columns,
+            "subscale_columns": subscale_columns,
+            "confidence": _match_confidence(total_columns, item_columns, subscale_columns),
+        })
+
+    assigned = set(col_owner.keys())
+    unmatched_columns = [c for c in all_columns if c not in assigned]
+
+    return {
+        "matches": final_matches,
+        "unmatched_columns": unmatched_columns,
+    }
+
+
+@app.post("/match-scales")
+def match_scales_endpoint(req: ScaleMatchRequest):
+    """Saf string matching, AI yok, dış kaynak yok."""
+    return match_all_scales(req.scale_names, req.column_names)
+
+
+# ── PDF Bağlam Çıkarma ────────────────────────────────────────────────────────
+
+_CONTEXT_MAX_CHARS = 1500
+
+
+def extract_full_text(file_base64: str, file_type: str) -> Tuple[str, int]:
+    """PDF veya DOCX'ten tüm metni çek."""
+    try:
+        raw = base64.b64decode(file_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Base64 decode hatası: {e}")
+
+    if file_type == "pdf":
+        try:
+            reader = PdfReader(io.BytesIO(raw))
+            pages = [(p.extract_text() or "").strip() for p in reader.pages]
+            text = "\n\n".join(p for p in pages if p)
+            return text, len(reader.pages)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"PDF okunamadı: {e}")
+
+    if file_type == "docx":
+        try:
+            doc = Document(io.BytesIO(raw))
+            paragraphs = [(p.text or "").strip() for p in doc.paragraphs if (p.text or "").strip()]
+            text = "\n".join(paragraphs)
+            page_count = max(1, (len(paragraphs) + 4) // 5)
+            return text, page_count
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"DOCX okunamadı: {e}")
+
+    raise HTTPException(status_code=400, detail="file_type 'pdf' veya 'docx' olmalı")
+
+
+def _split_paragraphs(full_text: str) -> List[str]:
+    if "\n\n" in full_text:
+        return [p.strip() for p in full_text.split("\n\n") if p.strip()]
+    return [p.strip() for p in full_text.split("\n") if p.strip()]
+
+
+def _label_search_keywords(label: str) -> List[str]:
+    keywords = extract_scale_keywords(label)
+    norm_label = normalize_for_match(label)
+    if norm_label and " " not in norm_label:
+        keywords.insert(0, norm_label)
+    for word in re.sub(r"\([^)]*\)", "", label).split():
+        norm_word = normalize_for_match(word)
+        if len(norm_word) >= 3:
+            keywords.append(norm_word)
+    seen = set()
+    result: List[str] = []
+    for kw in keywords:
+        if kw and kw not in seen:
+            seen.add(kw)
+            result.append(kw)
+    return result
+
+
+def find_relevant_paragraphs(full_text: str, label: str, window: int = 3) -> str:
+    """Etiket kelimelerine göre ilgili paragrafları bul."""
+    if not full_text or not label:
+        return ""
+
+    paragraphs = _split_paragraphs(full_text)
+    if not paragraphs:
+        return ""
+
+    keywords = _label_search_keywords(label)
+    if not keywords:
+        return ""
+
+    matched_indices: List[int] = []
+    for i, para in enumerate(paragraphs):
+        norm_para = normalize_for_match(para)
+        if any(kw in norm_para for kw in keywords if len(kw) >= 3):
+            matched_indices.append(i)
+
+    if not matched_indices:
+        return ""
+
+    selected: List[int] = []
+    seen_idx = set()
+    for idx in matched_indices:
+        for j in range(max(0, idx - window), min(len(paragraphs), idx + window + 1)):
+            if j not in seen_idx:
+                seen_idx.add(j)
+                selected.append(j)
+
+    combined = "\n\n".join(paragraphs[i] for i in selected)
+    if len(combined) > _CONTEXT_MAX_CHARS:
+        combined = combined[:_CONTEXT_MAX_CHARS]
+    return combined
+
+
+def build_label_context_map(
+    full_text: str,
+    column_labels: List[ColumnLabel],
+) -> Dict[str, str]:
+    """Her kolon etiketi için ilgili paragrafları çıkar."""
+    result: Dict[str, str] = {}
+    for cl in column_labels:
+        result[cl.column] = find_relevant_paragraphs(full_text, cl.label)
+    return result
+
+
+@app.post("/extract-context")
+async def extract_context(req: ExtractContextRequest):
+    """PDF/DOCX'ten her etiket için ilgili paragrafları çek. AI yok."""
+    file_type = (req.file_type or "").lower().strip()
+    if file_type not in ("pdf", "docx"):
+        raise HTTPException(status_code=400, detail="file_type 'pdf' veya 'docx' olmalı")
+    if not req.column_labels:
+        return {"context_map": {}, "page_count": 0, "matched_count": 0}
+
+    full_text, page_count = extract_full_text(req.file_base64, file_type)
+    if not full_text.strip():
+        raise HTTPException(status_code=400, detail="Dosyadan metin çıkarılamadı")
+
+    context_map = build_label_context_map(full_text, req.column_labels)
+    return {
+        "context_map": context_map,
+        "page_count": page_count,
+        "matched_count": sum(1 for v in context_map.values() if v),
+    }
+
+
+# ── Etik Kurul Raporu ─────────────────────────────────────────────────────────
+
+ETHICS_KEYWORDS = [
+    "ölçek", "anket", "form", "cronbach", "alfa", "alpha", "güvenilirlik",
+    "geçerlilik", "madde", "alt boyut", "subscale", "kesim", "cutoff",
+    "veri toplama", "ölçüm aracı", "likert", "puan",
+]
+ETHICS_MAX_FILTERED_CHARS = 24000
+ETHICS_FALLBACK_CHARS = 16000
+
+ETHICS_SYSTEM_PROMPT = (
+    "Sen bir akademik araştırma asistanısın. Verilen etik kurul raporu metninden "
+    "ölçek bilgilerini çıkar. SADECE JSON döndür, başka hiçbir şey yazma."
+)
+
+
+def _section_matches_keywords(text: str) -> bool:
+    lower = text.lower()
+    return any(kw in lower for kw in ETHICS_KEYWORDS)
+
+
+def _extract_pdf_sections(file_bytes: bytes) -> Tuple[List[str], int]:
+    reader = PdfReader(io.BytesIO(file_bytes))
+    sections = []
+    for page in reader.pages:
+        text = (page.extract_text() or "").strip()
+        if text:
+            sections.append(text)
+    return sections, len(reader.pages)
+
+
+def _extract_docx_sections(file_bytes: bytes) -> Tuple[List[str], int]:
+    doc = Document(io.BytesIO(file_bytes))
+    paragraphs = [(p.text or "").strip() for p in doc.paragraphs if (p.text or "").strip()]
+    if not paragraphs:
+        return [], 1
+    chunk_size = 5
+    sections = []
+    for i in range(0, len(paragraphs), chunk_size):
+        sections.append("\n".join(paragraphs[i:i + chunk_size]))
+    return sections, max(1, len(sections))
+
+
+def _filter_ethics_sections(sections: List[str]) -> Tuple[str, int, int]:
+    total = len(sections)
+    matched = [s for s in sections if _section_matches_keywords(s)]
+    filtered_count = len(matched)
+
+    if matched:
+        combined = "\n\n".join(matched)
+        if len(combined) > ETHICS_MAX_FILTERED_CHARS:
+            combined = combined[:ETHICS_MAX_FILTERED_CHARS]
+        return combined, filtered_count, total
+
+    full_text = "\n\n".join(sections)
+    return full_text[:ETHICS_FALLBACK_CHARS], 0, total
+
+
+def _build_ethics_user_prompt(filtered_text: str) -> str:
+    return f"""Aşağıdaki metinden araştırmada kullanılan TÜM ölçekleri çıkar.
+
+Her ölçek için şunları bul (bulamazsan null bırak):
+- name: Ölçeğin tam adı (Türkçe ve/veya İngilizce)
+- short_name: Kısaltma (örn: BDI, OYŞTÖ, NEQ)
+- item_count: Madde/soru sayısı (integer)
+- subscales: Alt boyutlar listesi (string array)
+- likert_range: Likert aralığı (örn: "1-5", "0-4")
+- min_score / max_score: Teorik min-max puan
+- cutoffs: Kesim noktaları (örn: [{{"label": "Normal", "range": "0-9", "score": 9}}])
+- cronbach: Raporlanan Cronbach alpha değeri (float)
+- developer: Ölçeği geliştiren kişi/kurum
+- adaptation: Türkçe uyarlamacısı
+- citation: Kaynak/referans metni
+
+Metin:
+{filtered_text}
+
+Yanıt formatı:
+{{
+  "scales": [...],
+  "research_topic": "araştırmanın konusu (1-2 cümle)",
+  "filtered_page_count": kaç sayfa/bölüm analiz edildi (integer),
+  "total_page_count": toplam sayfa sayısı (integer)
+}}"""
+
+
+@app.post("/import-ethics-report")
+async def import_ethics_report(
+    file: UploadFile = File(...),
+    research_topic: Optional[str] = Form(None),
+):
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY ayarlanmamış")
+
+    filename = (file.filename or "").lower()
+    if not (filename.endswith(".pdf") or filename.endswith(".docx")):
+        raise HTTPException(status_code=400, detail="Sadece PDF veya DOCX dosyaları desteklenir")
+
+    try:
+        file_bytes = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Dosya okunamadı: {e}")
+
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Dosya boş")
+
+    try:
+        if filename.endswith(".pdf"):
+            sections, total_pages = _extract_pdf_sections(file_bytes)
+        else:
+            sections, total_pages = _extract_docx_sections(file_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Metin çıkarılamadı: {e}")
+
+    if not sections:
+        raise HTTPException(status_code=400, detail="Dosyadan metin çıkarılamadı")
+
+    filtered_text, filtered_pages, total_pages = _filter_ethics_sections(sections)
+    chars_sent = len(filtered_text)
+
+    user_prompt = _build_ethics_user_prompt(filtered_text)
+    if research_topic:
+        user_prompt = f"Araştırma konusu (kullanıcı): {research_topic}\n\n{user_prompt}"
+
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        msg = client.messages.create(
+            model=ANTHROPIC_MODEL,
+            max_tokens=4000,
+            system=ETHICS_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        parsed = _parse_llm_json(msg.content[0].text.strip())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI analizi başarısız: {e}")
+
+    scales = parsed.get("scales") or []
+    topic = parsed.get("research_topic") or research_topic or ""
+    ai_filtered = parsed.get("filtered_page_count")
+    ai_total = parsed.get("total_page_count")
+    effective_filtered = filtered_pages if filtered_pages > 0 else total_pages
+
+    return sanitize({
+        "scales": scales,
+        "research_topic": topic,
+        "token_info": {
+            "filtered_pages": ai_filtered if ai_filtered is not None else effective_filtered,
+            "total_pages": ai_total if ai_total is not None else total_pages,
+            "chars_sent": chars_sent,
+        },
+    })
 
 
 @app.get("/")
