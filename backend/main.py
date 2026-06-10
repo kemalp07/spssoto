@@ -60,6 +60,8 @@ class PlanRequest(BaseModel):
     variables: List[Variable]
     data: List[DataRow]
     missing_codes: Optional[List[str]] = None
+    research_topic: Optional[str] = None
+    use_ai: Optional[bool] = True
 
 class BulguRequest(BaseModel):
     result: Any
@@ -1706,6 +1708,109 @@ def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
     return tests
 
 
+PLAN_SYSTEM = """
+Sen akademik araştırma metodolojisi uzmanısın.
+Verilen değişkenlere göre istatistiksel analiz planı öner.
+
+KURALLAR:
+- Normallik sağlanmışsa parametrik, sağlanmamışsa non-parametrik test öner
+- 2 grup → t-testi veya Mann-Whitney U
+- 3+ grup → ANOVA veya Kruskal-Wallis
+- İki kategorik → Ki-kare
+- İki sürekli → Korelasyon (Pearson/Spearman)
+- Aynı gruplandırma değişkeni için tüm outcome'ları BİRLEŞTİR
+  (3 ölçek için cinsiyet → tek tablo, 3 ayrı değil)
+- Demografik sürekli değişkenler (yaş, boy, kilo) için
+  gruplandırma testleri YAPMA, sadece tanımlayıcıda göster
+- Araştırma konusuyla zayıf ilişkili testleri "optional" işaretle
+
+SADECE JSON döndür:
+{
+  "tests": [
+    {
+      "id": "ttest_cinsiyet",
+      "type": "ttest_anova",
+      "label": "Ölçek Puanlarının Cinsiyete Göre Karşılaştırılması",
+      "variables": ["OYS_TOPLAM", "NEQ_TOPLAM", "SBITO_TOPLAM"],
+      "grouping": "dbf_cinsiyet",
+      "test_name": "Bağımsız Örneklem t-Testi",
+      "reason": "2 grup, normallik sağlandı",
+      "recommended": true,
+      "count": 1
+    }
+  ],
+  "notes": "Kısa genel metodoloji notu"
+}
+"""
+
+
+def _normalize_ai_plan_tests(tests: List[dict]) -> List[dict]:
+    normalized = []
+    for t in tests:
+        item = dict(t)
+        if "detail" not in item:
+            parts = []
+            if item.get("test_name"):
+                parts.append(str(item["test_name"]))
+            if item.get("reason"):
+                parts.append(str(item["reason"]))
+            if item.get("variables"):
+                parts.append(", ".join(str(v) for v in item["variables"]))
+            item["detail"] = " — ".join(parts) if parts else str(item.get("label", ""))
+        if "count" not in item:
+            item["count"] = len(item.get("variables") or []) or 1
+        if "recommended" not in item:
+            item["recommended"] = True
+        normalized.append(item)
+    return normalized
+
+
+async def generate_plan_ai(
+    variables: List[Variable],
+    research_topic: str,
+    norm_results: Optional[dict] = None,
+) -> Optional[List[dict]]:
+    if not ANTHROPIC_API_KEY:
+        return None
+
+    grouping_vars = [v for v in variables if v.included and v.role == "grouping"]
+    outcome_vars = [v for v in variables if v.included and v.role == "outcome"]
+
+    var_summary = []
+    for v in grouping_vars + outcome_vars:
+        normal = None
+        if norm_results and v.name in norm_results:
+            normal = norm_results[v.name].get("normal")
+        var_summary.append({
+            "name": v.name,
+            "label": v.label,
+            "type": v.type,
+            "role": v.role,
+            "normal": normal,
+        })
+
+    user_msg = f"""Araştırma konusu: {research_topic or 'Belirtilmemiş'}
+
+Değişkenler:
+{json.dumps(var_summary, ensure_ascii=False, indent=2)}
+
+Bu değişkenler için istatistiksel analiz planı oluştur."""
+
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        msg = client.messages.create(
+            model=ANTHROPIC_MODEL,
+            max_tokens=1000,
+            system=PLAN_SYSTEM,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        parsed = _parse_llm_json(msg.content[0].text.strip())
+        tests = parsed.get("tests", [])
+        return _normalize_ai_plan_tests(tests) if tests else None
+    except Exception:
+        return None
+
+
 def run_analyze(
     df: pd.DataFrame,
     variables: List[Variable],
@@ -2208,7 +2313,22 @@ async def generate_analysis_plan(req: PlanRequest):
     df = pd.DataFrame(rows)
     variables = normalize_variable_labels(req.variables)
     df = _prepare_analysis_df(df, variables, req.missing_codes)
-    return {"tests": generate_plan(df, variables)}
+
+    rule_based = generate_plan(df, variables)
+
+    if req.use_ai and req.research_topic:
+        ai_tests = await generate_plan_ai(variables, req.research_topic)
+        if ai_tests:
+            ai_ids = {t.get("id") for t in ai_tests}
+            merged = list(ai_tests)
+            for rb_test in rule_based:
+                if rb_test["id"] not in ai_ids:
+                    rb_copy = dict(rb_test)
+                    rb_copy["recommended"] = False
+                    merged.append(rb_copy)
+            return sanitize({"tests": merged, "source": "ai"})
+
+    return sanitize({"tests": rule_based, "source": "rules"})
 
 
 @app.post("/analyze")
@@ -3130,6 +3250,133 @@ async def import_ethics_report(
             "total_pages": ai_total if ai_total is not None else total_pages,
             "chars_sent": chars_sent,
         },
+    })
+
+
+def _cell_str(val) -> str:
+    if val is None or (isinstance(val, float) and math.isnan(val)):
+        return ""
+    return str(val).strip()
+
+
+def _parse_excel_rows(rows: List[list]) -> Tuple[List[dict], List[str], Dict[str, str]]:
+    if not rows:
+        raise HTTPException(status_code=400, detail="Boş dosya")
+
+    header_row = [_cell_str(c) for c in rows[0]]
+    labels: Dict[str, str] = {}
+    data_start = 1
+
+    if len(rows) > 1:
+        second_row = [_cell_str(c) for c in rows[1]]
+        is_label_row = (
+            all(
+                not v.replace(".", "").replace("-", "").isdigit()
+                for v in second_row if v
+            )
+            and second_row != header_row
+            and any(
+                v and h and v.lower() != h.lower()
+                for v, h in zip(second_row, header_row)
+            )
+        )
+        if is_label_row:
+            labels = {h: v for h, v in zip(header_row, second_row) if v and h}
+            data_start = 2
+
+    records = []
+    for row in rows[data_start:]:
+        if all(_cell_str(c) == "" for c in row):
+            continue
+        records.append({
+            header_row[i]: row[i] if i < len(row) else ""
+            for i in range(len(header_row))
+            if header_row[i]
+        })
+
+    return records, header_row, labels
+
+
+@app.post("/read-file")
+async def read_file(file: UploadFile = File(...)):
+    filename = (file.filename or "").lower()
+    file_bytes = await file.read()
+
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Dosya boş")
+
+    labels: Dict[str, str] = {}
+    value_labels: Dict[str, Any] = {}
+    records: List[dict] = []
+    columns: List[str] = []
+    source = "excel"
+
+    if filename.endswith(".sav"):
+        try:
+            import os
+            import tempfile
+            import pyreadstat
+
+            with tempfile.NamedTemporaryFile(suffix=".sav", delete=False) as f:
+                f.write(file_bytes)
+                tmp_path = f.name
+            try:
+                df, meta = pyreadstat.read_sav(tmp_path)
+            finally:
+                os.unlink(tmp_path)
+
+            column_names = meta.column_names or list(df.columns)
+            column_label_list = meta.column_labels or []
+            for i, col in enumerate(column_names):
+                if i < len(column_label_list):
+                    lbl = column_label_list[i]
+                    if lbl and str(lbl).strip():
+                        labels[str(col)] = str(lbl).strip()
+
+            value_labels = meta.variable_value_labels or {}
+            records = df.replace({np.nan: None}).to_dict(orient="records")
+            columns = [str(c) for c in df.columns]
+            source = "spss"
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"SAV okunamadı: {e}")
+
+    elif filename.endswith(".xlsx"):
+        try:
+            from openpyxl import load_workbook
+
+            wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+            records, columns, labels = _parse_excel_rows(rows)
+            wb.close()
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Excel okunamadı: {e}")
+
+    elif filename.endswith(".xls"):
+        try:
+            df_raw = pd.read_excel(io.BytesIO(file_bytes), header=None)
+            rows = df_raw.values.tolist()
+            records, columns, labels = _parse_excel_rows(rows)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Excel okunamadı: {e}")
+
+    elif filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="CSV için frontend okuma kullanın")
+
+    else:
+        raise HTTPException(status_code=400, detail="Desteklenmeyen format")
+
+    if not records:
+        raise HTTPException(status_code=400, detail="Dosya boş görünüyor")
+
+    return sanitize({
+        "data": records,
+        "labels": labels,
+        "value_labels": value_labels,
+        "columns": columns,
+        "row_count": len(records),
+        "source": source,
+        "labels_found": len(labels),
     })
 
 
