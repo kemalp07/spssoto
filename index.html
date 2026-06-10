@@ -782,6 +782,7 @@ function checkNumericLabels(cols, data) {
   for (const col of cols) {
     if (CONTINUOUS_EXEMPT.test(col)) continue;
     if (contColumns.includes(col)) continue;
+    if (valueLabels[col]) continue;
 
     const vals = data.slice(0, 50).map(r => r[col]).filter(v => v !== "" && v != null);
     const uniqueVals = [...new Set(vals)];
