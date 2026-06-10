@@ -318,6 +318,7 @@ let pdfContextMap = {};
 let ethicsFileBase64 = null;
 let ethicsFileType = null;
 let ethicsFileName = "";
+let aiExcluded = new Set();
 
 const STEPS = ["upload", "ethics", "scales", "topic", "variables", "plan", "results"];
 const STEP_LABELS = ["Dosya", "Rapor", "Ölçekler", "Konu", "Değişkenler", "Plan", "Sonuçlar"];
@@ -757,7 +758,9 @@ function renderLabelInputs(allCols) {
 }
 
 function checkRequiredLabels() {
-  const allSelected = [...selectedCat, ...selectedCont];
+  const nonItems = new Set(getNonItemColumns());
+  const allSelected = [...selectedCat, ...selectedCont]
+    .filter(col => nonItems.has(col));
   const missing = allSelected.filter(col => {
     const label = (userLabels[col] || "").trim();
     return !label || label.toLowerCase() === col.toLowerCase();
@@ -795,6 +798,9 @@ function checkNumericLabels(cols, data) {
         return /^-?\d+(\.\d+)?$/.test(s);
       });
       if (allNumeric) {
+        const nums = uniqueVals.map(v => parseFloat(String(v)));
+        const range = Math.max(...nums) - Math.min(...nums);
+        if (range > 20) continue;
         suspicious.push({ col, values: uniqueVals.slice(0, 5) });
       }
     }
@@ -1082,7 +1088,10 @@ function renderTopicStep() {
 }
 
 function getNonItemColumns() {
-  return columns.filter(col => !EXCLUDE_PATTERNS.some(p => p.test(col)));
+  return columns.filter(col =>
+    !aiExcluded.has(col) &&
+    !EXCLUDE_PATTERNS.some(p => p.test(col))
+  );
 }
 
 function renderLabelPhaseGrid() {
@@ -1459,6 +1468,7 @@ function resetWizard() {
   pendingFileName = "";
   pendingLabels = {};
   pendingLabelMeta = null;
+  aiExcluded = new Set();
   approvedCutoffs = [];
   researchTopicText = "";
   variablesDataReady = false;
@@ -1770,7 +1780,7 @@ async function loadData(json, fileName, researchTopic) {
   });
 
   const detection = await detectItemColumns(columns, samples);
-  let aiExcluded = new Set();
+  aiExcluded = new Set();
   if (detection?.item_columns) {
     aiExcluded = new Set(detection.item_columns);
   }
