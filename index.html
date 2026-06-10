@@ -306,6 +306,7 @@ let scaleInfo = {};
 let currentStep = 0;
 let variablesDataReady = false;
 let lastRecommendations = {};
+let _skipNextAIClassify = false;
 let wizardFormState = { scaleNames: "", topic: "" };
 let fileInfoText = "";
 let scaleMatchResults = [];
@@ -460,6 +461,54 @@ function mapClassifyResponse(cls, data) {
   ];
 
   return { groupingCols, outcomeCols, recommendations: recs };
+}
+
+async function runAIClassify() {
+  const nonItemCols = columns.filter(col =>
+    !EXCLUDE_PATTERNS.some(p => p.test(col))
+  );
+  const samples = {};
+  nonItemCols.forEach(col => {
+    samples[col] = [...new Set(
+      parsedData.slice(0, 5).map(r => r[col])
+        .filter(v => v !== "" && v != null)
+    )].slice(0, 4);
+  });
+
+  try {
+    const res = await fetch(`${API}/classify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        columns: nonItemCols,
+        samples,
+        labels: userLabels,
+        research_topic: researchTopicText || "",
+      }),
+    });
+    if (!res.ok) throw new Error();
+    const cls = await res.json();
+    const mapped = mapClassifyResponse(cls, parsedData);
+
+    catColumns = mapped.groupingCols;
+    contColumns = mapped.outcomeCols;
+    lastRecommendations = mapped.recommendations;
+
+    selectedCat = new Set(catColumns.filter(col => {
+      const rec = lastRecommendations[col];
+      return !rec || rec.status !== "skip";
+    }));
+    selectedCont = new Set(contColumns.filter(col => {
+      const rec = lastRecommendations[col];
+      return !rec || rec.status !== "skip";
+    }));
+
+    computeMissingData([...catColumns, ...contColumns]);
+    _skipNextAIClassify = true;
+    initStep(currentStep);
+  } catch (e) {
+    console.warn("AI classify başarısız, pattern kullanılıyor");
+  }
 }
 
 const STATUS_BADGE = {
@@ -998,6 +1047,15 @@ function renderVariablesStep() {
       <div class="wizard-title">🔢 Değişkenler</div>
       <div class="wizard-subtitle">Hangi sütunları analiz edeceğinizi seçin ve Türkçe isimlerini yazın.</div>
       ${renderScaleMatchPanelHtml()}
+      <div style="text-align:right; margin-bottom:12px;">
+        <button class="btn btn-secondary" style="font-size:12px; padding:6px 14px"
+                onclick="runAIClassify()">
+          🤖 AI ile Yeniden Sınıflandır
+        </button>
+        <span style="font-size:11px; color:var(--muted); margin-left:8px">
+          Etiket girdikten sonra kullanın
+        </span>
+      </div>
       <div id="selectionGridsContainer"></div>
       <div style="margin-top:20px;">
         <div style="font-size:14px; font-weight:600; margin-bottom:12px;">
@@ -1115,6 +1173,14 @@ function initStep(step) {
       renderLabelInputs([...catColumns, ...contColumns]);
       applyScaleInfoToLabels();
       renderMissingWarnings();
+
+      const skipAI = _skipNextAIClassify;
+      _skipNextAIClassify = false;
+      const hasLabels = Object.values(userLabels)
+        .some(v => v && v.trim() && v !== v.toUpperCase());
+      if ((hasLabels || researchTopicText) && !skipAI) {
+        runAIClassify();
+      }
     }, 50);
   }
 
@@ -1540,35 +1606,10 @@ async function loadData(json, fileName, researchTopic) {
     )].slice(0, 4);
   });
 
-  fileInfoText = researchTopic ? `${fileName} · AI analiz ediyor...` : `${fileName} · Sütunlar analiz ediliyor...`;
-
-  let groupingCols, outcomeCols, excludeCols, recommendations = {};
-
-  try {
-    const res = await fetch(`${API}/classify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        columns: nonItemColumns,
-        samples,
-        labels: userLabels,
-        research_topic: researchTopic || "",
-      }),
-    });
-    if (!res.ok) throw new Error("classify hatası");
-    const cls = await res.json();
-    const mapped = mapClassifyResponse(cls, parsedData);
-    groupingCols = mapped.groupingCols;
-    outcomeCols = mapped.outcomeCols;
-    recommendations = mapped.recommendations || {};
-    excludeCols = [...new Set([...(cls.exclude || []), ...itemColumns])];
-  } catch (e) {
-    const fb = classifyColumns(columns, parsedData);
-    groupingCols = fb.groupingCols;
-    outcomeCols = fb.outcomeCols;
-    excludeCols = fb.excludeCols;
-    recommendations = {};
-  }
+  const fb = classifyColumns(columns, parsedData);
+  const groupingCols = fb.groupingCols;
+  const outcomeCols = fb.outcomeCols;
+  const excludeCols = fb.excludeCols;
 
   try {
     const res = await fetch(`${API}/detect-scales`, {
@@ -1584,15 +1625,11 @@ async function loadData(json, fileName, researchTopic) {
     detectedScales = [];
   }
 
-  lastRecommendations = recommendations;
+  lastRecommendations = {};
   catColumns = groupingCols;
   contColumns = outcomeCols;
   excludeColumns = excludeCols;
-  selectedCat = new Set(groupingCols.filter(col => {
-    const rec = recommendations[col];
-    if (!rec) return true;
-    return rec.status === "recommended";
-  }));
+  selectedCat = new Set(groupingCols);
   selectedCont = new Set(outcomeCols);
   computeMissingData([...groupingCols, ...outcomeCols]);
 
