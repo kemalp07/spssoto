@@ -767,7 +767,7 @@ function checkRequiredLabels() {
     .filter(col => nonItems.has(col));
   const missing = allSelected.filter(col => {
     const label = (userLabels[col] || "").trim();
-    return !label || label.toLowerCase() === col.toLowerCase();
+    return !label || label === col;
   });
   return missing;
 }

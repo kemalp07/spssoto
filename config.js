@@ -1,1 +1,1 @@
-window.STATAI_API = "http://localhost:8766";
+window.STATAI_API = "http://localhost:8765";
