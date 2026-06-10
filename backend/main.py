@@ -1818,36 +1818,68 @@ def generate_plan(df: pd.DataFrame, variables: List[Variable]) -> List[dict]:
 
 PLAN_SYSTEM = """
 Sen akademik araştırma metodolojisi uzmanısın.
-Verilen değişkenlere göre istatistiksel analiz planı öner.
+Verilen değişkenlere göre EN ANLAMLI analiz planını öner.
+Amacın kullanıcıya gereksiz tablolar değil, araştırma sorusunu
+yanıtlayan özlü ve güçlü bir analiz sunmak.
 
-KURALLAR:
-- Normallik sağlanmışsa parametrik, sağlanmamışsa non-parametrik test öner
-- 2 grup → t-testi veya Mann-Whitney U
-- 3+ grup → ANOVA veya Kruskal-Wallis
-- İki kategorik → Ki-kare
-- İki sürekli → Korelasyon (Pearson/Spearman)
-- Aynı gruplandırma değişkeni için tüm outcome'ları BİRLEŞTİR
-  (3 ölçek için cinsiyet → tek tablo, 3 ayrı değil)
-- Demografik sürekli değişkenler (yaş, boy, kilo) için
-  gruplandırma testleri YAPMA, sadece tanımlayıcıda göster
-- Araştırma konusuyla zayıf ilişkili testleri "optional" işaretle
+━━━ GENEL KURALLAR ━━━
+
+1. TABLO SAYISINI MİNİMİZE ET
+   - Aynı gruplandırma değişkeni için tüm outcome'ları
+     TEK tabloda birleştir (3 ölçek × cinsiyet = 1 tablo)
+   - Gereksiz testleri recommended:false yap
+
+2. HANGİ TESTİ NE ZAMAN ÖNER ━━━
+   
+   KESINLIKLE ÖNERİLEN (recommended: true):
+   - Tanımlayıcı istatistikler (her zaman)
+   - Normallik testi (her zaman)
+   - Ana demografikler için frekans (cinsiyet, bölüm/departman)
+   - Ana gruplandırma × tüm outcome'lar (ANOVA/t-test)
+   - Ölçek puanları arası korelasyon
+   - Araştırma hipoteziyle doğrudan ilgili testler
+
+   OPSİYONEL (recommended: false):
+   - İkincil demografikler (medeni durum, gelir, kronik hastalık vb.)
+   - Birbirine çok benzer testler (sigara ve alkol aynı dağılımdaysa)
+   - Zaten kategorik versiyonu olan sürekli değişkenin testi
+     (vki varken vki_kategori de varsa birini seç)
+
+   ÖNERME (listeye ekleme):
+   - Sürekli demografik değişkenler için ANOVA/t-test
+     (yaş, boy, kilo → sadece tanımlayıcıda göster)
+   - Korelasyon matrisine yaş/boy/kilo/vki ekleme
+     (sadece ölçek puanları arası korelasyon yeterli)
+   - Regresyon: sadece korelasyonda anlamlı bulunan çiftler için
+     (r > .20 ve p < .05 ise önerilebilir, aksi halde önerme)
+
+3. REASON YAZI ━━━
+   Her test için neden önerildiğini/önerilmediğini yaz:
+   - "Ana bağımsız değişken, araştırma sorusuyla doğrudan ilgili"
+   - "İkincil demografik, araştırma hipoteziyle zayıf ilişki"
+   - "Sürekli demografik, tanımlayıcıda yeterli"
+   - "Normallik sağlandı, Pearson korelasyon uygun"
+
+4. FREKANS TABLOLARI ━━━
+   Sadece şunlar için frekans tablosu öner:
+   - Ana demografikler (cinsiyet, bölüm)
+   - Kategorik outcome'lar (risk grupları, BKİ kategorisi)
+   İkincil demografikler için frekans recommended:false olsun
 
 SADECE JSON döndür:
 {
   "tests": [
     {
-      "id": "ttest_cinsiyet",
-      "type": "ttest_anova",
-      "label": "Ölçek Puanlarının Cinsiyete Göre Karşılaştırılması",
-      "variables": ["OYS_TOPLAM", "NEQ_TOPLAM", "SBITO_TOPLAM"],
-      "grouping": "dbf_cinsiyet",
-      "test_name": "Bağımsız Örneklem t-Testi",
-      "reason": "2 grup, normallik sağlandı",
+      "id": "descriptive",
+      "type": "descriptive",
+      "label": "Tanımlayıcı İstatistikler",
+      "variables": ["OYS_TOPLAM", "NEQ_TOPLAM"],
+      "reason": "Her araştırmada zorunlu",
       "recommended": true,
       "count": 1
     }
   ],
-  "notes": "Kısa genel metodoloji notu"
+  "notes": "Genel metodoloji notu"
 }
 """
 
@@ -1870,6 +1902,42 @@ def _normalize_ai_plan_tests(tests: List[dict]) -> List[dict]:
         if "recommended" not in item:
             item["recommended"] = True
         normalized.append(item)
+    return normalized
+
+
+def _normalize_ai_plan_ids(
+    ai_tests: List[dict],
+    rule_tests: List[dict],
+) -> List[dict]:
+    rule_id_map = {t["id"]: t for t in rule_tests}
+
+    normalized = []
+    for ai_test in ai_tests:
+        ai_type = ai_test.get("type", "")
+        ai_grouping = ai_test.get("grouping", "")
+
+        matched_id = ai_test.get("id")
+
+        for rule_id, rule_test in rule_id_map.items():
+            rule_type = rule_test.get("type", "")
+
+            if ai_type != rule_type:
+                continue
+
+            if ai_grouping and ai_grouping.lower() in rule_id.lower():
+                matched_id = rule_id
+                break
+
+            ai_id_lower = ai_test.get("id", "").lower()
+            if ai_grouping and ai_grouping.lower() in ai_id_lower:
+                if ai_grouping.lower() in rule_id.lower():
+                    matched_id = rule_id
+                    break
+
+        normalized_test = dict(ai_test)
+        normalized_test["id"] = matched_id
+        normalized.append(normalized_test)
+
     return normalized
 
 
@@ -2444,6 +2512,7 @@ async def generate_analysis_plan(req: PlanRequest):
     if req.use_ai and req.research_topic:
         ai_tests = await generate_plan_ai(variables, req.research_topic)
         if ai_tests:
+            ai_tests = _normalize_ai_plan_ids(ai_tests, rule_based)
             ai_ids = {t.get("id") for t in ai_tests}
             merged = list(ai_tests)
             for rb_test in rule_based:
