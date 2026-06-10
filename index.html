@@ -1907,6 +1907,13 @@ function renderMissingWarnings() {
 
 // ── Analiz ────────────────────────────────────────────────────────────────────
 
+function getValueLabelsForCol(col) {
+  if (!valueLabels[col]) return null;
+  return Object.fromEntries(
+    Object.entries(valueLabels[col]).map(([k, v]) => [String(k), String(v)])
+  );
+}
+
 function buildVariables() {
   collectUserLabelsFromInputs();
   return [
@@ -1917,7 +1924,9 @@ function buildVariables() {
           name: col,
           label: userLabels[col] || col,
           type: "categorical",
-          role: "grouping", included: true
+          role: "grouping",
+          included: true,
+          value_labels: getValueLabelsForCol(col),
         };
       }
       const vals = [...new Set(parsedData.slice(0, 20).map(r => r[col]).filter(v => v !== "" && v != null))];
@@ -1928,7 +1937,9 @@ function buildVariables() {
         name: col,
         label: userLabels[col] || col,
         type: (isNumeric && hasWideRange) ? "continuous" : "categorical",
-        role: "grouping", included: true
+        role: "grouping",
+        included: true,
+        value_labels: getValueLabelsForCol(col),
       };
     }),
     ...[...selectedCont].map(col => {
@@ -1953,7 +1964,8 @@ function buildVariables() {
         label: userLabels[col] || col,
         type,
         role,
-        included: true
+        included: true,
+        value_labels: getValueLabelsForCol(col),
       };
     }),
   ];

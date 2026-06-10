@@ -45,6 +45,7 @@ class Variable(BaseModel):
     included: bool = True
     scale_min: Optional[float] = None
     scale_max: Optional[float] = None
+    value_labels: Optional[Dict[str, str]] = None
 
 class DataRow(BaseModel):
     values: dict
@@ -463,10 +464,37 @@ def is_missing_value(val, code_set: Optional[set] = None) -> bool:
     return matches_missing_code(val, codes)
 
 
+def _map_value_label(val, value_labels: Dict[str, str]):
+    if pd.isna(val):
+        return val
+    key = str(val).strip()
+    if key in value_labels:
+        return value_labels[key]
+    try:
+        num = float(key.replace(",", "."))
+        if num == int(num):
+            int_key = str(int(num))
+            if int_key in value_labels:
+                return value_labels[int_key]
+    except ValueError:
+        pass
+    return val
+
+
+def _ordered_category_labels(value_labels: Optional[Dict[str, str]]) -> List[str]:
+    if not value_labels:
+        return []
+    keys = sorted(
+        value_labels.keys(),
+        key=lambda x: int(x) if str(x).replace(".", "").isdigit() else str(x),
+    )
+    return [str(value_labels[k]) for k in keys]
+
+
 def normalize_categorical_columns(
     df: pd.DataFrame, variables: List[Variable]
 ) -> pd.DataFrame:
-    """Boş / geçersiz metin değerlerini kategorik sütunlarda NaN yap."""
+    """Boş / geçersiz metin değerlerini kategorik sütunlarda NaN yap; value_labels ile kodları etiketle."""
     df = df.copy()
     for v in variables:
         if v.type != "categorical" or v.name not in df.columns:
@@ -478,6 +506,11 @@ def normalize_categorical_columns(
             or str(x).strip() in ("", "nan", "None", "NaN", "<NA>", "NaT")
         )
         df.loc[blank, v.name] = np.nan
+        if v.value_labels:
+            vl = v.value_labels
+            df[v.name] = df[v.name].apply(
+                lambda x, labels=vl: _map_value_label(x, labels) if pd.notna(x) else x
+            )
     return df
 
 
@@ -1246,16 +1279,33 @@ def table_normality(tc: TableCounter, variables: List[Variable], df: pd.DataFram
         norm_map={v.name: norm_map[v.name] for v in variables if v.name in norm_map},
     )
 
-def table_frequency(tc: TableCounter, series: pd.Series, label: str) -> dict:
+def table_frequency(
+    tc: TableCounter,
+    series: pd.Series,
+    label: str,
+    value_labels: Optional[Dict[str, str]] = None,
+) -> dict:
     total_n = int(len(series))
     valid = series.dropna()
     counts = valid.value_counts()
     rows = []
     missing_n = int(series.isna().sum())
+    seen_cats = set()
+
+    if value_labels:
+        for cat in _ordered_category_labels(value_labels):
+            if cat not in counts.index:
+                continue
+            cnt = int(counts[cat])
+            rows.append([label, cat, str(cnt), ""])
+            seen_cats.add(cat)
+
     for val, cnt in counts.items():
         cat = format_category_value(val)
         if cat == "Kayıp Veri":
             missing_n += int(cnt)
+            continue
+        if cat in seen_cats:
             continue
         rows.append([label, cat, str(int(cnt)), ""])
     valid_n = sum(int(cnt) for val, cnt in counts.items() if format_category_value(val) != "Kayıp Veri")
@@ -1293,6 +1343,19 @@ def table_chi_square(
     valid_cols = [c for c in ct.columns if format_category_value(c) != "Kayıp Veri"]
     valid_rows = [i for i in ct.index if format_category_value(i) != "Kayıp Veri"]
     ct = ct.loc[valid_rows, valid_cols]
+
+    row_order = _ordered_category_labels(v1.value_labels)
+    if row_order:
+        row_order = [r for r in row_order if r in ct.index] + [
+            r for r in ct.index if r not in row_order
+        ]
+        ct = ct.reindex(row_order)
+    col_order = _ordered_category_labels(v2.value_labels)
+    if col_order:
+        col_order = [c for c in col_order if c in ct.columns] + [
+            c for c in ct.columns if c not in col_order
+        ]
+        ct = ct.reindex(columns=col_order)
     chi2, p, dof, _ = stats.chi2_contingency(ct)
     col_headers = [format_category_value(c) for c in ct.columns]
     rows = []
@@ -1949,7 +2012,7 @@ def run_analyze(
     for v in (grouping_cat + outcome_cat if enabled("frequency") else []):
         if v.name in df.columns:
             try:
-                results.append(table_frequency(tc, df[v.name], v.label))
+                results.append(table_frequency(tc, df[v.name], v.label, v.value_labels))
             except Exception:
                 pass
 
