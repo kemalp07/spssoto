@@ -298,6 +298,8 @@ let cronbachResults = [];
 let detectedScales = [];
 let pendingJson = null;
 let pendingFileName = "";
+let pendingLabels = {};
+let pendingLabelMeta = null;
 let userLabels = {};
 let valueLabels = {};
 let analysisPlan = [];
@@ -1455,6 +1457,8 @@ function resetWizard() {
   cronbachResults = [];
   pendingJson = null;
   pendingFileName = "";
+  pendingLabels = {};
+  pendingLabelMeta = null;
   approvedCutoffs = [];
   researchTopicText = "";
   variablesDataReady = false;
@@ -1656,18 +1660,10 @@ function finishFileUpload(file, json, readResult) {
   pendingJson = json;
   pendingFileName = file.name;
 
-  const uploadCols = Object.keys(json[0]).filter(col =>
-    !EXCLUDE_PATTERNS.some(p => p.test(col))
-  );
-  userLabels = {};
-  uploadCols.forEach(col => { userLabels[col] = col; });
-
-  if (readResult?.labels_found > 0) {
-    Object.assign(userLabels, readResult.labels);
-    const src = readResult.source === "spss" ? "SPSS'den" : "Excel'den";
-    showToast(`✅ ${readResult.labels_found} değişken etiketi ${src} otomatik okundu`);
-  }
-
+  pendingLabels = readResult?.labels || {};
+  pendingLabelMeta = readResult?.labels_found > 0
+    ? { count: readResult.labels_found, source: readResult.source }
+    : null;
   valueLabels = readResult?.value_labels || {};
 
   const prefixes = Object.keys(json[0])
@@ -1787,6 +1783,16 @@ async function loadData(json, fileName, researchTopic) {
     aiExcluded.has(col) ||
     EXCLUDE_PATTERNS.some(p => p.test(col))
   );
+
+  userLabels = {};
+  nonItemColumns.forEach(col => { userLabels[col] = col; });
+  if (Object.keys(pendingLabels).length > 0) {
+    Object.assign(userLabels, pendingLabels);
+    if (pendingLabelMeta) {
+      const src = pendingLabelMeta.source === "spss" ? "SPSS'den" : "Excel'den";
+      showToast(`✅ ${pendingLabelMeta.count} değişken etiketi ${src} otomatik okundu`);
+    }
+  }
 
   const fb = classifyColumns(nonItemColumns, parsedData);
   const groupingCols = fb.groupingCols;
