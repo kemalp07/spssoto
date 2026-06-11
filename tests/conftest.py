@@ -1,5 +1,6 @@
 """Sentetik test veri seti (~30 satır)."""
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,70 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "backend"))
 
 from schemas import Variable
+
+_session_t0: float | None = None
+_progress = {"done": 0, "passed": 0, "failed": 0, "skipped": 0, "total": 0}
+
+
+def _fmt_elapsed(seconds: float) -> str:
+    if seconds >= 60:
+        return f"{int(seconds // 60)} dk {seconds % 60:.1f} sn"
+    return f"{seconds:.1f} sn"
+
+
+def pytest_sessionstart(session):
+    global _session_t0
+    _session_t0 = time.perf_counter()
+
+
+def pytest_collection_finish(session):
+    _progress["total"] = len(session.items)
+    total = _progress["total"]
+    print(f"\n{'=' * 56}", flush=True)
+    print(f"  StatAI test kosusu - {total} test", flush=True)
+    print(f"  Baslangic: {time.strftime('%H:%M:%S')}", flush=True)
+    print(f"{'=' * 56}\n", flush=True)
+
+
+def pytest_runtest_logreport(report):
+    if report.when != "call" or _session_t0 is None:
+        return
+    _progress["done"] += 1
+    elapsed = time.perf_counter() - _session_t0
+    total = _progress["total"] or "?"
+    short = report.nodeid.split("::")[-1]
+    if report.passed:
+        _progress["passed"] += 1
+        icon = "OK"
+    elif report.skipped:
+        _progress["skipped"] += 1
+        icon = "ATLA"
+    else:
+        _progress["failed"] += 1
+        icon = "KALDI"
+    print(
+        f"  [{_progress['done']}/{total}] {icon:4} {short}"
+        f"  | gecen: {_fmt_elapsed(elapsed)}",
+        flush=True,
+    )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if _session_t0 is None:
+        return
+    elapsed = time.perf_counter() - _session_t0
+    c = _progress
+    print(f"\n{'=' * 56}", flush=True)
+    print(
+        f"  Sonuc: {c['passed']} gecti | {c['failed']} kaldi | {c['skipped']} atlandi",
+        flush=True,
+    )
+    print(f"  Toplam sure: {_fmt_elapsed(elapsed)}", flush=True)
+    if exitstatus == 0:
+        print("  Durum: TUM TESTLER GECTI", flush=True)
+    else:
+        print("  Durum: BASARISIZ - yukaridaki hatalara bakin", flush=True)
+    print(f"{'=' * 56}\n", flush=True)
 
 
 @pytest.fixture
