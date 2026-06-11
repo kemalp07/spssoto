@@ -7,7 +7,7 @@ import base64
 import json
 import math
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -94,10 +94,12 @@ class ClassifyRequest(BaseModel):
     samples: Dict[str, List[Any]]
     labels: Optional[Dict[str, str]] = None
     research_topic: Optional[str] = None
+    variable_measure: Optional[Dict[str, str]] = None
 
 class DetectScalesRequest(BaseModel):
     columns: List[str]
     samples: Optional[Dict[str, List[Any]]] = None
+    variable_measure: Optional[Dict[str, str]] = None
 
 class CronbachBatchRequest(BaseModel):
     scales: List[dict]
@@ -2572,66 +2574,118 @@ async def analyze_cronbach(req: CronbachRequest):
 def detect_item_columns(req: DetectScalesRequest):
     columns = req.columns
     samples = req.samples or {}
-
-    item_pattern = re.compile(
-        r"^([a-zA-Z_]{1,10}?)(\d{1,3})(_ters|_t|_r|_T)?$",
-        re.I,
-    )
-    prefix_groups: Dict[str, list] = defaultdict(list)
-    for col in columns:
-        m = item_pattern.match(col)
-        if m:
-            prefix = m.group(1).rstrip("_").lower()
-            if prefix:
-                prefix_groups[prefix].append(col)
+    measure = req.variable_measure or {}
 
     item_columns: set = set()
     scale_groups: Dict[str, list] = {}
+    total_columns: List[str] = []
+    other_columns: List[str] = []
 
-    for prefix, cols in prefix_groups.items():
-        if len(cols) < 3:
-            continue
-
-        narrow_range_count = 0
-        for col in cols:
-            vals = [
-                v for v in (samples.get(col) or [])
-                if v is not None and str(v).replace(".", "").replace("-", "").isdigit()
-            ]
-            if vals:
-                try:
-                    nums = [float(v) for v in vals]
-                    val_range = max(nums) - min(nums)
-                    unique_count = len(set(nums))
-                    if val_range <= 10 and unique_count <= 8:
-                        narrow_range_count += 1
-                except Exception:
-                    pass
-
-        if narrow_range_count >= len(cols) * 0.5:
-            for col in cols:
-                item_columns.add(col)
-            scale_groups[prefix] = cols
-
-    total_pattern = re.compile(
-        r"(_toplam|_total|_score|_puan|_skor|_sum|_avg)$|^t[a-z]{2,}",
+    ITEM_PATTERN = re.compile(
+        r"^([a-zA-Z_]{1,10}?)(\d{1,3})(_ters|_t|_r|_T|_rev)?$",
         re.I,
     )
-    total_columns = [
-        col for col in columns
-        if total_pattern.search(col) and col not in item_columns
-    ]
+    TOTAL_RE = re.compile(
+        r"(_toplam|_total|_score|_puan|_skor|_sum|_avg|_mean)$"
+        r"|^t[a-z]{2,}",
+        re.I,
+    )
 
-    other_columns = [
-        col for col in columns
-        if col not in item_columns and col not in total_columns
-    ]
+    if measure:
+        for col in columns:
+            m = measure.get(col, "").lower()
+
+            if m == "scale":
+                if TOTAL_RE.search(col):
+                    total_columns.append(col)
+                else:
+                    other_columns.append(col)
+                continue
+
+            if m == "nominal":
+                other_columns.append(col)
+                continue
+
+            if m == "ordinal":
+                if ITEM_PATTERN.match(col):
+                    item_columns.add(col)
+                else:
+                    other_columns.append(col)
+                continue
+
+        item_list = list(item_columns)
+        prefix_groups: Dict[str, list] = defaultdict(list)
+        for col in item_list:
+            m_pat = ITEM_PATTERN.match(col)
+            if m_pat:
+                prefix = m_pat.group(1).rstrip("_").lower()
+                if prefix:
+                    prefix_groups[prefix].append(col)
+        scale_groups = dict(prefix_groups)
+
+    else:
+        prefix_groups = defaultdict(list)
+        for col in columns:
+            m_pat = ITEM_PATTERN.match(col)
+            if m_pat:
+                prefix = m_pat.group(1).rstrip("_").lower()
+                if prefix:
+                    prefix_groups[prefix].append(col)
+
+        for prefix, cols in prefix_groups.items():
+            if len(cols) < 3:
+                continue
+            narrow_count = 0
+            for col in cols:
+                vals = [
+                    v for v in (samples.get(col) or [])
+                    if v is not None
+                    and str(v).replace(".", "").replace("-", "").isdigit()
+                ]
+                if vals:
+                    try:
+                        nums = [float(v) for v in vals]
+                        if max(nums) - min(nums) <= 10 and len(set(nums)) <= 8:
+                            narrow_count += 1
+                    except Exception:
+                        pass
+            if narrow_count >= len(cols) * 0.5:
+                for col in cols:
+                    item_columns.add(col)
+                scale_groups[prefix] = cols
+
+        for col in columns:
+            if col in item_columns:
+                continue
+            if TOTAL_RE.search(col):
+                total_columns.append(col)
+            else:
+                vals = [v for v in (samples.get(col) or []) if v is not None]
+                if vals:
+                    try:
+                        nums = [float(str(v)) for v in vals]
+                        val_range = max(nums) - min(nums)
+                        unique_ratio = len(set(nums)) / max(len(vals), 1)
+                        if val_range > 20 or unique_ratio > 0.3:
+                            other_columns.append(col)
+                        else:
+                            other_columns.append(col)
+                    except Exception:
+                        other_columns.append(col)
+                else:
+                    other_columns.append(col)
+
+    processed = item_columns | set(total_columns) | set(other_columns)
+    for col in columns:
+        if col not in processed:
+            other_columns.append(col)
 
     return {
         "item_columns": list(item_columns),
         "scale_groups": scale_groups,
         "total_columns": total_columns,
         "other_columns": other_columns,
+        "source": "spss_measure" if measure else "data_inference",
     }
 
 
@@ -2793,81 +2847,86 @@ async def analyze_paired(req: PairedRequest):
 
 CLASSIFY_SYSTEM = """
 Sen deneyimli bir akademik istatistikçisin.
-Sana bir araştırmanın değişken listesi, etiketler ve örnek değerler
-veriliyor. Bir SPSS uzmanı gibi her değişkeni analiz et.
+Araştırma verilerini analiz ederken önce SPSS metadata'sını,
+sonra etiketleri, sonra veri dağılımını dikkate alırsın.
 
-━━━ KARAR MANTIĞI ━━━
+━━━ KARAR HİYERARŞİSİ ━━━
 
-TYPE KARARI:
-- continuous: Sayısal, geniş aralık (ölçek puanları, yaş, boy, kilo,
-  VKİ, sigara sayısı, gelir miktarı, test skorları vb.)
-- categorical: Metin değerli VEYA ≤8 farklı sayısal kod
-  (cinsiyet, bölüm, evet/hayır, risk grubu, eğitim düzeyi vb.)
-- exclude: ID/sıra no, madde kolonları, log/sqrt dönüşümü
+1. SPSS variable_measure varsa ÖNCE ONU KULLAN:
+   nominal  → type: categorical
+   ordinal  → type: categorical (Likert maddesi veya sıralı kategori)
+   scale    → type: continuous
 
-ROLE KARARI — en kritik adım:
+2. Etiket varsa etiket bilgisini kullan:
+   "Gender", "Cinsiyet" → categorical + grouping
+   "Age", "Yaş" → continuous + grouping (ama ANOVA hedefi değil)
+   "Optimism Scale", "Ölçek Toplam" → continuous + outcome
+   "Risk Group", "Kategori" → categorical + outcome
+
+3. Değer aralığından tahmin et:
+   unique ≤ 8 veya değerler {0,1} veya {1,2} → categorical
+   aralık > 20 veya unique/n > 0.3 → continuous
+
+━━━ TYPE KURALLARI ━━━
+
+continuous: Sayısal, geniş aralık, hesaplama anlamlı
+  → ölçek toplamı, yaş, boy, kilo, VKİ, sigara sayısı
+
+categorical: Grup/sınıf, hesaplama anlamsız
+  → cinsiyet, bölüm, evet/hayır, risk grubu, eğitim düzeyi
+
+exclude: Analiz dışı
+  → ID/sıra no, madde kolonları (op1, pss3, ani2_r),
+    log/sqrt dönüşümleri (LG10_, LOG_, SQRT_)
+
+━━━ ROLE KURALLARI ━━━
 
 grouping (bağımsız/demografik):
-  Katılımcıları gruplara ayıran değişkenler.
-  Bunlara t-test, ANOVA, ki-kare uygulanır (bağımsız değişken olarak).
-  - Cinsiyet, yaş grubu, bölüm, departman, eğitim düzeyi
-  - Medeni durum, gelir grubu, meslek, yaşadığı yer
+  Katılımcıları gruplara ayırır, t-test/ANOVA/ki-kare için bağımsız değişken.
+
+  KESİNLİKLE GROUPING:
+  - Cinsiyet/gender (nominal, 2 kategori)
+  - Bölüm/departman/fakülte (nominal, az kategori)
+  - Eğitim düzeyi/medeni durum/gelir grubu (ordinal/nominal)
   - Evet/Hayır demografikler: sigara, alkol, kronik hastalık, ilaç
-  - Yaş (age) → grouping (demografik sürekli, ama t-test/ANOVA hedefi DEĞİL)
-  - Stres kaynağı (source of stress) → grouping (kategorik demografik)
+  - Stres kaynağı, meslek, şehir/bölge
+  - Yaş: continuous + grouping (t-test/ANOVA bağımsız değişkeni olabilir)
+    AMA: kategorik yaş grubu varsa (agegp) → yaş ham değeri outcome'a geç
 
 outcome (bağımlı/sonuç):
-  Ölçülen, analiz edilen sonuç değişkenleri.
-  - Ölçek toplam puanları: toptim, tpstress, tslfest vb.
-  - Risk grupları: GYA_RISK_GRUBU, VKI_Kategori vb.
-  - Antropometrik: yaş ham değeri, boy, kilo, VKİ ham değeri
-    (bunlar ANOVA hedefi değil, sadece tanımlayıcıda)
-  - Sigara adedi (smokenum, cigarettes per day) → outcome/continuous
-    (demografik ama sürekli ölçüm, tanımlayıcıda gösterilir)
+  Analiz edilen, ölçülen sonuç değişkeni.
 
-ÖZEL KURALLAR (hardcode isim yok, mantık bazlı):
+  KESİNLİKLE OUTCOME:
+  - Ölçek toplam puanları (toptim, tpstress, tslfest, OYS_TOPLAM)
+  - Risk grupları, BKİ kategorisi, puan kategorisi (_grubu, _kategori, _binary)
+  - Antropometrik ölçümler (boy, kilo, VKİ ham değeri, smokenum)
+    → sadece tanımlayıcıda gösterilir, t-test/ANOVA hedefi DEĞİL
 
-1. Hem ham sürekli hem kategorik grubu olan değişkenler:
-   Eğer veri setinde bir değişkenin hem ham hali (age=24,39,48)
-   hem kategorik grubu (agegp3=1,2,3) varsa:
-   - Ham hal (age) → role: outcome, type: continuous
-     (tanımlayıcıda gösterilir, t-test/ANOVA bağımsız değişkeni olma)
-   - Kategorik grup (agegp3) → role: grouping, type: categorical
+  KURAL — hem ham hem kategorik varsa:
+  age=24 + agegp3=1,2,3 → age=outcome/continuous, agegp3=grouping/categorical
+  vki=22.5 + VKI_Kategori=Normal → vki=outcome/continuous, VKI_Kategori=outcome/categorical
 
-   Tespit: Kolon adı başka bir kolonun kısaltmasını içeriyorsa
-   ve o kolon kategorik ise, sürekli olanı outcome yap.
-   Örn: age + agegp3 → age=outcome, agegp3=grouping
+━━━ DİSİPLİN KONVANSİYONLARI ━━━
 
-2. Sayısal miktar/frekans değişkenleri:
-   Sürekli, geniş aralıklı VE demografik bağlamda miktar belirten:
-   (sigara sayısı, içki miktarı, egzersiz süresi vb.)
-   → role: outcome, type: continuous
+Psikoloji: _r/_rev suffix → ters kodlu madde → exclude
+           t prefix (toptim, tpstress) → ölçek toplamı → outcome/continuous
 
-   Tespit: Kolon adı veya etiketi 'num', 'number', 'amount',
-   'count', 'per day', 'günde', 'adet', 'sayı' içeriyorsa
-   VE değer aralığı > 20 ise → outcome/continuous
+Sağlık: SBP, DBP, HR, BMI, VKİ → sağlık ölçümü → outcome/continuous
+        smokenum, drinknum, freq → miktar → outcome/continuous
 
-3. Stres kaynağı, kaynak tipi gibi çok kategorili demografikler:
-   (source, stres kaynağı, kaynak, major source) → grouping
-   Tespit: Etiket 'source', 'kaynak', 'type', 'tür' içeriyorsa
-   ve kategorik ise → grouping
+Eğitim: _score, _puan, _total → outcome/continuous
+        school, class, grade, sinif → grouping/categorical
 
-ÖNEMLI KURALLAR:
-1. Etiket "Age", "Yaş", "age" → continuous + grouping
-   (tanımlayıcıda gösterilir, t-test/ANOVA bağımsız değişkeni olur)
-2. Etiket "Cigarettes per day", "smokenum", sayısal miktar → 
-   continuous + outcome (tanımlayıcıda gösterilir)
-3. Hem kategorik versiyonu hem ham versiyonu varsa:
-   (age + agegp3) → age: outcome/continuous, agegp3: grouping/categorical
-4. t ile başlayan toplam kolonlar (toptim, tpstress) → outcome/continuous
-5. Demografik Evet/Hayır (smoke, alcohol) → grouping/categorical
+Genel: _toplam, _total, _sum, _score → outcome/continuous
+       _grup, _grubu, _category, _binary → outcome/categorical
+       id, no, anket_no → exclude
 
-RECOMMENDED KARARI:
-- Ana ölçek puanları (outcome/continuous) → true
-- Ana demografikler (sex/gender, department/bolum) → true
-- İkincil demografikler (marital, income, chronic) → false
-- Ham antropometrik (age, height, weight) → false (kategorik versiyon varsa)
-- Kategorik outcome (risk groups) → true
+━━━ RECOMMENDED KURALI ━━━
+- Tüm outcome/continuous ölçek puanları → true
+- Ana demografikler (cinsiyet, bölüm) → true
+- İkincil demografikler (medeni, gelir, kronik) → false
+- Ham antropometrik (boy, kilo, smokenum) → false
+- Kategorik outcome (risk grubu, BKİ kategorisi) → true
 
 SADECE JSON döndür:
 {
@@ -2876,7 +2935,7 @@ SADECE JSON döndür:
       "type": "categorical|continuous|exclude",
       "role": "grouping|outcome|exclude",
       "recommended": true|false,
-      "reason": "kısa açıklama (max 10 kelime)"
+      "reason": "max 10 kelime Türkçe açıklama"
     }
   }
 }
@@ -2896,8 +2955,19 @@ async def classify_columns(req: ClassifyRequest):
         label_str = f", etiket='{label}'" if label and label != col else ""
         col_info.append(f"- {col}{label_str}: örnek={samples}")
 
-    topic_str = f"\nAraştırma konusu: {req.research_topic}" if req.research_topic else ""
-    user_msg = f"Sütunları sınıflandır:{topic_str}\n\n" + "\n".join(col_info)
+    topic_part = f"\nAraştırma konusu: {req.research_topic}" if req.research_topic else ""
+
+    measure_summary = ""
+    if req.variable_measure:
+        measure_lines = []
+        for col in req.columns[:30]:
+            m = req.variable_measure.get(col)
+            if m:
+                measure_lines.append(f"  {col}: SPSS_measure={m}")
+        if measure_lines:
+            measure_summary = "\nSPSS Ölçüm Düzeyleri (öncelikli kullan):\n" + "\n".join(measure_lines)
+
+    user_msg = f"Sütunları sınıflandır:{topic_part}{measure_summary}\n\n" + "\n".join(col_info)
 
     msg = client.messages.create(
         model=ANTHROPIC_MODEL,
@@ -3553,6 +3623,9 @@ async def read_file(file: UploadFile = File(...)):
 
     labels: Dict[str, str] = {}
     value_labels: Dict[str, Any] = {}
+    variable_measure: Dict[str, str] = {}
+    missing_codes: Dict[str, List[str]] = {}
+    global_missing_code: Optional[str] = None
     records: List[dict] = []
     columns: List[str] = []
     source = "excel"
@@ -3567,19 +3640,37 @@ async def read_file(file: UploadFile = File(...)):
                 f.write(file_bytes)
                 tmp_path = f.name
             try:
-                df, meta = pyreadstat.read_sav(tmp_path)
+                df, meta = pyreadstat.read_sav(tmp_path, user_missing=True)
             finally:
                 os.unlink(tmp_path)
 
-            column_names = meta.column_names or list(df.columns)
-            column_label_list = meta.column_labels or []
-            for i, col in enumerate(column_names):
-                if i < len(column_label_list):
-                    lbl = column_label_list[i]
-                    if lbl and str(lbl).strip():
+            if meta.column_names_to_labels:
+                for col, lbl in meta.column_names_to_labels.items():
+                    if lbl and str(lbl).strip() and str(lbl).strip() != col:
                         labels[str(col)] = str(lbl).strip()
 
             value_labels = meta.variable_value_labels or {}
+            variable_measure = meta.variable_measure or {}
+
+            missing_ranges = meta.missing_ranges or {}
+            for col, ranges in missing_ranges.items():
+                codes = []
+                for r in ranges:
+                    lo, hi = r.get("lo"), r.get("hi")
+                    if lo is not None and hi is not None:
+                        if lo == hi:
+                            codes.append(
+                                str(int(lo)) if float(lo).is_integer() else str(lo)
+                            )
+                        else:
+                            codes.append(f"{lo}-{hi}")
+                if codes:
+                    missing_codes[col] = codes
+
+            all_codes = [c for codes in missing_codes.values() for c in codes]
+            if all_codes:
+                global_missing_code = Counter(all_codes).most_common(1)[0][0]
+
             records = df.replace({np.nan: None}).to_dict(orient="records")
             columns = [str(c) for c in df.columns]
             source = "spss"
@@ -3618,7 +3709,13 @@ async def read_file(file: UploadFile = File(...)):
     return sanitize({
         "data": records,
         "labels": labels,
-        "value_labels": value_labels,
+        "value_labels": {
+            str(k): {str(vk): str(vv) for vk, vv in v.items()}
+            for k, v in value_labels.items()
+        },
+        "variable_measure": variable_measure,
+        "missing_codes": missing_codes,
+        "global_missing_code": global_missing_code,
         "columns": columns,
         "row_count": len(records),
         "source": source,
