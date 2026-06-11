@@ -1014,6 +1014,16 @@ def run_analyze(
         if active_types is None:
             return True
         return group_type in active_types or item_key in active_types
+
+    from test_planner import granular_test_enabled, uses_granular_enabled_tests
+
+    granular = uses_granular_enabled_tests(enabled_tests)
+
+    def genabled(test: str, vars: List[str]) -> bool:
+        if not granular:
+            return True
+        return granular_test_enabled(test, vars, enabled_tests)
+
     tc = TableCounter()
     results: List[dict] = []
     errors: List[dict] = []
@@ -1046,7 +1056,7 @@ def run_analyze(
                 norm_map[v.name] = {"is_parametric": True, "normal": True, "n": 0}
 
     # 1. Tanımlayıcı
-    if enabled("descriptive"):
+    if enabled("descriptive") and genabled("descriptive", [v.name for v in outcome_cont]):
         try:
             r = table_descriptive(tc, outcome_cont, df, scale_info)
             if r:
@@ -1056,7 +1066,7 @@ def run_analyze(
             record_error("Tanımlayıcı istatistikler", labels, e)
 
     # 2. Normallik tablosu
-    if enabled("normality"):
+    if enabled("normality") and genabled("normality", [v.name for v in outcome_cont]):
         try:
             r = table_normality(tc, outcome_cont, df, norm_map)
             if r:
@@ -1068,6 +1078,8 @@ def run_analyze(
     # 3. Cronbach
     if enabled("cronbach"):
         for cols in detect_scale_groups(list(df.columns)).values():
+            if granular and not genabled("cronbach", cols):
+                continue
             try:
                 if all(c in df.columns for c in cols):
                     no, _ = tc.next("Ölçek Güvenilirlik Analizi (Cronbach α)")
@@ -1078,9 +1090,10 @@ def run_analyze(
                 record_error("Cronbach α", ", ".join(cols), e)
 
     # 4. Frekans
-    if not enabled("frequency"):
-        pass
-    for v in (grouping_cat + outcome_cat if enabled("frequency") else []):
+    freq_vars = grouping_cat + outcome_cat if enabled("frequency") else []
+    for v in freq_vars:
+        if granular and not genabled("frequency", [v.name]):
+            continue
         if v.name in df.columns:
             try:
                 results.append(table_frequency(tc, df[v.name], v.label, v.value_labels))
@@ -1090,9 +1103,13 @@ def run_analyze(
     # 5. Ki-kare: gruplandırma × sonuç (kategorik)
     for cv in grouping_cat:
         chi_key = f"chi_square_{cv.name}"
-        if not enabled_group("chi_square", chi_key):
+        if not granular and not enabled_group("chi_square", chi_key):
             continue
         for ov in outcome_cat:
+            if granular and not genabled("chi_square", [cv.name, ov.name]):
+                continue
+            if not granular and not enabled_group("chi_square", chi_key):
+                continue
             if cv.name in df.columns and ov.name in df.columns:
                 try:
                     results.append(table_chi_square(tc, df, cv, ov, missing_codes))
@@ -1106,7 +1123,7 @@ def run_analyze(
     # 6. t-test / ANOVA / Mann-Whitney / Kruskal: gruplandırma × (sonuç + ölçüm)
     for cv in grouping_cat:
         ttest_key = f"ttest_anova_{cv.name}"
-        if not enabled_group("ttest_anova", ttest_key):
+        if not granular and not enabled_group("ttest_anova", ttest_key):
             continue
         for sv in outcome_cont + grouping_cont:
             if cv.name not in df.columns or sv.name not in df.columns:
@@ -1116,11 +1133,29 @@ def run_analyze(
             try:
                 n_groups = df[cv.name].dropna().nunique()
                 if n_groups == 2:
+                    test_key = (
+                        "ttest"
+                        if norm_map.get(sv.name, {}).get("is_parametric", True)
+                        else "mann_whitney"
+                    )
+                    if granular and not genabled(test_key, [cv.name, sv.name]):
+                        continue
+                    if not granular and not enabled_group("ttest_anova", ttest_key):
+                        continue
                     if norm_map.get(sv.name, {}).get("is_parametric", True):
                         results.append(table_ttest(tc, df, cv, sv))
                     else:
                         results.append(table_mann_whitney(tc, df, cv, sv))
                 elif n_groups > 2:
+                    test_key = (
+                        "anova"
+                        if norm_map.get(sv.name, {}).get("is_parametric", True)
+                        else "kruskal_wallis"
+                    )
+                    if granular and not genabled(test_key, [cv.name, sv.name]):
+                        continue
+                    if not granular and not enabled_group("ttest_anova", ttest_key):
+                        continue
                     if norm_map.get(sv.name, {}).get("is_parametric", True):
                         anova_res = table_anova(tc, df, cv, sv)
                         results.append(anova_res)
@@ -1144,7 +1179,12 @@ def run_analyze(
 
     # 7. Korelasyon matrisi (kodlanmış kategorikler hariç)
     corr_vars = [v for v in outcome_cont if is_numeric_continuous(df, v, norm_map)]
-    if enabled("correlation") and len(corr_vars) >= 2:
+    corr_var_names = [v.name for v in corr_vars]
+    if (
+        enabled("correlation")
+        and len(corr_vars) >= 2
+        and genabled("correlation", corr_var_names)
+    ):
         try:
             r = table_correlation_matrix(
                 tc, corr_vars, df,

@@ -8,32 +8,202 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
   :root {
-    --bg: #0d1117; --surface: #161b22; --border: #30363d;
-    --accent: #2563eb; --accent2: #10b981; --text: #e6edf3;
-    --muted: #7d8590; --danger: #f85149; --warn: #d29922;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --surface: var(--card);
+    --border: #e2e8f0;
+    --text: #0f172a;
+    --muted: #64748b;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --accent-muted: color-mix(in srgb, var(--accent) 8%, transparent);
+    --accent-border: color-mix(in srgb, var(--accent) 22%, transparent);
+    --success: #16a34a;
+    --success-muted: color-mix(in srgb, var(--success) 10%, transparent);
+    --success-border: color-mix(in srgb, var(--success) 28%, transparent);
+    --warn: #d97706;
+    --warn-muted: color-mix(in srgb, var(--warn) 10%, transparent);
+    --warn-border: color-mix(in srgb, var(--warn) 30%, transparent);
+    --danger: #dc2626;
+    --danger-muted: color-mix(in srgb, var(--danger) 10%, transparent);
+    --danger-border: color-mix(in srgb, var(--danger) 28%, transparent);
+    --accent2: var(--success);
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --shadow-card: 0 1px 3px rgb(0 0 0 / 0.06);
+    --space-1: 8px;
+    --space-2: 16px;
+    --space-3: 24px;
+    --space-4: 32px;
+    --layout-max: 1100px;
+    --transition: 150ms ease;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-  header { border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; align-items: center; gap: 12px; }
-  header .logo { font-size: 18px; font-weight: 700; }
-  header .logo span { color: var(--accent); }
-  header .badge { font-size: 11px; background: var(--accent); color: white; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
-  .container { max-width: 900px; margin: 0 auto; padding: 40px 32px; }
-
-  .upload-zone {
-    border: 2px dashed var(--border); border-radius: 16px; padding: 60px 40px;
-    text-align: center; cursor: pointer; transition: all 0.2s; background: var(--surface);
+  body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-weight: 400; }
+  h1, h2, h3, .wizard-title, .panel-title, .result-title { font-weight: 600; }
+  header {
+    border-bottom: 1px solid var(--border); padding: var(--space-2) var(--space-3);
+    display: flex; align-items: center; gap: 12px; background: var(--card);
   }
-  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(37,99,235,0.06); }
-  .upload-zone .icon { font-size: 48px; margin-bottom: 16px; }
-  .upload-zone h2 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
-  .upload-zone p { color: var(--muted); font-size: 14px; }
-  .upload-zone .formats { margin-top: 16px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-  .format-badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); color: var(--muted); }
-  #fileInput { display: none; }
+  header .logo { font-size: 18px; font-weight: 600; }
+  header .logo span { color: var(--accent); }
+  header .badge {
+    font-size: 11px; background: var(--accent-muted); color: var(--accent);
+    padding: 2px 8px; border-radius: 20px; font-weight: 600;
+    border: 1px solid var(--accent-border);
+  }
+  .container { max-width: var(--layout-max); margin: 0 auto; padding: var(--space-4) var(--space-3); }
 
-  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
-  .panel-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  /* —— Butonlar (3 tip) —— */
+  .btn {
+    padding: 10px 20px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;
+    border: 1px solid transparent; cursor: pointer; transition: background var(--transition),
+      border-color var(--transition), color var(--transition), opacity var(--transition);
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-family: inherit; line-height: 1.2;
+  }
+  .btn-primary, .btn-success {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+  .btn-primary:hover:not(:disabled), .btn-success:hover:not(:disabled) {
+    background: var(--accent-hover); border-color: var(--accent-hover);
+  }
+  .btn-secondary {
+    background: var(--card); color: var(--text); border-color: var(--border);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--accent); color: var(--accent);
+  }
+  .btn-ghost {
+    background: transparent; color: var(--muted); border-color: transparent;
+  }
+  .btn-ghost:hover:not(:disabled) { color: var(--accent); background: var(--accent-muted); }
+  .btn-lg { padding: 14px 28px; font-size: 16px; }
+  .btn-sm { padding: 6px 14px; font-size: 13px; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn.is-loading { pointer-events: none; opacity: 0.85; }
+  .btn .spinner {
+    width: 14px; height: 14px; border: 2px solid currentColor;
+    border-top-color: transparent; border-radius: 50%;
+    animation: spin 0.7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* —— Stepper —— */
+  #wizardProgress {
+    display: none; padding: var(--space-2) var(--space-3);
+    background: var(--card); border-bottom: 1px solid var(--border);
+  }
+  #wizardProgress.is-visible { display: block; }
+  .stepper-inner {
+    display: flex; align-items: center; justify-content: space-between;
+    max-width: var(--layout-max); margin: 0 auto; gap: var(--space-1);
+  }
+  #progressSteps {
+    display: flex; align-items: center; flex: 1; justify-content: center; gap: 0;
+    flex-wrap: wrap;
+  }
+  .stepper-item {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    min-width: 72px; position: relative;
+  }
+  .stepper-node {
+    width: 28px; height: 28px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; font-size: 12px; font-weight: 600;
+    transition: all var(--transition); border: 2px solid var(--border);
+    background: var(--card); color: var(--muted);
+  }
+  .stepper-item.done .stepper-node {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .stepper-item.active .stepper-node {
+    border-color: var(--accent); color: var(--accent); background: var(--card);
+    box-shadow: 0 0 0 3px var(--accent-muted);
+  }
+  .stepper-item.future .stepper-node { background: var(--bg); }
+  .stepper-label {
+    font-size: 11px; font-weight: 500; color: var(--muted); text-align: center;
+    white-space: nowrap;
+  }
+  .stepper-item.active .stepper-label { color: var(--accent); font-weight: 600; }
+  .stepper-item.done .stepper-label { color: var(--text); }
+  .stepper-line {
+    flex: 1; height: 2px; background: var(--border); min-width: 12px; max-width: 48px;
+    margin: 0 4px; margin-bottom: 22px;
+  }
+  .stepper-line.done { background: var(--accent); }
+  #progressLabel { font-size: 12px; color: var(--muted); white-space: nowrap; min-width: 100px; text-align: right; }
+
+  /* —— Upload —— */
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius-lg);
+    padding: var(--space-4) var(--space-3); text-align: center; cursor: pointer;
+    transition: border-color var(--transition), background var(--transition);
+    background: var(--card); box-shadow: var(--shadow-card); margin-bottom: var(--space-2);
+  }
+  .upload-zone:hover, .upload-zone.drag {
+    border-color: var(--accent); background: var(--accent-muted);
+  }
+  .upload-zone.uploaded {
+    border-style: solid; border-color: var(--success-border);
+    background: var(--success-muted); cursor: default;
+  }
+  .upload-zone .icon { font-size: 40px; margin-bottom: var(--space-2); line-height: 1; }
+  .upload-zone h2 { font-size: 18px; font-weight: 600; margin-bottom: var(--space-1); }
+  .upload-zone p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+  .upload-zone .formats {
+    margin-top: var(--space-2); display: flex; gap: var(--space-1);
+    justify-content: center; flex-wrap: wrap;
+  }
+  .upload-file-name { font-weight: 600; font-size: 16px; margin: var(--space-1) 0 4px; color: var(--text); }
+  .upload-file-meta { font-size: 13px; color: var(--success); font-weight: 500; }
+  .upload-reset-link {
+    margin-top: var(--space-2); font-size: 13px; color: var(--accent);
+    cursor: pointer; text-decoration: underline;
+  }
+  .format-badge {
+    font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-sm);
+    background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+  }
+  #fileInput, #ethicsFileInput { display: none; }
+
+  /* —— Alert bileşeni —— */
+  .alert {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2);
+    padding: var(--space-2); border-radius: var(--radius-md); font-size: 13px;
+    line-height: 1.55; margin-bottom: var(--space-2);
+    border: 1px solid var(--border); border-left-width: 3px; background: var(--card);
+  }
+  .alert-info { border-left-color: var(--accent); background: var(--accent-muted); color: var(--text); }
+  .alert-warn { border-left-color: var(--warn); background: var(--warn-muted); color: var(--text); }
+  .alert-success { border-left-color: var(--success); background: var(--success-muted); color: var(--text); }
+  .alert-danger { border-left-color: var(--danger); background: var(--danger-muted); color: var(--text); }
+  .alert-close {
+    background: none; border: none; font-size: 18px; cursor: pointer;
+    color: var(--muted); line-height: 1; padding: 0 4px; flex-shrink: 0;
+  }
+  .alert-close:hover { color: var(--text); }
+  .alert-list { margin: 8px 0 0 18px; padding: 0; }
+  .info-bar, .warn-bar {
+    display: flex; align-items: center; gap: var(--space-1);
+    padding: var(--space-2); border-radius: var(--radius-md); font-size: 13px;
+    margin-bottom: var(--space-2); border-left-width: 3px; border: 1px solid;
+  }
+  .info-bar {
+    border-left-color: var(--accent); background: var(--accent-muted);
+    color: var(--text); border-color: var(--accent-border);
+  }
+  .warn-bar {
+    border-left-color: var(--warn); background: var(--warn-muted);
+    color: var(--text); border-color: var(--warn-border);
+  }
+
+  .panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: var(--space-3); margin-bottom: var(--space-2); box-shadow: var(--shadow-card);
+  }
+  .panel-title { font-size: 15px; font-weight: 600; margin-bottom: var(--space-2); display: flex; align-items: center; gap: var(--space-1); }
 
   .checkbox-grid {
     display: grid;
@@ -53,27 +223,18 @@
     user-select: none;
   }
   .col-checkbox:hover { border-color: var(--accent); }
-  .col-checkbox.selected { border-color: var(--accent); background: rgba(37,99,235,0.08); }
+  .col-checkbox.selected { border-color: var(--accent); background: var(--accent-muted); }
   .col-checkbox input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; }
   .col-name { font-weight: 600; font-size: 13px; }
   .col-sample { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
   .missing-badge { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin-top: 4px; display: inline-block; }
-  .missing-badge.medium { background: rgba(210,153,34,0.2); color: var(--warn); }
-  .missing-badge.high { background: rgba(248,81,73,0.2); color: var(--danger); }
+  .missing-badge.medium { background: var(--warn-muted); color: var(--warn); }
+  .missing-badge.high { background: var(--danger-muted); color: var(--danger); }
 
-  .btn { padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
-  .btn-primary { background: var(--accent); color: white; }
-  .btn-primary:hover { background: #1d4ed8; }
-  .btn-success { background: var(--accent2); color: white; }
-  .btn-success:hover { background: #059669; }
-  .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
-  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
-  .btn-secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
-  .btn-secondary:hover { border-color: var(--accent); color: var(--text); }
-  .btn-lg { padding: 14px 28px; font-size: 16px; }
-  .btn-sm { padding: 6px 14px; font-size: 13px; }
-
-  .result-card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+  .result-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
+    margin-bottom: var(--space-2); overflow: hidden; box-shadow: var(--shadow-card);
+  }
   .result-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
   .result-title { font-weight: 600; font-size: 15px; }
   .result-badges { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -83,23 +244,30 @@
   .stat-value { font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
   .stat-label { font-size: 11px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
   .sig-badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
-  .sig-badge.yes { background: rgba(16,185,129,0.2); color: #34d399; }
-  .sig-badge.no { background: rgba(125,133,144,0.2); color: var(--muted); }
+  .sig-badge.yes { background: var(--success-muted); color: var(--success); }
+  .sig-badge.no { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
   .norm-badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
-  .norm-badge.ok { background: rgba(16,185,129,0.15); color: #34d399; }
-  .norm-badge.fail { background: rgba(248,81,73,0.15); color: var(--danger); }
+  .norm-badge.ok { background: var(--success-muted); color: var(--success); }
+  .norm-badge.fail { background: var(--danger-muted); color: var(--danger); }
+  .status-badge {
+    font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: var(--radius-sm);
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .status-rec { background: var(--success-muted); color: var(--success); }
+  .status-opt { background: var(--warn-muted); color: var(--warn); }
+  .status-skip { background: var(--danger-muted); color: var(--danger); }
   .test-note { font-size: 12px; color: var(--muted); margin-bottom: 10px; font-style: italic; }
   .freq-bar { height: 6px; background: var(--accent); border-radius: 3px; margin-top: 4px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { background: var(--surface); padding: 9px 14px; text-align: left; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
-  td { padding: 8px 14px; border-bottom: 1px solid rgba(48,54,61,0.5); }
+  td { padding: 8px 14px; border-bottom: 1px solid var(--border); }
   tr:last-child td { border-bottom: none; }
   .corr-matrix td, .corr-matrix th { text-align: center; font-size: 12px; }
   .corr-matrix .diag { color: var(--muted); }
   .corr-matrix .sig { font-weight: 700; color: var(--accent2); }
-  .apa-table-heading { margin-bottom: 10px; }
-  .apa-table-number { font-weight: 700; font-size: 14px; line-height: 1.4; }
-  .apa-table-caption { font-style: italic; font-size: 14px; line-height: 1.4; }
+  .apa-table-heading { margin-bottom: var(--space-2); font-family: 'Inter', system-ui, sans-serif; }
+  .apa-table-number { font-weight: 600; font-size: 14px; line-height: 1.45; color: var(--text); }
+  .apa-table-caption { font-style: italic; font-size: 14px; line-height: 1.45; color: var(--text); }
   /* APA 7: üst çizgi | başlık altı | tablo altı — dikey çizgi yok */
   .apa-table {
     width: 100%;
@@ -128,38 +296,47 @@
     text-align: left;
   }
   .apa-table td {
-    font-size: 12px;
-    padding: 7px 10px;
+    font-size: 13px;
+    padding: 8px 12px;
+    font-variant-numeric: tabular-nums;
   }
+  .apa-table th { font-variant-numeric: tabular-nums; }
   .apa-table-wrap { margin-bottom: 10px; }
   .apa-table em, .apa-table-caption em { font-style: italic; }
   .apa-note {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
     font-style: normal;
-    margin-top: 8px;
-    margin-bottom: 8px;
-    line-height: 1.5;
+    margin-top: var(--space-1);
+    margin-bottom: var(--space-2);
+    line-height: 1.55;
+    opacity: 0.92;
   }
   .apa-note .note-label { font-style: italic; }
   .apa-note em { font-style: italic; }
-  .intro-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 20px; font-size: 14px; line-height: 1.7; }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .intro-box {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: var(--space-2); margin-bottom: var(--space-2); font-size: 14px; line-height: 1.7;
+    box-shadow: var(--shadow-card);
+  }
 
-  .bulgu-box { background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.2); border-radius: 8px; padding: 16px; margin-top: 14px; text-align: center; }
+  .bulgu-box {
+    background: var(--accent-muted); border: 1px solid var(--accent-border);
+    border-radius: var(--radius-md); padding: var(--space-2); margin-top: var(--space-2); text-align: center;
+  }
   .bulgu-label { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
   .bulgu-text { font-size: 14px; line-height: 1.7; color: var(--text); text-align: center; }
   .bulgu-loading { color: var(--muted); font-size: 14px; font-style: italic; text-align: center; }
 
-  .info-bar { background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.2); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--accent); margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
-  .warn-bar { background: rgba(210,153,34,0.08); border: 1px solid rgba(210,153,34,0.3); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: var(--warn); margin-bottom: 20px; }
+  .actions { display: flex; gap: var(--space-1); margin-top: var(--space-2); flex-wrap: wrap; }
+  .empty { text-align: center; padding: var(--space-4); color: var(--muted); }
+  .empty .icon { font-size: 40px; margin-bottom: var(--space-2); }
 
-  .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
-  .empty { text-align: center; padding: 60px; color: var(--muted); }
-  .empty .icon { font-size: 48px; margin-bottom: 12px; }
-
-  #wizardContainer { min-height: calc(100vh - 57px); display: flex; flex-direction: column; }
-  #slideContainer { flex: 1; overflow: hidden; position: relative; min-height: 520px; }
+  #wizardContainer { min-height: calc(100vh - 57px); display: flex; flex-direction: column; background: var(--bg); }
+  #slideContainer {
+    flex: 1; overflow: hidden; position: relative; min-height: 520px;
+    max-width: var(--layout-max); width: 100%; margin: 0 auto;
+  }
 
   .wizard-slide {
     position: absolute;
@@ -167,7 +344,7 @@
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding: 40px 20px;
+    padding: var(--space-4) var(--space-2);
     overflow-y: auto;
     transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s ease;
   }
@@ -180,13 +357,22 @@
   .wizard-card {
     width: 100%;
     max-width: 720px;
-    background: var(--surface);
+    background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 32px;
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-card);
   }
-  .wizard-title { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
-  .wizard-subtitle { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
+  .wizard-card-wide { max-width: var(--layout-max); }
+  .wizard-card-center { text-align: center; max-width: 640px; }
+  .wizard-title { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  .wizard-subtitle { font-size: 14px; color: var(--muted); margin-bottom: var(--space-3); line-height: 1.55; }
+  .step-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: var(--space-2); flex-wrap: wrap; gap: var(--space-2);
+  }
+  .step-header .wizard-title { margin: 0; }
+  .step-actions { display: flex; gap: var(--space-1); flex-wrap: wrap; }
   .wizard-nav {
     display: flex;
     justify-content: space-between;
@@ -197,18 +383,11 @@
     gap: 12px;
     flex-wrap: wrap;
   }
-  .step-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--border);
-    transition: all 0.2s;
-  }
-  .step-dot.active { background: var(--accent); width: 24px; border-radius: 4px; }
-  .step-dot.done { background: #10b981; }
   .plan-card {
-    background: var(--surface);
+    background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-card);
     padding: 16px 20px;
     margin-bottom: 10px;
     display: flex;
@@ -226,23 +405,221 @@
   .plan-label { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
   .plan-detail { font-size: 12px; color: var(--muted); line-height: 1.6; }
   .plan-count {
-    font-size: 11px; font-weight: 700; padding: 3px 8px;
-    border-radius: 20px; background: rgba(37,99,235,0.15);
-    color: #60a5fa; flex-shrink: 0; margin-left: auto;
+    font-size: 11px; font-weight: 600; padding: 3px 8px;
+    border-radius: 20px; background: var(--accent-muted);
+    color: var(--accent); flex-shrink: 0; margin-left: auto;
     white-space: nowrap;
   }
   .plan-badge-rec {
-    font-size: 11px; font-weight: 700; padding: 3px 8px;
-    border-radius: 20px; background: rgba(16,185,129,0.15);
-    color: #34d399; flex-shrink: 0; white-space: nowrap;
+    font-size: 11px; font-weight: 600; padding: 3px 8px;
+    border-radius: 20px; background: var(--success-muted);
+    color: var(--success); flex-shrink: 0; white-space: nowrap;
   }
   .plan-badge-opt {
-    font-size: 11px; font-weight: 700; padding: 3px 8px;
-    border-radius: 20px; background: rgba(125,133,144,0.15);
+    font-size: 11px; font-weight: 600; padding: 3px 8px;
+    border-radius: 20px; background: var(--bg);
     color: var(--muted); flex-shrink: 0; white-space: nowrap;
+    border: 1px solid var(--border);
   }
-  #labelWarningModal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+  .plan-total-bar { margin-bottom: var(--space-2); }
+  .plan-note {
+    margin-top: var(--space-2); padding: var(--space-2);
+    border-radius: var(--radius-md); border: 1px dashed var(--border);
+    font-size: 12px; color: var(--muted); line-height: 1.5;
+  }
+  .plan-section-label {
+    margin-top: var(--space-3); font-size: 12px; font-weight: 600; color: var(--muted);
+  }
+  .plan-card-excluded { opacity: 0.72; margin-top: var(--space-1); }
+  .plan-detail-warn { color: var(--warn); }
+
+  .form-input, .form-textarea {
+    width: 100%; padding: 10px 14px; font-size: 14px; font-family: inherit;
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: var(--radius-sm); box-sizing: border-box;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+  .form-input:focus, .form-textarea:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-muted);
+  }
+  .form-textarea { resize: vertical; min-height: 88px; }
+  .form-input-inline { width: auto; min-width: 140px; padding: 6px 10px; font-size: 13px; }
+  .form-row { margin-top: var(--space-2); text-align: left; }
+  .form-label { font-size: 13px; font-weight: 600; margin-right: var(--space-1); }
+
+  .flex-1 { flex: 1; min-width: 0; }
+  .text-muted { color: var(--muted); }
+  .text-sm { font-size: 13px; }
+  .text-xs { font-size: 12px; }
+  .text-success { color: var(--success); }
+  .text-warn { color: var(--warn); }
+  .text-danger { color: var(--danger); }
+  .mt-2 { margin-top: var(--space-2); }
+  .mb-2 { margin-bottom: var(--space-2); }
+  .mb-1 { margin-bottom: var(--space-1); }
+  .hidden { display: none !important; }
+  .upload-hero { font-size: 40px; margin-bottom: var(--space-2); }
+  .text-required { color: var(--danger); }
+  .text-left { text-align: left; }
+  .panel-desc { font-size: 13px; color: var(--muted); margin-bottom: 12px; line-height: 1.5; }
+  .label-row {
+    display: grid; grid-template-columns: 140px 1fr 1fr; gap: 12px;
+    align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .label-row-code {
+    font-size: 12px; font-family: 'JetBrains Mono', monospace; color: var(--muted);
+  }
+  .label-input-row { display: flex; align-items: center; gap: 8px; }
+  .label-input-row .label-code {
+    font-size: 12px; font-family: 'JetBrains Mono', monospace; min-width: 130px; flex-shrink: 0;
+  }
+  .label-input-row .label-code.required { color: var(--accent); }
+  .label-input-row .label-code.optional { color: var(--muted); }
+  .form-input-sm { flex: 1; padding: 6px 10px; font-size: 12px; }
+  .form-input-required { border-color: var(--accent-border); }
+  .label-grid-note { font-size: 11px; color: var(--muted); margin-top: 8px; grid-column: 1 / -1; }
+  .scale-match-card {
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 12px; margin-bottom: 8px; background: var(--card);
+  }
+  .scale-match-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+  .scale-match-name { font-weight: 600; }
+  .conf-badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 99px; font-weight: 600;
+  }
+  .conf-high { background: var(--success-muted); color: var(--success); }
+  .conf-medium { background: var(--warn-muted); color: var(--warn); }
+  .conf-low { background: var(--danger-muted); color: var(--danger); }
+  .scale-match-detail { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .upload-zone.loading { border-color: var(--accent); cursor: default; }
+  .upload-zone.loading .icon { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.5; } }
+  .wizard-nav-hint { font-size: 12px; color: var(--muted); }
+  .wizard-nav-plain { border-top: none; padding-top: var(--space-2); }
+  .reg-panel {
+    margin-bottom: var(--space-2); padding: var(--space-2);
+    border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card);
+    box-shadow: var(--shadow-card);
+  }
+  .reg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .reg-label { font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px; }
+  .reg-select { width: 100%; padding: 6px; font-family: inherit; font-size: 13px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card); }
+  .suspicious-row { margin-bottom: 6px; }
+  .intro-box-accent { border-color: var(--accent-border); margin-top: 0; }
+  .intro-summary { margin: 8px 0 0; font-size: 13px; line-height: 1.6; }
+  .result-badges-row { margin-bottom: 10px; }
+  .reason-note { margin-top: 4px; font-style: italic; }
+
+  #labelWarningModal {
+    display: none; position: fixed; inset: 0;
+    background: color-mix(in srgb, var(--text) 40%, transparent);
+    z-index: 100; align-items: center; justify-content: center;
+  }
   #labelWarningModal.open { display: flex; }
+  .modal-panel {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: var(--space-4);
+    max-width: 520px; width: 90%; box-shadow: 0 8px 32px rgb(0 0 0 / 0.12);
+  }
+  .modal-icon { font-size: 32px; margin-bottom: var(--space-2); }
+  .modal-title { font-size: 18px; font-weight: 600; margin-bottom: var(--space-2); }
+  .modal-body { color: var(--muted); font-size: 14px; line-height: 1.7; margin-bottom: var(--space-2); }
+  .modal-code-box {
+    background: var(--bg); border-radius: var(--radius-sm); padding: 14px;
+    margin-bottom: var(--space-2); font-size: 13px; font-family: 'JetBrains Mono', monospace;
+  }
+  .modal-actions { display: flex; gap: var(--space-1); justify-content: flex-end; }
+  #stataiToast {
+    position: fixed; bottom: var(--space-3); right: var(--space-3); z-index: 9999;
+    padding: 12px 18px; background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius-md); font-size: 13px; box-shadow: var(--shadow-card);
+    transition: opacity 0.3s; color: var(--text);
+  }
+
+  /* —— Gözden Geçir adımı (tasarım dili) —— */
+  .review-wrap { max-width: var(--layout-max); width: 100%; }
+  .review-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap;
+  }
+  .review-header-text h2 { font-size: 22px; font-weight: 600; margin-bottom: var(--space-1); }
+  .review-header-text p { font-size: 14px; color: var(--muted); line-height: 1.55; max-width: 520px; }
+  .review-section { margin-bottom: var(--space-4); }
+  .review-section-title {
+    font-size: 13px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--muted); margin-bottom: var(--space-2);
+  }
+  .review-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-card);
+    margin-bottom: var(--space-2); overflow: hidden;
+  }
+  .review-card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-2); padding: var(--space-2) var(--space-3);
+    cursor: pointer; user-select: none;
+  }
+  .review-card-head:hover { background: var(--bg); }
+  .review-scale-name { font-size: 16px; font-weight: 600; color: var(--text); }
+  .review-scale-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .review-status { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .review-status.ok { color: var(--success); }
+  .review-status.warn { color: var(--warn); }
+  .review-badge {
+    font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
+    display: inline-block;
+  }
+  .review-badge.alpha-ok { background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--success); }
+  .review-badge.alpha-mid { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); }
+  .review-badge.alpha-low { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+  .review-card-body {
+    display: none; padding: 0 var(--space-3) var(--space-2);
+    border-top: 1px solid var(--border);
+  }
+  .review-card.open .review-card-body { display: block; padding-top: var(--space-2); }
+  .review-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: var(--space-1) 0 var(--space-2); }
+  .review-chip {
+    font-size: 11px; font-family: 'JetBrains Mono', monospace;
+    padding: 4px 10px; border-radius: var(--radius-sm);
+    background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+  }
+  .review-inline-input {
+    width: 100%; padding: 8px 12px; font-size: 14px; font-family: inherit;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    margin: var(--space-1) 0; background: var(--card); color: var(--text);
+  }
+  .review-inline-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+  .review-link { font-size: 12px; color: var(--accent); cursor: pointer; text-decoration: none; }
+  .review-link:hover { text-decoration: underline; }
+  .review-empty {
+    padding: var(--space-3); text-align: center; font-size: 14px; color: var(--muted);
+    background: var(--card); border: 1px dashed var(--border); border-radius: var(--radius-md);
+  }
+  .review-title-list { display: flex; flex-direction: column; gap: var(--space-1); }
+  .review-title-row {
+    display: flex; align-items: center; gap: var(--space-2);
+    padding: var(--space-2) var(--space-2); border-radius: var(--radius-sm);
+    border: 1px solid transparent; background: var(--card);
+    box-shadow: var(--shadow-card); border-color: var(--border);
+  }
+  .review-title-row.edited { border-left: 3px solid var(--accent); padding-left: calc(var(--space-2) - 2px); }
+  .review-table-badge {
+    font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-sm);
+    background: var(--bg); color: var(--muted); flex-shrink: 0;
+  }
+  .review-title-text { flex: 1; font-size: 14px; line-height: 1.45; color: var(--text); }
+  .review-edit-btn {
+    background: none; border: none; cursor: pointer; color: var(--muted);
+    font-size: 16px; padding: 4px 8px; border-radius: var(--radius-sm);
+  }
+  .review-edit-btn:hover { color: var(--accent); background: var(--bg); }
+  @media (max-width: 640px) {
+    .review-card-head { flex-direction: column; align-items: flex-start; }
+    .review-header { flex-direction: column; }
+    .review-header .btn-primary { width: 100%; justify-content: center; }
+  }
 </style>
 </head>
 <body>
@@ -253,27 +630,27 @@
 </header>
 
 <div id="wizardContainer">
-  <div id="wizardProgress" style="display:none; padding:16px 24px; background:var(--surface); border-bottom:1px solid var(--border);">
-    <div style="display:flex; align-items:center; gap:8px; max-width:800px; margin:0 auto;">
-      <div id="progressSteps" style="display:flex; align-items:center; gap:4px; flex:1;"></div>
-      <div id="progressLabel" style="font-size:12px; color:var(--muted); white-space:nowrap;"></div>
+  <div id="wizardProgress">
+    <div class="stepper-inner">
+      <div id="progressSteps"></div>
+      <div id="progressLabel"></div>
     </div>
   </div>
   <div id="slideContainer"></div>
 </div>
 
 <div id="labelWarningModal">
-  <div style="background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:32px; max-width:520px; width:90%;">
-    <div style="font-size:32px; margin-bottom:16px">⚠️</div>
-    <div style="font-size:18px; font-weight:700; margin-bottom:12px">Kategorik Etiketler Eksik Olabilir</div>
-    <p style="color:var(--muted); font-size:14px; line-height:1.7; margin-bottom:16px">
+  <div class="modal-panel">
+    <div class="modal-icon">⚠️</div>
+    <div class="modal-title">Kategorik Etiketler Eksik Olabilir</div>
+    <p class="modal-body">
       Aşağıdaki sütunlarda sadece sayısal kodlar tespit edildi. Analizde gruplar "1", "2", "3" olarak görünecek — gerçek isimler değil.
     </p>
-    <div id="suspiciousCols" style="background:var(--bg); border-radius:8px; padding:14px; margin-bottom:20px; font-size:13px; font-family:'JetBrains Mono',monospace;"></div>
-    <p style="color:var(--muted); font-size:13px; margin-bottom:20px">
+    <div id="suspiciousCols" class="modal-code-box"></div>
+    <p class="modal-body text-sm">
       💡 <strong>Önerilen çözüm:</strong> SPSS'de File → Export → CSV açılınca <em>"Save value labels where defined instead of data values"</em> seçeneğini işaretleyip tekrar export edin.
     </p>
-    <div style="display:flex; gap:10px; justify-content:flex-end;">
+    <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeLabelWarning(true)">← Geri Dön, Düzelt</button>
       <button class="btn btn-primary" onclick="proceedWithNumbers()">Sayılarla Devam Et →</button>
     </div>
@@ -305,6 +682,9 @@ let pendingMissingCodes = {};
 let userLabels = {};
 let valueLabels = {};
 let analysisPlan = [];
+let analysisPlanExcluded = [];
+let planTestsMeta = {};
+let bulguSummaryText = "";
 let approvedCutoffs = [];
 let researchTopicText = "";
 let scaleInfo = {};
@@ -321,10 +701,22 @@ let ethicsFileBase64 = null;
 let ethicsFileType = null;
 let ethicsFileName = "";
 let aiExcluded = new Set();
+let customTitles = {};
+let customLabels = {};
+let reviewExpandedScales = new Set();
+let reviewScalesCache = [];
 
-const STEPS = ["upload", "ethics", "scales", "topic", "variables", "plan", "results"];
-const STEP_LABELS = ["Dosya", "Rapor", "Ölçekler", "Konu", "Değişkenler", "Plan", "Sonuçlar"];
-const STEP_ICONS = ["📁", "📄", "📋", "🎯", "🔢", "📊", "✅"];
+const STEPS = ["upload", "ethics", "scales", "topic", "variables", "plan", "results", "review"];
+const STEP_LABELS = ["Dosya", "Rapor", "Ölçekler", "Konu", "Değişkenler", "Plan", "Sonuçlar", "Gözden Geçir"];
+const STEP_ICONS = ["📁", "📄", "📋", "🎯", "🔢", "📊", "✅", "🔍"];
+const STEPPER_GROUPS = [
+  { label: "Yükle", steps: ["upload", "ethics"] },
+  { label: "Değişkenler", steps: ["topic", "variables"] },
+  { label: "Ölçekler", steps: ["scales"] },
+  { label: "Plan", steps: ["plan"] },
+  { label: "Sonuçlar", steps: ["results"] },
+  { label: "Gözden Geçir", steps: ["review"] },
+];
 
 const EXCLUDE_PATTERNS = [
   /^(anket_no|id|no|sira|num|serial)$/i,
@@ -559,9 +951,9 @@ async function runAIClassify(skipInit = false) {
 }
 
 const STATUS_BADGE = {
-  recommended: { emoji: "✅", label: "Önerilen", color: "rgba(16,185,129,0.2)", textColor: "#34d399" },
-  optional:    { emoji: "⚠️", label: "Opsiyonel", color: "rgba(210,153,34,0.2)", textColor: "#d29922" },
-  skip:        { emoji: "❌", label: "Gereksiz", color: "rgba(248,81,73,0.15)", textColor: "#f85149" },
+  recommended: { emoji: "✅", label: "Önerilen", cls: "status-rec" },
+  optional:    { emoji: "⚠️", label: "Opsiyonel", cls: "status-opt" },
+  skip:        { emoji: "❌", label: "Gereksiz", cls: "status-skip" },
 };
 
 function renderSelectionGrids(groupingCols, outcomeCols, recommendations = {}) {
@@ -580,16 +972,14 @@ function renderSelectionGrids(groupingCols, outcomeCols, recommendations = {}) {
     return `
       <label class="col-checkbox ${checked ? "selected" : ""}" id="${id}">
         <input type="checkbox" ${checked ? "checked" : ""} onchange="toggleCol('cat','${c}',this.checked)" />
-        <div style="flex:1">
+        <div class="flex-1">
           <div class="col-name">${col}</div>
           <div class="col-sample">${samples}</div>
-          ${rec.reason ? `<div style="font-size:11px;margin-top:4px;color:var(--muted);font-style:italic">${rec.reason}</div>` : ""}
+          ${rec.reason ? `<div class="text-xs text-muted reason-note">${rec.reason}</div>` : ""}
         </div>
-        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:${badge.color};color:${badge.textColor};white-space:nowrap;flex-shrink:0">
-          ${badge.emoji} ${badge.label}
-        </span>
+        <span class="status-badge ${badge.cls}">${badge.emoji} ${badge.label}</span>
       </label>`;
-  }).join("") : '<p style="color:var(--muted);font-size:13px">Gruplandırma değişkeni bulunamadı.</p>';
+  }).join("") : '<p class="text-sm text-muted">Gruplandırma değişkeni bulunamadı.</p>';
 
   contGrid.innerHTML = outcomeCols.length ? outcomeCols.map(col => {
     const badge = STATUS_BADGE.recommended;
@@ -599,15 +989,13 @@ function renderSelectionGrids(groupingCols, outcomeCols, recommendations = {}) {
     return `
       <label class="col-checkbox selected" id="${id}">
         <input type="checkbox" checked onchange="toggleCol('cont','${c}',this.checked)" />
-        <div style="flex:1">
+        <div class="flex-1">
           <div class="col-name">${col}</div>
           <div class="col-sample">${samples}</div>
         </div>
-        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:${badge.color};color:${badge.textColor};white-space:nowrap;flex-shrink:0">
-          ${badge.emoji} ${badge.label}
-        </span>
+        <span class="status-badge ${badge.cls}">${badge.emoji} ${badge.label}</span>
       </label>`;
-  }).join("") : '<p style="color:var(--muted);font-size:13px">Analiz değişkeni bulunamadı.</p>';
+  }).join("") : '<p class="text-sm text-muted">Analiz değişkeni bulunamadı.</p>';
 }
 
 function labelInputId(col) {
@@ -640,7 +1028,6 @@ function showToast(msg) {
   if (!el) {
     el = document.createElement("div");
     el.id = "stataiToast";
-    el.style.cssText = "position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 18px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:opacity 0.3s;color:var(--text);";
     document.body.appendChild(el);
   }
   el.textContent = msg;
@@ -735,10 +1122,9 @@ function renderLabelInputs(allCols) {
     if (/_binary$/i.test(col)) ph = "İkili sınıflama açıklaması";
     if (/_kategori$/i.test(col)) ph = "Kategori açıklaması (örn: Zayıf / Normal / Obez)";
     return `
-      <div style="display:flex; align-items:center; gap:8px;">
-        <span style="font-size:12px; color:${isRequired ? "var(--accent)" : "var(--muted)"};
-              font-family:'JetBrains Mono',monospace; min-width:130px; flex-shrink:0;">
-          ${col}${isRequired ? ' <span style="color:#ef4444">*</span>' : ""}
+      <div class="label-input-row">
+        <span class="label-code ${isRequired ? "required" : "optional"}">
+          ${col}${isRequired ? ' <span class="text-required">*</span>' : ""}
         </span>
         <input
           type="text"
@@ -748,10 +1134,7 @@ function renderLabelInputs(allCols) {
           data-required="${isRequired ? "1" : "0"}"
           placeholder="${escAttr(ph)}"
           value="${val}"
-          style="flex:1; padding:6px 10px; font-size:12px;
-                 background:var(--bg);
-                 border:1px solid ${isRequired ? "rgba(37,99,235,0.4)" : "var(--border)"};
-                 color:var(--text); border-radius:6px; font-family:inherit;"
+          class="form-input form-input-sm ${isRequired ? "form-input-required" : ""}"
           onchange="updateUserLabel(this)"
           ${isRequired ? "required" : ""}
         />
@@ -759,8 +1142,8 @@ function renderLabelInputs(allCols) {
   }).join("");
 
   const note = document.createElement("div");
-  note.style.cssText = "font-size:11px; color:var(--muted); margin-top:8px; grid-column:1/-1;";
-  note.innerHTML = '<span style="color:#ef4444">*</span> işaretli alanlar zorunludur';
+  note.className = "label-grid-note";
+  note.innerHTML = '<span class="text-required">*</span> işaretli alanlar zorunludur';
   grid.appendChild(note);
 }
 
@@ -819,9 +1202,9 @@ function showLabelWarning(suspicious) {
   const modal = document.getElementById("labelWarningModal");
   const colsEl = document.getElementById("suspiciousCols");
   colsEl.innerHTML = suspicious.map(s =>
-    `<div style="margin-bottom:6px">
+    `<div class="suspicious-row">
       <strong>${s.col}</strong>:
-      <span style="color:var(--muted)">${s.values.join(", ")}${s.values.length >= 5 ? "..." : ""}</span>
+      <span class="text-muted">${s.values.join(", ")}${s.values.length >= 5 ? "..." : ""}</span>
     </div>`
   ).join("");
   modal.classList.add("open");
@@ -867,47 +1250,40 @@ function unmatchedColumnsForDisplay() {
 function renderScaleMatchPanelHtml() {
   if (!scaleMatchResults.length) return "";
   const unmatched = unmatchedColumnsForDisplay();
+  const confCls = c => c === "high" ? "conf-high" : c === "medium" ? "conf-medium" : "conf-low";
+  const confLbl = c => c === "high" ? "✓ Güvenilir" : c === "medium" ? "~ Olası" : "? Belirsiz";
   return `
-    <div id="scaleMatchPanel" style="margin-bottom:16px;">
+    <div id="scaleMatchPanel" class="mb-2">
       <div class="panel">
         <div class="panel-title">🔗 Ölçek → Kolon Eşleştirmesi</div>
-        <p style="font-size:13px; color:var(--muted); margin-bottom:12px">
+        <p class="panel-desc">
           Yazdığınız ölçek adlarına göre kolonlar otomatik eşleştirildi.
           Yanlış eşleşmeleri düzeltebilirsiniz.
         </p>
         ${scaleMatchResults.map(match => `
-          <div style="border:1px solid var(--border); border-radius:8px;
-                      padding:12px; margin-bottom:8px;">
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-              <span style="font-weight:600">${escHtml(match.scale_name)}</span>
-              <span style="font-size:11px; padding:2px 8px; border-radius:99px;
-                    background:${match.confidence === "high" ? "rgba(16,185,129,0.15)" :
-                                 match.confidence === "medium" ? "rgba(251,191,36,0.15)" :
-                                 "rgba(239,68,68,0.15)"};
-                    color:${match.confidence === "high" ? "#34d399" :
-                            match.confidence === "medium" ? "#fbbf24" : "#f87171"}">
-                ${match.confidence === "high" ? "✓ Güvenilir" :
-                  match.confidence === "medium" ? "~ Olası" : "? Belirsiz"}
-              </span>
+          <div class="scale-match-card">
+            <div class="scale-match-head">
+              <span class="scale-match-name">${escHtml(match.scale_name)}</span>
+              <span class="conf-badge ${confCls(match.confidence)}">${confLbl(match.confidence)}</span>
             </div>
             ${match.total_columns?.length ? `
-              <div style="font-size:12px; color:var(--muted); margin-bottom:4px">
+              <div class="scale-match-detail">
                 Toplam puan: ${match.total_columns.map(c => `<code>${escHtml(c)}</code>`).join(", ")}
               </div>` : ""}
             ${match.item_columns?.length ? `
-              <div style="font-size:12px; color:var(--muted)">
+              <div class="scale-match-detail">
                 Maddeler (${match.item_columns.length}):
                 ${match.item_columns.slice(0, 5).map(c => `<code>${escHtml(c)}</code>`).join(", ")}
                 ${match.item_columns.length > 5 ? `<span>+${match.item_columns.length - 5} daha</span>` : ""}
               </div>` : ""}
             ${!match.matched_columns?.length ? `
-              <div style="font-size:12px; color:#f87171">
+              <div class="scale-match-detail text-danger">
                 ⚠️ Eşleşen kolon bulunamadı — kolon adlarını kontrol edin
               </div>` : ""}
           </div>
         `).join("")}
         ${unmatched.length ? `
-          <div style="font-size:12px; color:var(--muted); margin-top:8px">
+          <div class="text-xs text-muted mt-2">
             Eşleşmeyen kolonlar (demografik/diğer):
             ${unmatched.slice(0, 8).map(c => escHtml(c)).join(", ")}${unmatched.length > 8 ? "..." : ""}
           </div>` : ""}
@@ -981,31 +1357,29 @@ function initEthicsUploadZoneDragDrop() {
 
 function renderUploadStep() {
   return `
-    <div class="wizard-card" style="text-align:center; max-width:600px;">
-      <div style="font-size:48px; margin-bottom:16px;">📊</div>
+    <div class="wizard-card wizard-card-center">
+      <div class="upload-hero">📊</div>
       <div class="wizard-title">StatAI'ya Hoş Geldiniz</div>
-      <div class="wizard-subtitle">Excel, CSV veya SPSS (.sav) dosyanızı yükleyin, gerisini biz halledelim</div>
-      <div id="uploadZone" class="upload-zone" onclick="document.getElementById('fileInput').click()"
-           style="margin:0 0 24px; cursor:pointer;">
+      <div class="wizard-subtitle">Akademik analiz ve APA formatlı tablolar için verinizi yükleyin</div>
+      <div id="uploadZone" class="upload-zone" onclick="document.getElementById('fileInput').click()">
         <div class="icon">📁</div>
-        <h2>Veri dosyanı yükle</h2>
-        <p>Sürükle bırak veya tıkla</p>
+        <h2>Veri dosyanızı sürükleyin</h2>
+        <p>SPSS (.sav), Excel veya CSV dosyanızı sürükleyin — veya tıklayarak seçin</p>
         <div class="formats">
+          <span class="format-badge">.sav</span>
           <span class="format-badge">.xlsx</span>
           <span class="format-badge">.xls</span>
           <span class="format-badge">.csv</span>
-          <span class="format-badge">.sav</span>
         </div>
       </div>
-      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.sav" onchange="handleFile(this.files[0])" style="display:none" />
-      <div style="padding:12px 16px; background:rgba(37,99,235,0.06); border:1px solid rgba(37,99,235,0.2); border-radius:8px; text-align:left; font-size:13px;">
-        <strong>SPSS:</strong> .sav dosyasını doğrudan yükleyebilirsiniz — değişken etiketleri otomatik okunur.
-        CSV export için <em>"Save value labels where defined"</em> seçeneğini işaretleyin.
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.sav" onchange="handleFile(this.files[0])" />
+      <div class="alert alert-info text-sm text-left">
+        <div><strong>SPSS:</strong> .sav dosyasını doğrudan yükleyebilirsiniz — değişken etiketleri otomatik okunur.
+        CSV export için <em>"Save value labels where defined"</em> seçeneğini işaretleyin.</div>
       </div>
-      <div style="margin-top:12px; text-align:left;">
-        <strong style="font-size:13px;">Eksik veri kodları:</strong>
-        <input type="text" id="missingValueCodes" value="99" placeholder="99, 998, 999"
-          style="margin-left:8px; padding:5px 10px; font-size:12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px; width:140px;" />
+      <div class="form-row">
+        <label class="form-label" for="missingValueCodes">Eksik veri kodları:</label>
+        <input type="text" id="missingValueCodes" class="form-input form-input-inline" value="99" placeholder="99, 998, 999" />
       </div>
     </div>`;
 }
@@ -1013,42 +1387,37 @@ function renderUploadStep() {
 function renderEthicsStep() {
   const hasEthics = Boolean(ethicsFileBase64);
   const zoneHtml = hasEthics ? `
-      <div id="ethicsUploadZone" class="upload-zone" style="margin:0 0 12px; cursor:default;">
-        <div style="font-size:32px">✅</div>
-        <div style="font-weight:700; font-size:16px; margin:8px 0 4px">${escHtml(ethicsFileName)}</div>
-        <div style="font-size:12px; color:var(--muted)">Rapor yüklendi</div>
-        <div style="margin-top:10px; font-size:12px; color:var(--accent); cursor:pointer; text-decoration:underline"
-             onclick="event.stopPropagation(); resetEthicsUploadZone()">Farklı rapor yükle</div>
+      <div id="ethicsUploadZone" class="upload-zone uploaded">
+        <div class="icon">✅</div>
+        <div class="upload-file-name">${escHtml(ethicsFileName)}</div>
+        <div class="upload-file-meta">Rapor yüklendi</div>
+        <div class="upload-reset-link" onclick="event.stopPropagation(); resetEthicsUploadZone()">Farklı rapor yükle</div>
       </div>` : `
-      <div id="ethicsUploadZone" class="upload-zone" onclick="document.getElementById('ethicsFileInput').click()"
-           style="margin:0 0 12px; cursor:pointer;">
+      <div id="ethicsUploadZone" class="upload-zone" onclick="document.getElementById('ethicsFileInput').click()">
         <div class="icon">📄</div>
-        <h2>Etik Kurul Raporu Yükle (PDF/Word)</h2>
-        <p>Ölçek bilgileri otomatik çıkarılır</p>
-        <p style="font-size:11px; color:var(--warn); margin-top:8px;">⚠️ Taranmış PDF'lerde metin okunamayabilir — mümkünse Word (.docx) yükleyin</p>
+        <h2>Etik Kurul Raporu (PDF/Word)</h2>
+        <p>Ölçek bilgileri otomatik çıkarılır — sürükleyin veya tıklayın</p>
+        <p class="text-xs text-warn mt-2">⚠️ Taranmış PDF'lerde metin okunamayabilir — mümkünse Word (.docx) yükleyin</p>
         <div class="formats">
           <span class="format-badge">.pdf</span>
           <span class="format-badge">.docx</span>
         </div>
       </div>`;
   return `
-    <div class="wizard-card" style="max-width:600px;">
+    <div class="wizard-card wizard-card-center">
       <div class="wizard-title">📄 Etik Kurul Raporu</div>
       <div class="wizard-subtitle">
         Varsa yükleyin — ölçek bilgileri otomatik çıkarılır ve
         bulgular daha zengin akademik dille yazılır
       </div>
       ${zoneHtml}
-      <input type="file" id="ethicsFileInput" accept=".pdf,.docx" onchange="handleEthicsReport(this.files[0])" style="display:none" />
-      <div id="ethicsFileStatus" style="display:${hasEthics ? "block" : "none"}; font-size:12px; color:#34d399; margin-bottom:8px">✅ Rapor yüklendi</div>
-      <div id="ethicsReportStatus" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:8px; font-size:13px; text-align:left;"></div>
+      <input type="file" id="ethicsFileInput" accept=".pdf,.docx" onchange="handleEthicsReport(this.files[0])" />
+      <div id="ethicsFileStatus" class="text-sm text-success mb-2 ${hasEthics ? "" : "hidden"}">✅ Rapor yüklendi</div>
+      <div id="ethicsReportStatus" class="hidden"></div>
       <div class="wizard-nav">
         <button class="btn btn-secondary" onclick="prevStep()">← Geri</button>
-        <button class="btn btn-secondary" id="btnEthicsSkip" onclick="skipEthicsStep()"
-                style="opacity:0.6;${hasEthics ? " display:none;" : ""}">Atla →</button>
-        <button class="btn btn-success" id="btnEthicsNext"
-                style="${hasEthics ? "" : "display:none;"}"
-                onclick="nextStep()">Devam →</button>
+        <button class="btn btn-ghost${hasEthics ? " hidden" : ""}" id="btnEthicsSkip" onclick="skipEthicsStep()">Atla →</button>
+        <button class="btn btn-primary${hasEthics ? "" : " hidden"}" id="btnEthicsNext" onclick="nextStep()">Devam →</button>
       </div>
     </div>`;
 }
@@ -1067,13 +1436,12 @@ function renderScalesStep() {
     <div class="wizard-card">
       <div class="wizard-title">📋 Kullandığınız ölçekler</div>
       <div class="wizard-subtitle">Araştırmanızda kullandığınız ölçek/anket isimlerini yazın. Her birini virgülle ayırın.</div>
-      <input type="text" id="scaleNamesInput" value="${escHtml(names)}"
-        placeholder="örn: OYŞTÖ, Gece Yeme Anketi, SBİTO"
-        style="width:100%; padding:10px 14px; font-size:14px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:8px; box-sizing:border-box;" />
+      <input type="text" id="scaleNamesInput" class="form-input" value="${escHtml(names)}"
+        placeholder="örn: OYŞTÖ, Gece Yeme Anketi, SBİTO" />
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
-        <div style="font-size:12px; color:var(--muted);">Ölçek yoksa boş bırakabilirsiniz</div>
-        <button class="btn btn-success" onclick="nextStep()">Devam →</button>
+        <div class="wizard-nav-hint">Ölçek yoksa boş bırakabilirsiniz</div>
+        <button class="btn btn-primary" onclick="nextStep()">Devam →</button>
       </div>
     </div>`;
 }
@@ -1084,12 +1452,11 @@ function renderTopicStep() {
     <div class="wizard-card">
       <div class="wizard-title">🎯 Araştırma konusu</div>
       <div class="wizard-subtitle">Bir iki cümleyle araştırmanızı özetleyin. AI değişkenleri sınıflandırırken kullanacak.</div>
-      <textarea id="researchTopic" rows="3"
-        placeholder="örn: Sağlık bilimleri öğrencilerinin online yemek siparişi tutumu ile gece yeme davranışı ilişkisi"
-        style="width:100%; padding:12px 14px; font-size:14px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:8px; resize:vertical; box-sizing:border-box;">${escHtml(topic)}</textarea>
+      <textarea id="researchTopic" class="form-textarea" rows="3"
+        placeholder="örn: Sağlık bilimleri öğrencilerinin online yemek siparişi tutumu ile gece yeme davranışı ilişkisi">${escHtml(topic)}</textarea>
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
-        <button class="btn btn-success" onclick="nextStep()">Devam →</button>
+        <button class="btn btn-primary" onclick="nextStep()">Devam →</button>
       </div>
     </div>`;
 }
@@ -1123,36 +1490,35 @@ function renderLabelPhaseGrid() {
     const c = escAttr(col);
     const val = escAttr(userLabels[col] || col);
     return `
-      <div style="display:grid; grid-template-columns:140px 1fr 1fr; gap:12px; align-items:center; padding:10px 0; border-bottom:1px solid var(--border);">
-        <span style="font-size:12px; font-family:'JetBrains Mono',monospace; color:var(--muted);">${col}</span>
-        <span style="font-size:11px; color:var(--muted);">${escHtml(samples.join(", ") || "—")}</span>
+      <div class="label-row">
+        <span class="label-row-code">${col}</span>
+        <span class="text-xs text-muted">${escHtml(samples.join(", ") || "—")}</span>
         <input type="text" id="${id}" data-col="${c}" data-label-col="${c}"
-          placeholder="Türkçe isim girin" value="${val}"
-          onchange="updateUserLabel(this)"
-          style="padding:6px 10px; font-size:12px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:6px;" />
+          class="form-input form-input-sm" placeholder="Türkçe isim girin" value="${val}"
+          onchange="updateUserLabel(this)" />
       </div>`;
   }).join("");
 }
 
 function renderVariablesPhase1() {
   return `
-    <div class="wizard-card" style="max-width:900px;">
+    <div class="wizard-card wizard-card-wide">
       <div class="wizard-title">🏷️ Değişken İsimleri</div>
       <div class="wizard-subtitle">
         Her değişkene anlaşılır bir Türkçe isim verin.
         Bu isimler analiz sonuçlarında ve bulgularda kullanılacak.
       </div>
-      <div id="labelPhaseGrid" style="margin-top:16px;"></div>
+      <div id="labelPhaseGrid" class="mt-2"></div>
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
-        <button class="btn btn-success" onclick="proceedToPhase2()">Sınıflandır →</button>
+        <button class="btn btn-primary" id="btnClassify" onclick="proceedToPhase2()">Sınıflandır →</button>
       </div>
     </div>`;
 }
 
 function renderVariablesPhase2() {
   return `
-    <div class="wizard-card" style="max-width:900px;">
+    <div class="wizard-card wizard-card-wide">
       <div class="wizard-title">🔢 Değişkenleri Seçin</div>
       <div class="wizard-subtitle">
         AI değişkenleri sınıflandırdı. Kontrol edin, yanlış olanları düzeltin.
@@ -1161,7 +1527,7 @@ function renderVariablesPhase2() {
       <div id="selectionGridsContainer"></div>
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="backToPhase1()">← Etiketleri Düzenle</button>
-        <button class="btn btn-success" onclick="nextStep()">Analiz Planı →</button>
+        <button class="btn btn-primary" onclick="nextStep()">Analiz Planı →</button>
       </div>
     </div>`;
 }
@@ -1190,15 +1556,12 @@ async function proceedToPhase2() {
     return;
   }
 
-  const btn = document.querySelector("#labelPhaseGrid")
-    ?.closest(".wizard-card")
-    ?.querySelector(".btn-success");
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = "⏳ Sınıflandırılıyor...";
-  }
+  const btn = document.getElementById("btnClassify");
+  setButtonLoading(btn, true, "Sınıflandırılıyor...");
 
   await runAIClassify(true);
+
+  setButtonLoading(btn, false, "", "Sınıflandır →");
 
   variablesPhase = 2;
   refreshCurrentStep();
@@ -1212,29 +1575,48 @@ function backToPhase1() {
 
 function renderPlanStep() {
   return `
-    <div class="wizard-card" style="max-width:900px;">
+    <div class="wizard-card wizard-card-wide">
       <div class="wizard-title">📊 Analiz Planı</div>
       <div class="wizard-subtitle">Yapılacak testleri onaylayın veya istediğinizi kapatın.</div>
       <div id="planContainer"><div class="empty"><div class="icon">⏳</div><p>Plan hazırlanıyor...</p></div></div>
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
-        <button class="btn btn-success btn-lg" onclick="runAnalysisFromPlan()">🔬 Analiz Et</button>
+        <button class="btn btn-primary btn-lg" id="btnAnalyze" onclick="runAnalysisFromPlan()">🔬 Analiz Et</button>
       </div>
     </div>`;
 }
 
 function renderResultsStep() {
   return `
-    <div class="wizard-card" style="max-width:960px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
-        <div class="wizard-title" style="margin:0;">✅ Analiz Sonuçları</div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <div class="wizard-card wizard-card-wide">
+      <div class="step-header">
+        <div class="wizard-title">✅ Analiz Sonuçları</div>
+        <div class="step-actions">
           <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
-          <button class="btn btn-primary" id="btnAllBulgu" onclick="generateAllBulgu()">✨ Tüm Bulguları Yaz</button>
-          <button class="btn btn-success" id="btnWord" onclick="downloadWord()">📄 Word İndir</button>
+          <button class="btn btn-secondary" id="btnAllBulgu" onclick="generateAllBulgu()">✨ Tüm Bulguları Yaz</button>
+          <button class="btn btn-primary" id="btnReview" onclick="goToReviewStep()" ${!analysisResults.length ? "disabled" : ""}>Gözden Geçir →</button>
         </div>
       </div>
       <div id="resultsContainer"></div>
+    </div>`;
+}
+
+function renderReviewStep() {
+  return `
+    <div class="review-wrap">
+      <div class="review-header">
+        <div class="review-header-text">
+          <h2>Gözden Geçir</h2>
+          <p>Word çıktısından önce ölçek eşleşmelerini ve tablo başlıklarını kontrol edin.</p>
+        </div>
+        <button class="btn btn-primary btn-lg" id="btnWord" onclick="downloadWord()" ${!analysisResults.length ? "disabled" : ""}>
+          Word'e Aktar
+        </button>
+      </div>
+      <div id="reviewContent"><div class="empty"><div class="icon">⏳</div><p>Yükleniyor...</p></div></div>
+      <div class="wizard-nav wizard-nav-plain">
+        <button class="btn btn-ghost" onclick="prevStep()">← Sonuçlara Dön</button>
+      </div>
     </div>`;
 }
 
@@ -1247,8 +1629,20 @@ function renderStep(step) {
     case "variables": return renderVariablesStep();
     case "plan": return renderPlanStep();
     case "results": return renderResultsStep();
+    case "review": return renderReviewStep();
     default: return "";
   }
+}
+
+function getStepperGroupIndex(stepNum) {
+  const name = STEPS[stepNum];
+  return STEPPER_GROUPS.findIndex(g => g.steps.includes(name));
+}
+
+function getVisitedStepperGroups(upToStep) {
+  const visited = new Set();
+  for (let s = 0; s <= upToStep; s++) visited.add(getStepperGroupIndex(s));
+  return visited;
 }
 
 function updateProgress() {
@@ -1258,17 +1652,43 @@ function updateProgress() {
   if (!bar || !stepsEl || !label) return;
 
   if (currentStep === 0) {
-    bar.style.display = "none";
+    bar.classList.remove("is-visible");
     return;
   }
-  bar.style.display = "block";
-  stepsEl.innerHTML = STEPS.map((_, i) => {
-    let cls = "step-dot";
-    if (i < currentStep) cls += " done";
-    else if (i === currentStep) cls += " active";
-    return `<div class="${cls}" title="${STEP_LABELS[i]}"></div>`;
-  }).join("");
-  label.textContent = `${STEP_ICONS[currentStep]} ${STEP_LABELS[currentStep]} · ${currentStep}/${STEPS.length - 1}`;
+  bar.classList.add("is-visible");
+
+  const currentGroup = getStepperGroupIndex(currentStep);
+  const visitedGroups = getVisitedStepperGroups(currentStep);
+  const parts = [];
+  STEPPER_GROUPS.forEach((g, i) => {
+    let state = "future";
+    if (i === currentGroup) state = "active";
+    else if (visitedGroups.has(i)) state = "done";
+    parts.push(`
+      <div class="stepper-item ${state}" title="${g.label}">
+        <div class="stepper-node">${state === "done" ? "✓" : i + 1}</div>
+        <span class="stepper-label">${g.label}</span>
+      </div>`);
+    if (i < STEPPER_GROUPS.length - 1) {
+      parts.push(`<div class="stepper-line${visitedGroups.has(i + 1) ? " done" : ""}"></div>`);
+    }
+  });
+  stepsEl.innerHTML = parts.join("");
+  label.textContent = STEPPER_GROUPS[currentGroup]?.label || "";
+}
+
+function setButtonLoading(btn, loading, loadingText, defaultHtml) {
+  if (!btn) return;
+  if (loading) {
+    if (!btn.dataset.defaultHtml) btn.dataset.defaultHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add("is-loading");
+    btn.innerHTML = `<span class="spinner"></span> ${loadingText}`;
+  } else {
+    btn.disabled = false;
+    btn.classList.remove("is-loading");
+    btn.innerHTML = btn.dataset.defaultHtml || defaultHtml || btn.innerHTML;
+  }
 }
 
 function initStep(step) {
@@ -1281,7 +1701,7 @@ function initStep(step) {
       if (!variablesDataReady) {
         const grid = document.getElementById("labelPhaseGrid");
         const container = document.getElementById("selectionGridsContainer");
-        const loading = '<p style="color:var(--muted);font-size:13px">Veriler yükleniyor...</p>';
+        const loading = '<p class="text-sm text-muted">Veriler yükleniyor...</p>';
         if (grid) grid.innerHTML = loading;
         if (container) container.innerHTML = loading;
         return;
@@ -1296,24 +1716,24 @@ function initStep(step) {
       if (!container) return;
       container.innerHTML = `
         <div class="info-bar">📁 <span id="fileInfo">${escAttr(fileInfoText)}</span></div>
-        <div id="missingWarnBar" style="display:none" class="warn-bar"></div>
-        <div id="cronbachInfo" style="display:none; margin-bottom:16px;"></div>
+        <div id="missingWarnBar" class="warn-bar hidden"></div>
+        <div id="cronbachInfo" class="hidden mb-2"></div>
         <div class="panel">
           <div class="panel-title">👥 Gruplandırma Değişkenleri</div>
-          <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Cinsiyet, bölüm, medeni durum gibi demografik değişkenler</p>
+          <p class="panel-desc">Cinsiyet, bölüm, medeni durum gibi demografik değişkenler</p>
           <div class="checkbox-grid" id="catGrid"></div>
         </div>
         <div class="panel">
           <div class="panel-title">📊 Analiz Değişkenleri</div>
-          <p style="color:var(--muted);font-size:13px;margin-bottom:12px">Ölçek toplam puanları, risk grupları, BKİ kategorisi gibi sonuç değişkenleri</p>
+          <p class="panel-desc">Ölçek toplam puanları, risk grupları, BKİ kategorisi gibi sonuç değişkenleri</p>
           <div class="checkbox-grid" id="contGrid"></div>
         </div>`;
       if (detectedScales.length) {
         const info = document.getElementById("cronbachInfo");
         if (info) {
-          info.style.display = "block";
+          info.classList.remove("hidden");
           info.innerHTML = `
-            <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2); border-radius:8px; padding:12px 16px; font-size:13px; color:#34d399;">
+            <div class="alert alert-success text-sm">
               ✅ ${detectedScales.length} ölçek tespit edildi:
               <strong>${detectedScales.map(s => s.name).join(", ")}</strong>
             </div>`;
@@ -1334,11 +1754,23 @@ function initStep(step) {
       updateWordButtonState();
     }, 50);
   }
+
+  if (name === "review") {
+    setTimeout(() => initReviewStep(), 50);
+  }
 }
 
 function updateWordButtonState() {
+  const disabled = !analysisResults.length;
   const btnWord = document.getElementById("btnWord");
-  if (btnWord) btnWord.disabled = !analysisResults.length;
+  const btnReview = document.getElementById("btnReview");
+  if (btnWord) btnWord.disabled = disabled;
+  if (btnReview) btnReview.disabled = disabled;
+}
+
+function goToReviewStep() {
+  if (!analysisResults.length) return;
+  goToStep(STEPS.indexOf("review"), "forward");
 }
 
 function goToStep(targetStep, direction = "forward") {
@@ -1508,6 +1940,10 @@ function resetWizard() {
   wizardFormState = { scaleNames: "", topic: "" };
   fileInfoText = "";
   scaleMatchResults = [];
+  customTitles = {};
+  customLabels = {};
+  reviewExpandedScales = new Set();
+  reviewScalesCache = [];
   pdfContextMap = {};
   ethicsFileBase64 = null;
   ethicsFileType = null;
@@ -1558,13 +1994,9 @@ function mergeEthicsScalesIntoScaleInfo(scales) {
 function showEthicsReportStatus(message, type = "info") {
   const el = document.getElementById("ethicsReportStatus");
   if (!el) return;
-  const styles = {
-    info: "background:rgba(37,99,235,0.08); border:1px solid rgba(37,99,235,0.25); color:var(--text);",
-    success: "background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); color:var(--text);",
-    error: "background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); color:var(--danger);",
-    loading: "background:rgba(37,99,235,0.06); border:1px solid rgba(37,99,235,0.2); color:var(--muted);",
-  };
-  el.style.cssText = `display:block; margin-bottom:12px; padding:10px 14px; border-radius:8px; font-size:13px; text-align:left; ${styles[type] || styles.info}`;
+  const map = { info: "alert-info", success: "alert-success", error: "alert-danger", loading: "alert-info" };
+  el.className = `alert ${map[type] || "alert-info"} text-sm text-left`;
+  el.classList.remove("hidden");
   el.innerHTML = message;
 }
 
@@ -1586,11 +2018,11 @@ async function handleEthicsReport(file) {
   const zone = document.getElementById("ethicsUploadZone");
   const prevZoneHtml = zone ? zone.innerHTML : "";
   if (zone) {
+    zone.className = "upload-zone loading";
     zone.innerHTML = `
-      <div style="font-size:32px">⏳</div>
-      <div style="font-weight:600; font-size:15px; margin:8px 0 4px">📄 Rapor analiz ediliyor...</div>
-      <div style="font-size:12px; color:var(--muted)">İlgili bölümler taranıyor</div>`;
-    zone.style.cursor = "default";
+      <div class="icon">⏳</div>
+      <div class="upload-file-name">Rapor analiz ediliyor...</div>
+      <div class="text-sm text-muted">İlgili bölümler taranıyor</div>`;
     zone.onclick = null;
   }
   showEthicsReportStatus("📄 Rapor analiz ediliyor... (ilgili bölümler taranıyor)", "loading");
@@ -1639,22 +2071,22 @@ async function handleEthicsReport(file) {
 
     const btnNext = document.getElementById("btnEthicsNext");
     const btnSkip = document.getElementById("btnEthicsSkip");
-    if (btnNext) btnNext.style.display = "";
-    if (btnSkip) btnSkip.style.display = "none";
+    if (btnNext) btnNext.classList.remove("hidden");
+    if (btnSkip) btnSkip.classList.add("hidden");
 
     if (zone) {
+      zone.className = "upload-zone uploaded";
       zone.innerHTML = `
-        <div style="font-size:32px">✅</div>
-        <div style="font-weight:700; font-size:16px; margin:8px 0 4px">${escHtml(file.name)}</div>
-        <div style="font-size:12px; color:var(--muted)">${n} ölçek çıkarıldı</div>
-        <div style="margin-top:10px; font-size:12px; color:var(--accent); cursor:pointer; text-decoration:underline"
-             onclick="event.stopPropagation(); resetEthicsUploadZone()">Farklı rapor yükle</div>`;
+        <div class="icon">✅</div>
+        <div class="upload-file-name">${escHtml(file.name)}</div>
+        <div class="upload-file-meta">${n} ölçek çıkarıldı</div>
+        <div class="upload-reset-link" onclick="event.stopPropagation(); resetEthicsUploadZone()">Farklı rapor yükle</div>`;
     }
   } catch (e) {
     showEthicsReportStatus(`❌ Hata: ${escHtml(e.message)}`, "error");
     if (zone) {
+      zone.className = "upload-zone";
       zone.innerHTML = prevZoneHtml;
-      zone.style.cursor = "pointer";
       zone.onclick = () => document.getElementById("ethicsFileInput").click();
       initEthicsUploadZoneDragDrop();
     }
@@ -1671,28 +2103,30 @@ function resetEthicsUploadZone() {
   if (input) input.value = "";
   const status = document.getElementById("ethicsFileStatus");
   if (status) {
-    status.style.display = "none";
+    status.classList.add("hidden");
     status.textContent = "✅ Rapor yüklendi";
   }
+  const reportStatus = document.getElementById("ethicsReportStatus");
+  if (reportStatus) reportStatus.classList.add("hidden");
   if (zone) {
+    zone.className = "upload-zone";
     zone.innerHTML = `
       <div class="icon">📄</div>
-      <h2>Etik Kurul Raporu Yükle (PDF/Word)</h2>
-      <p>Ölçek bilgileri otomatik çıkarılır</p>
-      <p style="font-size:11px; color:var(--warn); margin-top:8px;">⚠️ Taranmış PDF'lerde metin okunamayabilir — mümkünse Word (.docx) yükleyin</p>
+      <h2>Etik Kurul Raporu (PDF/Word)</h2>
+      <p>Ölçek bilgileri otomatik çıkarılır — sürükleyin veya tıklayın</p>
+      <p class="text-xs text-warn mt-2">⚠️ Taranmış PDF'lerde metin okunamayabilir — mümkünse Word (.docx) yükleyin</p>
       <div class="formats">
         <span class="format-badge">.pdf</span>
         <span class="format-badge">.docx</span>
       </div>`;
-    zone.style.cursor = "pointer";
     zone.onclick = () => document.getElementById("ethicsFileInput").click();
     delete zone.dataset.dragBound;
     initEthicsUploadZoneDragDrop();
   }
   const btnNext = document.getElementById("btnEthicsNext");
   const btnSkip = document.getElementById("btnEthicsSkip");
-  if (btnNext) btnNext.style.display = "none";
-  if (btnSkip) btnSkip.style.display = "";
+  if (btnNext) btnNext.classList.add("hidden");
+  if (btnSkip) btnSkip.classList.remove("hidden");
 }
 
 function finishFileUpload(file, json, readResult) {
@@ -1728,13 +2162,12 @@ function finishFileUpload(file, json, readResult) {
 
   const uploadZone = document.getElementById("uploadZone");
   if (uploadZone) {
+    uploadZone.className = "upload-zone uploaded";
     uploadZone.innerHTML = `
-      <div style="font-size:32px">✅</div>
-      <div style="font-weight:700; font-size:16px; margin:8px 0 4px">${escHtml(file.name)}</div>
-      <div style="font-size:12px; color:var(--muted)">${(file.size / 1024).toFixed(0)} KB · Yüklendi</div>
-      <div style="margin-top:10px; font-size:12px; color:var(--accent); cursor:pointer; text-decoration:underline"
-           onclick="event.stopPropagation(); resetWizard()">Farklı dosya yükle</div>`;
-    uploadZone.style.cursor = "default";
+      <div class="icon">✅</div>
+      <div class="upload-file-name">${escHtml(file.name)}</div>
+      <div class="upload-file-meta">${(file.size / 1024).toFixed(0)} KB · Yüklendi</div>
+      <div class="upload-reset-link" onclick="event.stopPropagation(); resetWizard()">Farklı dosya yükle</div>`;
     uploadZone.onclick = null;
   }
 
@@ -1908,7 +2341,7 @@ function showCronbachPanel() {
 
   const grid = document.getElementById("itemGrid");
   if (!itemCols.length) {
-    grid.innerHTML = '<p style="color:var(--muted);font-size:13px">Madde sütunu bulunamadı.</p>';
+    grid.innerHTML = '<p class="text-sm text-muted">Madde sütunu bulunamadı.</p>';
     return;
   }
 
@@ -1939,7 +2372,7 @@ async function runCronbach() {
   if (selectedItems.size < 2) return alert("En az 2 madde seçmelisiniz.");
 
   const resultEl = document.getElementById("cronbachResult");
-  resultEl.innerHTML = '<p style="color:var(--muted)">Hesaplanıyor...</p>';
+  resultEl.innerHTML = '<p class="text-muted">Hesaplanıyor...</p>';
 
   try {
     const res = await fetch(`${API}/analyze/cronbach`, {
@@ -1956,10 +2389,10 @@ async function runCronbach() {
       resultEl.innerHTML = renderApaTable(json.result);
       cronbachResults = [json.result];
     } else {
-      resultEl.innerHTML = '<p style="color:var(--danger)">Sonuç alınamadı.</p>';
+      resultEl.innerHTML = '<p class="text-danger">Sonuç alınamadı.</p>';
     }
   } catch (e) {
-    resultEl.innerHTML = '<p style="color:var(--danger)">Hata oluştu.</p>';
+    resultEl.innerHTML = '<p class="text-danger">Hata oluştu.</p>';
   }
 }
 
@@ -1977,12 +2410,13 @@ function computeMissingData(cols) {
 
 function renderMissingWarnings() {
   const warnBar = document.getElementById("missingWarnBar");
+  if (!warnBar) return;
   const issues = missingData.filter(m => m.warning !== "none");
   if (!issues.length) {
-    warnBar.style.display = "none";
+    warnBar.classList.add("hidden");
     return;
   }
-  warnBar.style.display = "block";
+  warnBar.classList.remove("hidden");
   warnBar.innerHTML = "⚠️ Eksik veri uyarısı: " + issues.map(m =>
   `${m.column} (%${m.missing_pct})`).join(", ");
 }
@@ -2073,8 +2507,12 @@ function buildData(variables) {
 function updatePlanTotalBar() {
   const bar = document.getElementById("planTotalBar");
   if (!bar) return;
-  const totalTests = analysisPlan.filter(t => t.recommended).reduce((s, t) => s + (t.count || 1), 0);
-  bar.innerHTML = `📋 Toplam <strong>${totalTests}</strong> tablo oluşturulacak`;
+  const selected = analysisPlan.filter(t => t.enabled !== false);
+  const totalTests = selected.reduce((s, t) => s + (t.count || 1), 0);
+  const tok = planTestsMeta.approx_input_tokens
+    ? ` · Planlama LLM: ~${planTestsMeta.approx_input_tokens} token`
+    : "";
+  bar.innerHTML = `📋 <strong>${selected.length}</strong> test seçili, ~<strong>${totalTests}</strong> tablo${tok}`;
 }
 
 function normalizeScaleKey(s) {
@@ -2110,28 +2548,34 @@ async function loadAnalysisPlan() {
   const variables = buildVariables();
   const data = buildData(variables);
 
-  planEl.innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Plan hazırlanıyor...</p></div>';
+  planEl.innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Test planı hazırlanıyor...</p></div>';
+
+  if (!researchTopicText.trim()) {
+    planEl.innerHTML = '<p class="text-sm text-muted">Araştırma amacı boş. Önceki adımda kısa bir amaç girin.</p>';
+    return;
+  }
 
   try {
-    const res = await fetch(`${API}/plan`, {
+    const res = await fetch(`${API}/plan-tests`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         variables,
         data,
         missing_codes: getMissingCodes(),
-        research_topic: researchTopicText || "",
+        research_aim: researchTopicText.trim(),
         use_ai: true,
       }),
     });
     if (!res.ok) throw new Error("Plan hatası");
     const json = await res.json();
-    analysisPlan = (json.tests || [])
-      .filter(t => t.type !== "regression" && t.id !== "regression")
-      .map(t => ({
-        ...t,
-        enabled: t.enabled !== false,
-      }));
+    analysisPlan = (json.recommended || []).map(t => ({
+      ...t,
+      enabled: t.selected !== false,
+      recommended: true,
+    }));
+    analysisPlanExcluded = json.excluded || [];
+    planTestsMeta = json.meta || {};
     renderAnalysisPlan();
   } catch (e) {
     await runAnalysis(null);
@@ -2140,33 +2584,58 @@ async function loadAnalysisPlan() {
 
 function renderAnalysisPlan() {
   const el = document.getElementById("planContainer");
-  if (!analysisPlan.length) {
-    el.innerHTML = '<p style="color:var(--muted);font-size:13px">Analiz planı oluşturulamadı.</p>';
+  if (!analysisPlan.length && !analysisPlanExcluded.length) {
+    el.innerHTML = '<p class="text-sm text-muted">Analiz planı oluşturulamadı.</p>';
     return;
   }
 
-  el.innerHTML = `
-    <div id="planTotalBar" style="background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.2);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--accent);"></div>
-    ${analysisPlan.map((t, i) => `
-      <div class="plan-card ${t.recommended ? "" : "disabled"}" id="plancard_${i}">
-        <input type="checkbox" ${t.recommended ? "checked" : ""}
-          onchange="togglePlan(${i}, this.checked)" />
-        <div style="flex:1">
-          <div class="plan-label">${t.label}</div>
-          <div class="plan-detail">${t.detail}</div>
+  const recommendedHtml = analysisPlan.map((t, i) => `
+    <div class="plan-card ${t.enabled !== false ? "" : "disabled"}" id="plancard_${i}">
+      <input type="checkbox" ${t.enabled !== false ? "checked" : ""}
+        onchange="togglePlan(${i}, this.checked)" />
+      <div class="flex-1">
+        <div class="plan-label">${escHtml(t.label || t.id)}</div>
+        <div class="plan-detail">${escHtml((t.test || "") + (t.vars ? " · " + t.vars.join(", ") : ""))}</div>
+      </div>
+      <span class="plan-badge-rec">✅ Önerilen</span>
+      <span class="plan-count">${t.count || 1} tablo</span>
+    </div>
+  `).join("");
+
+  const excludedHtml = analysisPlanExcluded.length ? `
+    <div class="plan-section-label">Elenen testler</div>
+    ${analysisPlanExcluded.map((t, i) => `
+      <div class="plan-card plan-card-excluded disabled" id="excludedcard_${i}">
+        <input type="checkbox"
+          onchange="toggleExcludedPlan(${i}, this.checked)" />
+        <div class="flex-1">
+          <div class="plan-label">${escHtml(t.label || t.id)}</div>
+          <div class="plan-detail plan-detail-warn">${escHtml(t.reason || "")}</div>
         </div>
-        <span class="${t.recommended ? "plan-badge-rec" : "plan-badge-opt"}">
-          ${t.recommended ? "✅ Önerilen" : "⚠️ Opsiyonel"}
-        </span>
-        <span class="plan-count">${t.count} tablo</span>
+        <span class="plan-badge-opt">⛔ ${escHtml(t.reason_code || "elendi")}</span>
       </div>
     `).join("")}
-    <div style="margin-top:14px;padding:12px 14px;border-radius:8px;border:1px dashed var(--border);font-size:12px;color:var(--muted);line-height:1.5;">
-      📈 <strong>Regresyon:</strong> Otomatik ikili regresyon kaldırıldı.
-      Sonuçlar adımında yordayıcı ve sonuç değişkeni seçerek çoklu doğrusal regresyon çalıştırabilirsiniz (yakında: gelişmiş regresyon seçenekleri).
+  ` : "";
+
+  el.innerHTML = `
+    <div id="planTotalBar" class="alert alert-info text-sm plan-total-bar"></div>
+    ${recommendedHtml}
+    ${excludedHtml}
+    <div class="plan-note">
+      📈 <strong>Regresyon:</strong> Sonuçlar adımında yordayıcı ve sonuç seçerek çoklu doğrusal regresyon çalıştırabilirsiniz.
     </div>
   `;
   updatePlanTotalBar();
+}
+
+function toggleExcludedPlan(i, checked) {
+  const item = analysisPlanExcluded[i];
+  if (!item) return;
+  if (checked) {
+    analysisPlan.push({ ...item, enabled: true, recommended: true, count: 1 });
+    analysisPlanExcluded.splice(i, 1);
+  }
+  renderAnalysisPlan();
 }
 
 function togglePlan(i, checked) {
@@ -2195,10 +2664,8 @@ async function runAnalysis(activeTypes = null, enabledTests = null) {
 
   bulgular = {};
   analysisMeta = {};
-  const planEl = document.getElementById("planContainer");
-  if (planEl) {
-    planEl.innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Analiz yapılıyor...</p></div>';
-  }
+  const analyzeBtn = document.getElementById("btnAnalyze");
+  setButtonLoading(analyzeBtn, true, "Analiz ediliyor...");
 
   const variables = buildVariables();
   const data = buildData(variables);
@@ -2268,12 +2735,13 @@ async function runAnalysis(activeTypes = null, enabledTests = null) {
     updateWordButtonState();
   } catch(e) {
     const errHtml = `
-      <div class="empty">
-        <div class="icon">⚠️</div>
-        <p>Backend bağlantısı kurulamadı.<br><code style="font-size:12px">baslat.bat</code> çalışıyor mu?</p>
+      <div class="alert alert-warn text-sm">
+        <div>Backend bağlantısı kurulamadı. <code class="text-xs">baslat.bat</code> çalışıyor mu?</div>
       </div>`;
-    const target = document.getElementById("planContainer") || document.getElementById("resultsContainer");
-    if (target) target.innerHTML = errHtml;
+    const target = document.getElementById("planContainer");
+    if (target) target.insertAdjacentHTML("afterbegin", errHtml);
+  } finally {
+    setButtonLoading(analyzeBtn, false, "", "🔬 Analiz Et");
   }
 }
 
@@ -2335,19 +2803,19 @@ function renderExtraAnalysesPanel() {
     return `<option value="${escAttr(c)}">${escHtml(lbl)} (${escHtml(c)})</option>`;
   }).join("");
   return `
-    <div style="margin-bottom:20px; padding:16px; border:1px solid var(--border); border-radius:8px; background:var(--card);">
-      <div style="font-weight:600; margin-bottom:8px">📈 Çoklu Doğrusal Regresyon</div>
-      <div style="font-size:13px; color:var(--muted); margin-bottom:12px">
+    <div class="reg-panel">
+      <div class="panel-title">📈 Çoklu Doğrusal Regresyon</div>
+      <p class="panel-desc">
         Birden fazla sürekli yordayıcı ve bir sonuç değişkeni seçerek OLS regresyonu çalıştırın.
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+      </p>
+      <div class="reg-grid">
         <div>
-          <label style="font-size:12px; font-weight:600;">Yordayıcılar (Ctrl ile çoklu seç)</label>
-          <select id="regPredictors" multiple size="5" style="width:100%; margin-top:4px; padding:6px;">${opts}</select>
+          <label class="reg-label">Yordayıcılar (Ctrl ile çoklu seç)</label>
+          <select id="regPredictors" class="reg-select" multiple size="5">${opts}</select>
         </div>
         <div>
-          <label style="font-size:12px; font-weight:600;">Sonuç değişkeni</label>
-          <select id="regOutcome" style="width:100%; margin-top:4px; padding:6px;">${opts}</select>
+          <label class="reg-label">Sonuç değişkeni</label>
+          <select id="regOutcome" class="reg-select">${opts}</select>
         </div>
       </div>
       <button class="btn btn-primary" onclick="runMultipleRegression()">Regresyon Çalıştır</button>
@@ -2397,11 +2865,9 @@ function renderAnalysisErrors() {
   const items = errs.map(e =>
     `<li><strong>${escHtml(e.analysis || "")}</strong> (${escHtml(e.variables || "")}): ${escHtml(e.error || "")}</li>`
   ).join("");
-  return `<div id="analysisErrorsBox" style="background:#fef9c3;border:1px solid #eab308;border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:#713f12;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-      <div><strong>Şu analizler üretilemedi:</strong><ul style="margin:8px 0 0 18px;padding:0">${items}</ul></div>
-      <button type="button" onclick="this.closest('#analysisErrorsBox').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:#713f12;line-height:1;padding:0 4px;" title="Kapat">✕</button>
-    </div>
+  return `<div id="analysisErrorsBox" class="alert alert-warn text-sm">
+    <div class="flex-1"><strong>Şu analizler üretilemedi:</strong><ul class="alert-list">${items}</ul></div>
+    <button type="button" class="alert-close" onclick="this.closest('#analysisErrorsBox').remove()" title="Kapat">✕</button>
   </div>`;
 }
 
@@ -2416,7 +2882,10 @@ function renderResults() {
   }
   const intro = analysisMeta.intro
     ? `<div class="intro-box">${analysisMeta.intro}</div>` : "";
-  el.innerHTML = extraPanel + errorsBox + intro + analysisResults.map((r, i) => renderResult(r, i)).join("");
+  const summary = bulguSummaryText
+    ? `<div class="intro-box intro-box-accent"><strong>Genel Değerlendirme</strong><p class="intro-summary">${escHtml(bulguSummaryText)}</p></div>`
+    : "";
+  el.innerHTML = extraPanel + errorsBox + intro + analysisResults.map((r, i) => renderResult(r, i)).join("") + summary;
 }
 
 function renderResult(r, i) {
@@ -2430,7 +2899,7 @@ function renderResult(r, i) {
 
   return `<div class="result-card">
     <div class="result-body">
-      ${sigBadge ? `<div class="result-badges" style="margin-bottom:10px">${sigBadge}</div>` : ""}
+      ${sigBadge ? `<div class="result-badges result-badges-row">${sigBadge}</div>` : ""}
       ${body}
       <div class="bulgu-box" id="bulgu_${i}">
         <div class="bulgu-label">✨ Bulgu</div>
@@ -2448,8 +2917,9 @@ async function generateAllBulgu() {
   const btnWord = document.getElementById("btnWord");
   const prevAllText = btnAll ? btnAll.innerHTML : "";
 
-  if (btnAll) btnAll.disabled = true;
+  setButtonLoading(btnAll, true, `Bulgu yazılıyor... (1/${total})`);
   if (btnWord) btnWord.disabled = true;
+  bulguSummaryText = "";
 
   for (let i = 0; i < total; i++) {
     const el = document.getElementById(`bulgu_${i}`);
@@ -2462,16 +2932,34 @@ async function generateAllBulgu() {
   }
 
   try {
+    const summaries = [];
     for (let i = 0; i < total; i++) {
       if (bulgular[String(i)]) continue;
-      if (btnAll) btnAll.innerHTML = `⏳ Bulgu yazılıyor... (${i + 1}/${total})`;
-      await generateBulgu(i, i + 1, total);
+      if (btnAll) btnAll.innerHTML = `<span class="spinner"></span> Bulgu yazılıyor... (${i + 1}/${total})`;
+      const sum = await generateBulgu(i, i + 1, total);
+      if (sum) summaries.push(sum);
     }
+    if (summaries.length) {
+      if (btnAll) btnAll.innerHTML = `<span class="spinner"></span> Genel değerlendirme...`;
+      try {
+        const res = await fetch(`${API}/ai/bulgu-summary`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            summaries,
+            research_topic: researchTopicText || analysisMeta.research_topic || "",
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          bulguSummaryText = data.summary || "";
+          if (data.meta) analysisMeta.bulgu_summary_meta = data.meta;
+        }
+      } catch (_) { /* genel değerlendirme opsiyonel */ }
+    }
+    renderResults();
   } finally {
-    if (btnAll) {
-      btnAll.disabled = false;
-      btnAll.innerHTML = prevAllText || "✨ Tüm Bulguları Yaz";
-    }
+    setButtonLoading(btnAll, false, "", prevAllText || "✨ Tüm Bulguları Yaz");
     updateWordButtonState();
   }
 }
@@ -2479,7 +2967,7 @@ async function generateAllBulgu() {
 async function generateBulgu(i, current = null, total = null) {
   const r = analysisResults[i];
   const el = document.getElementById(`bulgu_${i}`);
-  if (!el) return;
+  if (!el) return null;
   const n = total ?? analysisResults.length;
   const cur = current ?? (i + 1);
   const p = el.querySelector("p");
@@ -2510,9 +2998,289 @@ async function generateBulgu(i, current = null, total = null) {
     bulgular[String(i)] = text;
     el.querySelector("p").textContent = text;
     el.querySelector("p").className = "bulgu-text";
+    if (data.meta) {
+      analysisMeta.bulgu_meta = analysisMeta.bulgu_meta || { llm_calls: 0, approx_input_tokens: 0 };
+      analysisMeta.bulgu_meta.llm_calls += data.meta.llm_calls || 0;
+      analysisMeta.bulgu_meta.approx_input_tokens += data.meta.approx_input_tokens || 0;
+    }
+    return compactBulguSummaryClient(r);
   } catch(e) {
     el.querySelector("p").textContent = e.message || "API hatası. ANTHROPIC_API_KEY ayarlı mı?";
+    return null;
   }
+}
+
+function compactBulguSummaryClient(r) {
+  const vars = r.var1 && r.var2 ? `${r.var1}×${r.var2}` : (r.variable || (r.variables || []).slice(0, 3).join("×"));
+  return {
+    test: r.type,
+    vars,
+    sig: !!r.significant,
+    p: r.p != null ? String(r.p) : null,
+  };
+}
+
+function alphaReliabilityBadge(alpha) {
+  if (alpha == null || Number.isNaN(alpha)) return { cls: "", label: "α —" };
+  if (alpha >= 0.70) return { cls: "alpha-ok", label: "Güvenilir" };
+  if (alpha >= 0.60) return { cls: "alpha-mid", label: "Sınırda" };
+  return { cls: "alpha-low", label: "Düşük" };
+}
+
+function findCronbachForItems(itemCols) {
+  if (!itemCols?.length) return null;
+  const key = [...itemCols].sort().join("|");
+  return analysisResults.find(r => {
+    if (r.type !== "cronbach" || !r.items) return false;
+    return [...r.items].sort().join("|") === key;
+  });
+}
+
+function getTableCaption(result, index) {
+  if (customTitles[String(index)]) return customTitles[String(index)];
+  const { caption } = splitApaTitle(result.title || "");
+  return caption || stripHtml(result.title || "");
+}
+
+function stripHtml(s) {
+  return String(s).replace(/<[^>]+>/g, "");
+}
+
+function buildReviewScaleList() {
+  const list = [];
+  const seen = new Set();
+
+  const addScale = (id, name, items, match) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    const cols = match?.matched_columns || items || [];
+    const itemCols = match?.item_columns || items || [];
+    const cb = findCronbachForItems(itemCols.length ? itemCols : items);
+    const alpha = cb?.alpha ?? null;
+    const displayName = customLabels[`scale:${id}`] || name;
+    const confidence = match?.confidence || (cols.length ? "medium" : "low");
+    const okMatch = confidence === "high" || (confidence === "medium" && cols.length > 0);
+    list.push({
+      id,
+      name,
+      displayName,
+      items: itemCols,
+      columns: cols,
+      itemCount: itemCols.length || items?.length || 0,
+      alpha,
+      confidence,
+      okMatch,
+    });
+  };
+
+  detectedScales.forEach((ds, i) => {
+    const match = scaleMatchResults.find(m =>
+      m.scale_name?.toLowerCase() === ds.name?.toLowerCase()
+    ) || scaleMatchResults[i];
+    addScale(`ds_${i}`, ds.name, ds.items || [], match);
+  });
+
+  (scaleMatchResults || []).forEach((m, i) => {
+    if (!m?.scale_name) return;
+    const id = `match_${i}_${m.scale_name}`;
+    if (!seen.has(id) && !seen.has(`ds_${i}`)) {
+      addScale(id, m.scale_name, m.item_columns || [], m);
+    }
+  });
+
+  Object.entries(scaleInfo || {}).forEach(([shortKey, info]) => {
+    const full = info?.full_name || shortKey;
+    const id = `si_${shortKey}`;
+    if (seen.has(id)) return;
+    const match = scaleMatchResults.find(m =>
+      m.scale_name?.toLowerCase().includes(shortKey.toLowerCase()) ||
+      full.toLowerCase().includes(shortKey.toLowerCase())
+    );
+    addScale(id, full, match?.item_columns || [], match);
+  });
+
+  return list;
+}
+
+async function initReviewStep() {
+  const el = document.getElementById("reviewContent");
+  if (!el) return;
+
+  if (!scaleMatchResults.length) {
+    const names = [
+      ...detectedScales.map(s => s.name),
+      ...Object.values(scaleInfo || {}).map(i => i?.full_name).filter(Boolean),
+      ...getScaleNamesArray(),
+    ].filter((v, i, a) => v && a.indexOf(v) === i);
+    if (names.length && parsedData?.length) {
+      const columnNames = Object.keys(parsedData[0]);
+      try {
+        const res = await fetch(`${API}/match-scales`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scale_names: names, column_names: columnNames }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          scaleMatchResults = data.matches || [];
+          scaleMatchResults._unmatched = data.unmatched_columns || [];
+        }
+      } catch (_) { /* eşleşme opsiyonel */ }
+    }
+  }
+
+  renderReviewContent();
+}
+
+function renderReviewContent() {
+  const el = document.getElementById("reviewContent");
+  if (!el) return;
+  reviewScalesCache = buildReviewScaleList();
+  const scales = reviewScalesCache;
+
+  const scalesHtml = scales.length ? scales.map((s, idx) => {
+    const ab = alphaReliabilityBadge(s.alpha);
+    const alphaTxt = s.alpha != null ? `Cronbach α = ${Number(s.alpha).toFixed(3)}` : "Cronbach α henüz hesaplanmadı";
+    const rangeTxt = s.itemCount ? `${s.itemCount} madde` : "Madde aralığı belirsiz";
+    const open = reviewExpandedScales.has(idx) ? " open" : "";
+    const statusCls = s.okMatch ? "ok" : "warn";
+    const statusLabel = s.okMatch ? "✓ Eşleşti" : "⚠ Kontrol edin";
+    const chips = (s.columns.length ? s.columns : s.items).map(c =>
+      `<span class="review-chip">${escHtml(c)}</span>`
+    ).join("");
+    return `
+      <div class="review-card${open}" id="reviewScale_${idx}">
+        <div class="review-card-head" onclick="toggleReviewScale(${idx})">
+          <div>
+            <div class="review-scale-name">${escHtml(s.displayName)}</div>
+            <div class="review-scale-meta">${escHtml(rangeTxt)} · ${escHtml(alphaTxt)}
+              ${s.alpha != null ? `<span class="review-badge ${ab.cls}">${ab.label}</span>` : ""}
+            </div>
+          </div>
+          <div class="review-status ${statusCls}">${statusLabel}</div>
+        </div>
+        <div class="review-card-body">
+          <div class="text-xs text-muted mb-2">Eşleşen sütunlar</div>
+          <div class="review-chips">${chips || '<span class="review-chip">—</span>'}</div>
+          <label class="reg-label">Ölçek adı</label>
+          <input class="review-inline-input" type="text" value="${escAttr(s.displayName)}"
+            onchange="applyReviewScaleName(${idx}, this.value)"
+            onblur="applyReviewScaleName(${idx}, this.value)" />
+          <a class="review-link" href="#" onclick="promptWrongScaleMatch(${idx}); return false;">
+            Bu eşleşme yanlış — farklı ad gir
+          </a>
+        </div>
+      </div>`;
+  }).join("") : `<div class="review-empty">Ölçek tespit edilmedi — analiz yine de tamamlandı.</div>`;
+
+  const titlesHtml = analysisResults.length ? analysisResults.map((r, i) => {
+    const num = r.table_number ?? (i + 1);
+    const caption = getTableCaption(r, i);
+    const edited = customTitles[String(i)] ? " edited" : "";
+    return `
+      <div class="review-title-row${edited}" id="reviewTitleRow_${i}">
+        <span class="review-table-badge">Tablo ${num}</span>
+        <span class="review-title-text" id="reviewTitleText_${i}">${escHtml(caption)}</span>
+        <button type="button" class="review-edit-btn" title="Düzenle" onclick="startTitleEdit(${i})">✎</button>
+      </div>`;
+  }).join("") : `<div class="review-empty">Henüz tablo sonucu yok.</div>`;
+
+  el.innerHTML = `
+    <div class="review-section">
+      <div class="review-section-title">Ölçek Eşleşmeleri</div>
+      ${scalesHtml}
+    </div>
+    <div class="review-section">
+      <div class="review-section-title">Tablo Başlıkları</div>
+      <div class="review-title-list">${titlesHtml}</div>
+    </div>`;
+}
+
+function toggleReviewScale(idx) {
+  if (reviewExpandedScales.has(idx)) reviewExpandedScales.delete(idx);
+  else reviewExpandedScales.add(idx);
+  const card = document.getElementById(`reviewScale_${idx}`);
+  if (card) card.classList.toggle("open");
+}
+
+function applyReviewScaleName(idx, newName) {
+  const name = (newName || "").trim();
+  if (!name) return;
+  const scale = reviewScalesCache[idx];
+  if (!scale) return;
+  customLabels[`scale:${scale.id}`] = name;
+
+  const cols = [...(scale.columns || []), ...(scale.items || [])];
+  cols.forEach(col => {
+    customLabels[col] = name;
+    userLabels[col] = name;
+  });
+
+  Object.keys(scaleInfo || {}).forEach(key => {
+    const info = scaleInfo[key];
+    if (info && (scale.name === info.full_name || key === scale.id.replace(/^si_/, ""))) {
+      scaleInfo[key] = { ...info, full_name: name };
+    }
+  });
+
+  scale.displayName = name;
+  const headName = document.querySelector(`#reviewScale_${idx} .review-scale-name`);
+  if (headName) headName.textContent = name;
+}
+
+function promptWrongScaleMatch(idx) {
+  reviewExpandedScales.add(idx);
+  const card = document.getElementById(`reviewScale_${idx}`);
+  if (card) card.classList.add("open");
+  const input = card?.querySelector(".review-inline-input");
+  if (input) {
+    input.focus();
+    input.select();
+  }
+}
+
+function startTitleEdit(index) {
+  const row = document.getElementById(`reviewTitleRow_${index}`);
+  const textEl = document.getElementById(`reviewTitleText_${index}`);
+  if (!row || !textEl || row.querySelector("input")) return;
+
+  const current = getTableCaption(analysisResults[index], index);
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "review-inline-input";
+  input.value = current;
+  input.style.margin = "0";
+  input.style.flex = "1";
+
+  const save = () => {
+    const val = input.value.trim();
+    if (val && val !== current) {
+      customTitles[String(index)] = val;
+      row.classList.add("edited");
+    } else if (!val) {
+      delete customTitles[String(index)];
+      row.classList.remove("edited");
+    }
+    textEl.textContent = val || current;
+    input.replaceWith(textEl);
+    textEl.style.display = "";
+  };
+
+  const cancel = () => {
+    input.replaceWith(textEl);
+    textEl.style.display = "";
+  };
+
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); save(); }
+    if (e.key === "Escape") { e.preventDefault(); cancel(); }
+  });
+  input.addEventListener("blur", save);
+
+  textEl.style.display = "none";
+  row.insertBefore(input, row.querySelector(".review-edit-btn"));
+  input.focus();
+  input.select();
 }
 
 async function downloadWord() {
@@ -2525,6 +3293,10 @@ async function downloadWord() {
   }
   if (btnAll) btnAll.disabled = true;
 
+  const exportCustomLabels = Object.fromEntries(
+    Object.entries(customLabels).filter(([k]) => !k.startsWith("scale:"))
+  );
+
   try {
     const res = await fetch(`${API}/export/word`, {
       method: "POST",
@@ -2533,7 +3305,9 @@ async function downloadWord() {
         results: analysisResults,
         bulgular: Object.fromEntries(Object.entries(bulgular).map(([k, v]) => [String(k), v])),
         intro: analysisMeta.intro || "",
-        label_map: userLabels
+        label_map: userLabels,
+        custom_labels: exportCustomLabels,
+        custom_titles: customTitles,
       })
     });
     if (!res.ok) throw new Error("Word oluşturulamadı");

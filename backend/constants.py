@@ -78,3 +78,44 @@ _WORD_STAT_RE = re.compile(
 )
 
 _CONTEXT_MAX_CHARS = 1500
+
+REASON_CODES = (
+    "amac_disi",
+    "yetersiz_n",
+    "dengesiz_grup",
+    "totoloji",
+    "cift_test",
+    "dusuk_oncelik",
+)
+
+REASON_TEMPLATES: Dict[str, str] = {
+    "amac_disi": (
+        "Bu karşılaştırma araştırma amacıyla doğrudan ilişkili değildir."
+    ),
+    "yetersiz_n": (
+        "Alt grup örneklem büyüklüğü (n={n}) güvenilir analiz için yetersizdir."
+    ),
+    "dengesiz_grup": (
+        "{var_label} değişkeninde bir kategori örneklemin %90'ından fazlasını "
+        "oluşturmaktadır."
+    ),
+    "totoloji": (
+        "{var1_label} ve {var2_label} arasındaki korelasyon, ölçek alt boyutu ile "
+        "toplam puan yapısından dolayı yapay olarak yüksek çıkabilir."
+    ),
+    "cift_test": (
+        "{var1_label} ve {var2_label} için hem ki-kare hem grup karşılaştırma "
+        "testi planlanmıştır; yalnızca biri tercih edilmelidir."
+    ),
+    "dusuk_oncelik": (
+        "Araştırma amacına göre düşük öncelikli analiz olarak değerlendirilmiştir."
+    ),
+}
+
+PLAN_TEST_SYSTEM = """Sen tez istatistik danışmanısın. Araştırma amacına hizmet eden testleri seç, etmeyenleri reason_code ile ele.
+Yalnızca JSON döndür: {"selected":["id",...],"excluded":[{"id":"...","reason_code":"..."},...]}
+reason_code: amac_disi | yetersiz_n | dengesiz_grup | totoloji | cift_test | dusuk_oncelik
+Serbest metin gerekçe yazma. Ham veri veya tablo yok; yalnızca aday listesine bak."""
+
+BULGU_SUMMARY_SYSTEM = """Sen tez bulgular bölümü editörüsün. Verilen kompakt test özetlerinden 3-5 cümlelik genel değerlendirme paragrafı yaz.
+Geçmiş zaman (-miştir). Madde işareti kullanma. Tartışma yazma. Yalnızca verilen özetlere dayan."""

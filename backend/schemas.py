@@ -36,6 +36,14 @@ class PlanRequest(BaseModel):
     use_ai: Optional[bool] = True
 
 
+class PlanTestsRequest(BaseModel):
+    variables: List[Variable]
+    data: List[DataRow]
+    research_aim: str
+    missing_codes: Optional[List[str]] = None
+    use_ai: Optional[bool] = True
+
+
 class BulguRequest(BaseModel):
     result: Any
     research_topic: Optional[str] = None
@@ -43,6 +51,12 @@ class BulguRequest(BaseModel):
     approved_cutoffs: Optional[List[dict]] = None
     scale_info: Optional[dict] = None
     pdf_context: Optional[str] = None
+    force_llm: Optional[bool] = False
+
+
+class BulguSummaryRequest(BaseModel):
+    summaries: List[dict]
+    research_topic: Optional[str] = None
 
 
 class WordExportRequest(BaseModel):
@@ -50,6 +64,8 @@ class WordExportRequest(BaseModel):
     bulgular: Optional[Dict[str, str]] = None
     intro: Optional[str] = None
     label_map: Optional[Dict[str, str]] = None
+    custom_labels: Optional[Dict[str, str]] = None
+    custom_titles: Optional[Dict[str, str]] = None
 
 
 class CronbachRequest(BaseModel):

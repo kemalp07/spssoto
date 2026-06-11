@@ -218,11 +218,25 @@ def add_apa_table(doc: Document, result: dict, label_map: Optional[Dict[str, str
         note_p.paragraph_format.space_before = Pt(6)
         _add_apa_note(note_p, note_text)
 
+def _merge_label_maps(
+    label_map: Optional[Dict[str, str]],
+    custom_labels: Optional[Dict[str, str]],
+) -> Optional[Dict[str, str]]:
+    merged: Dict[str, str] = {}
+    if label_map:
+        merged.update(label_map)
+    if custom_labels:
+        merged.update(custom_labels)
+    return merged or None
+
+
 def build_word_document(
     results: List[dict],
     bulgular: Optional[Dict[str, str]] = None,
     intro: str = "",
     label_map: Optional[Dict[str, str]] = None,
+    custom_labels: Optional[Dict[str, str]] = None,
+    custom_titles: Optional[Dict[str, str]] = None,
 ) -> bytes:
     doc = Document()
     style = doc.styles["Normal"]
@@ -234,8 +248,15 @@ def build_word_document(
         doc.add_paragraph(intro)
     doc.add_paragraph()
 
+    resolved_labels = _merge_label_maps(label_map, custom_labels)
+
     for i, result in enumerate(results):
-        add_apa_table(doc, result, label_map)
+        export_result = dict(result)
+        custom_key = str(i)
+        if custom_titles and custom_key in custom_titles and custom_titles[custom_key]:
+            num, _ = _split_table_title(export_result.get("title", ""))
+            export_result["title"] = f"{num}. {custom_titles[custom_key]}"
+        add_apa_table(doc, export_result, resolved_labels)
         doc.add_paragraph()
         key = str(i)
         if bulgular and key in bulgular and bulgular[key]:

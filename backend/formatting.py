@@ -71,6 +71,10 @@ def build_group_comparison_title(cv: Variable, sv: Variable, test_name: str) -> 
 def build_measure_analysis_title(sv: Variable, suffix: str) -> str:
     return f"Katılımcıların {academic_short_label(sv)} Değerlerinin {suffix}"
 
+def _strip_apa_html(text: str) -> str:
+    return re.sub(r"</?em>", "", str(text))
+
+
 def apply_academic_text_rules(text: str) -> str:
     if not text:
         return text

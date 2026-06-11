@@ -25,6 +25,8 @@ from schemas import (
     ExtractContextRequest,
     PairedRequest,
     PlanRequest,
+    PlanTestsRequest,
+    BulguSummaryRequest,
     RegressionRequest,
     ScaleMatchRequest,
     SpssTableRequest,
@@ -49,7 +51,9 @@ from stat_tests import (
 from word_export import build_word_document
 from file_io import read_uploaded_file
 from ai_services import (
-    _generate_bulgu_text,
+    generate_bulgu,
+    generate_bulgu_summary,
+    compact_summaries_from_results,
     _normalize_ai_plan_ids,
     build_label_context_map,
     extract_full_text,
@@ -60,6 +64,7 @@ from ai_services import (
     run_detect_scales,
     run_import_ethics_report,
 )
+from test_planner import plan_tests
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="StatAI - Akademik Analiz API")
@@ -108,6 +113,26 @@ async def generate_analysis_plan(req: PlanRequest):
             return sanitize({"tests": merged, "source": "ai"})
 
     return sanitize({"tests": rule_based, "source": "rules"})
+
+
+@app.post("/plan-tests")
+@limiter.limit("10/minute")
+async def plan_tests_endpoint(request: Request, req: PlanTestsRequest):
+    rows = [r.values for r in req.data]
+    df = pd.DataFrame(rows)
+    variables = normalize_variable_labels(req.variables)
+    df = prepare_analysis_df(df, variables, req.missing_codes)
+    recommended, excluded, meta = await plan_tests(
+        df,
+        variables,
+        req.research_aim,
+        use_ai=req.use_ai if req.use_ai is not None else True,
+    )
+    return sanitize({
+        "recommended": recommended,
+        "excluded": excluded,
+        "meta": meta,
+    })
 
 
 @app.post("/analyze")
@@ -374,22 +399,35 @@ async def classify_columns(request: Request, req: ClassifyRequest):
 @app.post("/ai/bulgu")
 @limiter.limit("10/minute")
 async def ai_bulgu(request: Request, req: BulguRequest):
-    text = _generate_bulgu_text(
+    text, source, meta = generate_bulgu(
         req.result,
         req.research_topic,
         req.label_map,
         req.approved_cutoffs,
         req.scale_info,
         req.pdf_context,
+        force_llm=bool(req.force_llm),
     )
-    return {"bulgu": text}
+    return {"bulgu": text, "source": source, "meta": meta}
+
+
+@app.post("/ai/bulgu-summary")
+@limiter.limit("10/minute")
+async def ai_bulgu_summary(request: Request, req: BulguSummaryRequest):
+    text, meta = generate_bulgu_summary(req.summaries, req.research_topic)
+    return {"summary": text, "meta": meta}
 
 
 @app.post("/export/word")
 async def export_word(req: WordExportRequest):
     try:
         doc_bytes = build_word_document(
-            req.results, req.bulgular, req.intro or "", req.label_map
+            req.results,
+            req.bulgular,
+            req.intro or "",
+            req.label_map,
+            req.custom_labels,
+            req.custom_titles,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Word dosyası oluşturulamadı: {str(e)}")

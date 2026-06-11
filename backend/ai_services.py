@@ -15,7 +15,12 @@ from formatting import substitute_variable_codes, apply_academic_text_rules
 from constants import (
     _TR_ASCII, _TOTAL_MARKERS, _ITEM_COL_RE, _CONTEXT_MAX_CHARS,
     ETHICS_KEYWORDS, ETHICS_MAX_FILTERED_CHARS, ETHICS_FALLBACK_CHARS,
-    ETHICS_SYSTEM_PROMPT,
+    ETHICS_SYSTEM_PROMPT, BULGU_SUMMARY_SYSTEM,
+)
+from bulgu_templates import (
+    generate_bulgu_from_template,
+    has_bulgu_template,
+    compact_result_summary,
 )
 from spss_import import convert_spss_to_apa_results, _markdown_tables_to_apa_results
 from stat_tests import (
@@ -169,16 +174,30 @@ def build_bulgu_user_message(
 Birebir kopyalama, kendi cümlelerinle akademik dille yeniden yaz. ---"""
     return message
 
-def _generate_bulgu_text(
+def _empty_llm_meta() -> dict:
+    return {"llm_calls": 0, "approx_input_tokens": 0, "approx_output_tokens": 0}
+
+
+def _llm_meta_from_usage(usage) -> dict:
+    if not usage:
+        return {"llm_calls": 1, "approx_input_tokens": 0, "approx_output_tokens": 0}
+    return {
+        "llm_calls": 1,
+        "approx_input_tokens": int(usage.input_tokens or 0),
+        "approx_output_tokens": int(usage.output_tokens or 0),
+    }
+
+
+def _generate_bulgu_text_llm(
     result: dict,
     research_topic: Optional[str] = None,
     label_map: Optional[Dict[str, str]] = None,
     approved_cutoffs: Optional[List[dict]] = None,
     scale_info: Optional[dict] = None,
     pdf_context: Optional[str] = None,
-) -> str:
+) -> Tuple[str, dict]:
     if not ANTHROPIC_API_KEY:
-        return ""
+        return "", _empty_llm_meta()
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     msg = client.messages.create(
         model=BULGU_MODEL,
@@ -191,7 +210,53 @@ def _generate_bulgu_text(
             ),
         }],
     )
-    return msg.content[0].text.strip()
+    return msg.content[0].text.strip(), _llm_meta_from_usage(msg.usage)
+
+
+def generate_bulgu(
+    result: dict,
+    research_topic: Optional[str] = None,
+    label_map: Optional[Dict[str, str]] = None,
+    approved_cutoffs: Optional[List[dict]] = None,
+    scale_info: Optional[dict] = None,
+    pdf_context: Optional[str] = None,
+    force_llm: bool = False,
+) -> Tuple[str, str, dict]:
+    """(bulgu_metni, kaynak, meta) döndürür. kaynak: template | llm."""
+    if not force_llm and has_bulgu_template(result):
+        template_text = generate_bulgu_from_template(result, label_map)
+        if template_text:
+            return template_text, "template", _empty_llm_meta()
+    text, meta = _generate_bulgu_text_llm(
+        result, research_topic, label_map, approved_cutoffs, scale_info, pdf_context,
+    )
+    return text, "llm", meta
+
+
+def generate_bulgu_summary(
+    summaries: List[dict],
+    research_topic: Optional[str] = None,
+) -> Tuple[str, dict]:
+    if not summaries:
+        return "", _empty_llm_meta()
+    if not ANTHROPIC_API_KEY:
+        return "", _empty_llm_meta()
+    user_msg = json.dumps({
+        "konu": research_topic or "",
+        "ozetler": summaries,
+    }, ensure_ascii=False)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    msg = client.messages.create(
+        model=BULGU_MODEL,
+        max_tokens=800,
+        system=BULGU_SUMMARY_SYSTEM,
+        messages=[{"role": "user", "content": user_msg}],
+    )
+    return msg.content[0].text.strip(), _llm_meta_from_usage(msg.usage)
+
+
+def compact_summaries_from_results(results: List[dict]) -> List[dict]:
+    return [compact_result_summary(r) for r in results if r.get("type")]
 
 PLAN_SYSTEM = """
 Sen akademik araştırma metodolojisi uzmanısın.
