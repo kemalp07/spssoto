@@ -2,7 +2,7 @@
 import re
 from typing import Dict, List, Optional
 
-from formatting import fmt_p, fmt_p_display, fmt_r, apply_academic_text_rules
+from formatting import fmt_p, fmt_r, apply_academic_text_rules
 
 
 def _lbl(name: str, label_map: Optional[Dict[str, str]]) -> str:
@@ -12,9 +12,30 @@ def _lbl(name: str, label_map: Optional[Dict[str, str]]) -> str:
 
 
 def _p_txt(p: Optional[float]) -> str:
+    """Tam p ifadesi — bulgu cümlelerinde yıldız içermez."""
     if p is None:
         return "—"
-    return fmt_p_display(p)
+    p = float(p)
+    if p < 0.001:
+        return "p < .001"
+    return f"p = {fmt_p(p)}"
+
+
+def _comparison_intro(result: dict) -> str:
+    outcome = result.get("outcome_label") or ""
+    grouping = result.get("grouping_label") or ""
+    if outcome and grouping:
+        return f"{outcome} puanlarının {grouping} değişkenine göre "
+    return ""
+
+
+def _higher_group_name(groups: List[dict], key: str = "mean") -> Optional[str]:
+    if len(groups) < 2:
+        return None
+    g1, g2 = groups[0], groups[1]
+    v1 = float(g1.get(key) or 0)
+    v2 = float(g2.get(key) or 0)
+    return g1["name"] if v1 > v2 else g2["name"]
 
 
 def _sig_phrase(significant: bool, pos: str, neg: str) -> str:
@@ -98,110 +119,95 @@ def _bulgu_chi_square(result: dict) -> Optional[str]:
             f"{v1} ile {v2} arasında istatistiksel olarak anlamlı bir ilişki saptanmıştır",
             f"{v1} ile {v2} arasında istatistiksel olarak anlamlı bir ilişki saptanmamıştır",
         )
-        return f"{base} (OR = {or_val}, p = {_p_txt(p)})."
+        return f"{base} (OR = {or_val}, {_p_txt(p)})."
     chi2 = result.get("chi2")
     return (
         f"{v1} ile {v2} arasındaki ilişkinin incelenmesinde "
         f"{_sig_phrase(sig, 'anlamlı bir ilişki saptanmıştır', 'anlamlı bir ilişki saptanmamıştır')} "
-        f"(χ² = {chi2}, p = {_p_txt(p)})."
+        f"(χ² = {chi2}, {_p_txt(p)})."
     )
-
-
-def _group_rows(result: dict) -> List[dict]:
-    rows = result.get("rows") or []
-    parsed = []
-    for row in rows:
-        if len(row) < 3:
-            continue
-        if row[0] in ("H", "Toplam") or str(row[0]).startswith("χ"):
-            continue
-        parsed.append({"group": row[0], "n": row[1], "stat": row[2] if len(row) > 2 else ""})
-    return parsed
 
 
 def _bulgu_ttest(result: dict) -> Optional[str]:
-    groups = _group_rows(result)
+    groups = result.get("groups") or []
     if len(groups) < 2:
         return None
     t, p, d = result.get("t"), result.get("p"), result.get("cohens_d")
-    df_t = None
-    for row in result.get("rows") or []:
-        if len(row) > 5 and row[4]:
-            df_t = row[5]
-            break
-    g1, g2 = groups[0], groups[1]
-    m1 = g1["stat"]
-    m2 = g2["stat"]
-    higher = g1["group"] if _mean_from_cell(m1) > _mean_from_cell(m2) else g2["group"]
+    df_t = result.get("df")
+    higher = _higher_group_name(groups, "mean")
     sig = result.get("significant", False)
-    base = _sig_phrase(
-        sig,
-        f"gruplar arasında istatistiksel olarak anlamlı bir fark saptanmıştır; "
-        f"{higher} grubunun ortalaması daha yüksektir",
-        "gruplar arasında istatistiksel olarak anlamlı bir fark saptanmamıştır",
-    )
+    if sig and higher:
+        diff_phrase = (
+            f"istatistiksel olarak anlamlı bir fark saptanmıştır; "
+            f"{higher} grubunun ortalaması daha yüksektir"
+        )
+    elif sig:
+        diff_phrase = "istatistiksel olarak anlamlı bir fark saptanmıştır"
+    else:
+        diff_phrase = "istatistiksel olarak anlamlı bir fark saptanmamıştır"
     df_part = f"({df_t})" if df_t else ""
+    intro = _comparison_intro(result)
     return (
-        f"Bağımsız örneklem t-testi sonucunda {base} "
-        f"[t{df_part} = {t}, p = {_p_txt(p)}; Cohen's d = {d}]."
+        f"{intro}bağımsız örneklem t-testi ile karşılaştırılması sonucunda {diff_phrase} "
+        f"[t{df_part} = {t}, {_p_txt(p)}; Cohen's d = {d}]."
     )
-
-
-def _mean_from_cell(cell: str) -> float:
-    try:
-        return float(str(cell).split("±")[0].strip())
-    except ValueError:
-        return 0.0
 
 
 def _bulgu_mann_whitney(result: dict) -> Optional[str]:
-    groups = _group_rows(result)
+    groups = result.get("groups") or []
     if len(groups) < 2:
         return None
     u, z, p, r = result.get("U"), result.get("z"), result.get("p"), result.get("r")
     sig = result.get("significant", False)
-    med1 = float(groups[0]["stat"]) if groups[0]["stat"] else 0
-    med2 = float(groups[1]["stat"]) if groups[1]["stat"] else 0
-    higher = groups[0]["group"] if med1 > med2 else groups[1]["group"]
-    base = _sig_phrase(
-        sig,
-        f"gruplar arasında istatistiksel olarak anlamlı bir fark saptanmıştır; "
-        f"{higher} grubunun medyanı daha yüksektir",
-        "gruplar arasında istatistiksel olarak anlamlı bir fark saptanmamıştır",
-    )
+    higher = _higher_group_name(groups, "median")
+    if sig and higher:
+        diff_phrase = (
+            f"istatistiksel olarak anlamlı bir fark saptanmıştır; "
+            f"{higher} grubunun medyanı daha yüksektir"
+        )
+    elif sig:
+        diff_phrase = "istatistiksel olarak anlamlı bir fark saptanmıştır"
+    else:
+        diff_phrase = "istatistiksel olarak anlamlı bir fark saptanmamıştır"
+    intro = _comparison_intro(result)
     return (
-        f"Mann-Whitney U testi sonucunda {base} "
-        f"(U = {u}, z = {z}, p = {_p_txt(p)}, r = {r})."
+        f"{intro}Mann-Whitney U testi ile karşılaştırılması sonucunda {diff_phrase} "
+        f"(U = {u}, z = {z}, {_p_txt(p)}, r = {r})."
     )
 
 
 def _bulgu_anova(result: dict) -> Optional[str]:
     f_val, p, eta = result.get("f"), result.get("p"), result.get("eta_squared")
     sig = result.get("significant", False)
-    title = result.get("title", "")
-    dep = title.split("Değerlerinin")[0].replace("Katılımcıların", "").strip() if "Değerlerinin" in title else "Bağımlı değişken"
+    outcome = result.get("outcome_label") or "Bağımlı değişken"
+    grouping = result.get("grouping_label") or "gruplandırma değişkeni"
     base = _sig_phrase(
         sig,
         "gruplar arasında istatistiksel olarak anlamlı fark saptanmıştır",
         "gruplar arasında istatistiksel olarak anlamlı fark saptanmamıştır",
     )
     return (
-        f"{dep} puanlarının gruplara göre tek yönlü ANOVA sonucunda {base} "
-        f"(F = {f_val}, p = {_p_txt(p)}; η² = {fmt_r(eta)})."
+        f"{outcome} puanlarının {grouping} değişkenine göre tek yönlü ANOVA ile "
+        f"karşılaştırılması sonucunda {base} "
+        f"(F = {f_val}, {_p_txt(p)}; η² = {fmt_r(eta)})."
     )
 
 
 def _bulgu_tukey(result: dict) -> Optional[str]:
-    sig_rows = []
-    for row in result.get("rows") or []:
-        if len(row) >= 5 and "*" in str(row[4]):
-            sig_rows.append(f"{row[0]}–{row[1]} (p = {row[4]})")
-    if not sig_rows:
-        return "Tukey HSD post-hoc karşılaştırmasında gruplar arasında anlamlı fark saptanmamıştır."
+    pairs = result.get("significant_pairs") or []
+    intro = _comparison_intro(result)
+    if not pairs:
+        return (
+            f"{intro}Tukey HSD post-hoc karşılaştırmasında gruplar arasında "
+            f"anlamlı fark saptanmamıştır."
+        )
+    sig_rows = [
+        f"{p['group_i']}–{p['group_j']} ({_p_txt(p['p'])})" for p in pairs[:5]
+    ]
     return (
-        "Tukey HSD post-hoc karşılaştırmasında anlamlı fark gösteren gruplar: "
-        + "; ".join(sig_rows[:5])
-        + ("." if sig_rows else "")
+        f"{intro}Tukey HSD post-hoc karşılaştırmasında anlamlı fark gösteren gruplar: "
+        + "; ".join(sig_rows)
+        + "."
     )
 
 
@@ -214,38 +220,39 @@ def _bulgu_kruskal(result: dict) -> Optional[str]:
         "gruplar arasında istatistiksel olarak anlamlı fark saptanmamıştır",
     )
     note = " Dunn post-hoc testi uygulanmıştır." if sig else ""
-    return f"Kruskal-Wallis testi sonucunda {base} (H = {h}, p = {_p_txt(p)}).{note}"
+    intro = _comparison_intro(result)
+    return (
+        f"{intro}Kruskal-Wallis testi ile karşılaştırılması sonucunda {base} "
+        f"(H = {h}, {_p_txt(p)}).{note}"
+    )
 
 
 def _bulgu_dunn(result: dict) -> Optional[str]:
-    sig_rows = []
-    for row in result.get("rows") or []:
-        if len(row) >= 6 and row[5] and "yüksek" in str(row[5]):
-            sig_rows.append(f"{row[0]}–{row[1]}: {row[5]}")
-    if not sig_rows:
-        return "Dunn post-hoc karşılaştırmasında gruplar arasında anlamlı fark saptanmamıştır."
-    return "Dunn post-hoc testinde anlamlı çiftler: " + "; ".join(sig_rows[:5]) + "."
+    pairs = result.get("significant_pairs") or []
+    intro = _comparison_intro(result)
+    if not pairs:
+        return (
+            f"{intro}Dunn post-hoc karşılaştırmasında gruplar arasında "
+            f"anlamlı fark saptanmamıştır."
+        )
+    sig_rows = [
+        f"{p['group_i']}–{p['group_j']}: {p.get('direction', '')}" for p in pairs[:5]
+    ]
+    return f"{intro}Dunn post-hoc testinde anlamlı çiftler: " + "; ".join(sig_rows) + "."
 
 
 def _bulgu_correlation_matrix(result: dict) -> Optional[str]:
     method = result.get("method", "Pearson")
-    sym = "ρ" if method == "Spearman" else "r"
-    vars_ = result.get("variables") or []
-    rows = result.get("rows") or []
-    sig_pairs = []
-    for i, row in enumerate(rows):
-        if i >= len(vars_):
-            break
-        for j, cell in enumerate(row[1:-1], start=0):
-            if j >= len(vars_) or i == j:
-                continue
-            if "*" in str(cell):
-                sig_pairs.append(f"{vars_[i]}–{vars_[j]} ({sym} = {cell})")
-    if not sig_pairs:
+    pairs = result.get("significant_pairs") or []
+    if not pairs:
         return f"{method} korelasyon analizinde değişkenler arasında anlamlı ilişki saptanmamıştır."
+    sig_pairs = [
+        f"{p['var_i']}–{p['var_j']} ({p.get('symbol', 'r')} = {fmt_r(p['r'])})"
+        for p in pairs[:6]
+    ]
     return (
         f"{method} korelasyon analizinde anlamlı ilişkiler: "
-        + "; ".join(sig_pairs[:6])
+        + "; ".join(sig_pairs)
         + "."
     )
 
@@ -260,7 +267,7 @@ def _bulgu_regression(result: dict) -> Optional[str]:
         f"{pred} değişkeninin {out} üzerinde anlamlı yordayıcı etkisi saptanmıştır",
         f"{pred} değişkeninin {out} üzerinde anlamlı yordayıcı etkisi saptanmamıştır",
     )
-    return f"Basit doğrusal regresyon analizinde {base} (R² = {fmt_r(r2)}, p = {_p_txt(p)})."
+    return f"Basit doğrusal regresyon analizinde {base} (R² = {fmt_r(r2)}, {_p_txt(p)})."
 
 
 def _bulgu_multiple_regression(result: dict) -> Optional[str]:
@@ -281,7 +288,7 @@ def _bulgu_multiple_regression(result: dict) -> Optional[str]:
     return (
         f"{out} değişkeni üzerinde {preds} yordayıcılarıyla çoklu doğrusal regresyon "
         f"analizinde {base} (R² = {fmt_r(r2)}, düzeltilmiş R² = {fmt_r(adj)}, "
-        f"F = {f_val}, p = {_p_txt(p)}).{vif}"
+        f"F = {f_val}, {_p_txt(p)}).{vif}"
     )
 
 
@@ -297,7 +304,7 @@ def _bulgu_paired_ttest(result: dict) -> Optional[str]:
     )
     return (
         f"{v1} ve {v2} puanlarının eşleştirilmiş örneklem t-testi sonucunda {base} "
-        f"(ortalama fark = {diff}, t = {t}, p = {_p_txt(p)}; Cohen's d = {d})."
+        f"(ortalama fark = {diff}, t = {t}, {_p_txt(p)}; Cohen's d = {d})."
     )
 
 
@@ -312,7 +319,7 @@ def _bulgu_paired_wilcoxon(result: dict) -> Optional[str]:
     )
     return (
         f"{v1} ve {v2} puanlarının Wilcoxon işaretli sıralar testi sonucunda {base} "
-        f"(z = {z}, p = {_p_txt(p)}, r = {r})."
+        f"(z = {z}, {_p_txt(p)}, r = {r})."
     )
 
 
@@ -382,9 +389,9 @@ def compact_result_summary(result: dict) -> dict:
         vars_part = "×".join(result["variables"][:3])
     direction = ""
     if rtype == "ttest":
-        groups = _group_rows(result)
-        if len(groups) >= 2:
-            higher = groups[0]["group"] if _mean_from_cell(groups[0]["stat"]) > _mean_from_cell(groups[1]["stat"]) else groups[1]["group"]
+        groups = result.get("groups") or []
+        higher = _higher_group_name(groups, "mean")
+        if higher:
             direction = f"{higher}>diğer"
     summary = {
         "test": rtype,

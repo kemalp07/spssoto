@@ -16,7 +16,7 @@ from constants import PRIMARY_GROUPING_KEYS, DEMO_LABEL_KEYWORDS, SCALE_SCORE_RE
 from formatting import (
     TableCounter, fmt_num, fmt_p, fmt_p_display, fmt_r, p_stars, make_result,
     build_group_comparison_title, build_measure_analysis_title,
-    build_intro, apa_italicize_stats,
+    build_intro, apa_italicize_stats, academic_short_label,
 )
 from data_cleaning import (
     filter_chi_square_data, _ordered_category_labels, infer_theoretical_range,
@@ -33,6 +33,27 @@ def cohens_d_interpretation(d: float) -> str:
     if ad < 0.80:
         return "orta"
     return "büyük"
+
+def _comparison_labels(cv: Variable, sv: Variable) -> Dict[str, str]:
+    return {
+        "grouping_label": academic_short_label(cv),
+        "outcome_label": academic_short_label(sv),
+    }
+
+
+def _groups_from_lists(index, group_lists) -> List[dict]:
+    out = []
+    for name, g in zip(index, group_lists):
+        arr = np.asarray(g, dtype=float)
+        out.append({
+            "name": format_category_value(name),
+            "n": int(len(arr)),
+            "mean": round(float(np.mean(arr)), 4),
+            "sd": round(float(np.std(arr, ddof=1)), 4) if len(arr) > 1 else 0.0,
+            "median": round(float(np.median(arr)), 4),
+        })
+    return out
+
 
 def rank_effect_interpretation(r: float) -> str:
     ar = abs(r)
@@ -390,6 +411,8 @@ def table_ttest(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
         if welch else
         f"Eşit varyans varsayımı karşılanmıştır. Levene varyans homojenliği testi: F({n1-1}, {n2-1}) = {fmt_num(lev_f)}; p = {fmt_p(lev_p)}."
     )
+    labels = _comparison_labels(cv, sv)
+    groups_meta = _groups_from_lists(groups.index, [g1, g2])
     no, title = tc.next(build_group_comparison_title(cv, sv, "Bağımsız Örneklem t-Testi"))
     return make_result(
         "ttest", no, title,
@@ -398,6 +421,7 @@ def table_ttest(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
         t=round(float(t), 3), p=round(float(p), 3), cohens_d=round(d, 3),
         cohens_d_interp=cohens_d_interpretation(d), significant=bool(p < 0.05),
         welch=welch, levene_f=round(float(lev_f), 3), levene_p=round(float(lev_p), 3),
+        df=df_t, groups=groups_meta, **labels,
     )
 
 def table_mann_whitney(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) -> dict:
@@ -417,6 +441,8 @@ def table_mann_whitney(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Var
     rows[0][5] = fmt_num(z)
     rows[0][6] = fmt_p_display(p)
     rows[0][7] = fmt_r(r_effect)
+    labels = _comparison_labels(cv, sv)
+    groups_meta = _groups_from_lists(groups.index, [g1, g2])
     no, title = tc.next(build_group_comparison_title(cv, sv, "Mann-Whitney U"))
     return make_result(
         "mann_whitney", no, title,
@@ -425,7 +451,7 @@ def table_mann_whitney(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Var
         f"Not. * p < .05. Non-parametrik test uygulanmıştır. r = |z|/√n; etki büyüklüğü: {rank_effect_interpretation(r_effect)}.",
         U=round(float(u), 3), z=round(float(z), 3), p=round(float(p), 3),
         r=round(float(r_effect), 3), r_interp=rank_effect_interpretation(r_effect),
-        significant=bool(p < 0.05),
+        significant=bool(p < 0.05), groups=groups_meta, **labels,
     )
 
 def table_anova(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) -> dict:
@@ -450,6 +476,8 @@ def table_anova(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
     lev_note = (
         f"Levene testi: F({k-1}, {sum(len(g) for g in group_lists)-k}) = {fmt_num(lev_f)}; p = {fmt_p(lev_p)}."
     )
+    labels = _comparison_labels(cv, sv)
+    groups_meta = _groups_from_lists(groups.index, group_lists)
     no, title = tc.next(build_group_comparison_title(cv, sv, "Tek Yönlü ANOVA"))
     return make_result(
         "anova", no, title,
@@ -457,7 +485,7 @@ def table_anova(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
         rows, f"Not. {lev_note} Post-hoc: Tukey HSD (anlamlıysa). ** p < .01",
         f=round(float(f), 3), p=round(float(p), 3), eta_squared=round(eta2, 3),
         eta_interp=eta_interpretation(eta2), significant=bool(p < 0.05),
-        df1=df1, df2=df2,
+        df1=df1, df2=df2, groups=groups_meta, **labels,
     )
 
 def table_tukey(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) -> Optional[dict]:
@@ -468,6 +496,7 @@ def table_tukey(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
         return None
     res = tukey_hsd(*group_lists)
     rows = []
+    significant_pairs = []
     for i in range(len(names)):
         for j in range(i + 1, len(names)):
             mean_diff = float(np.mean(group_lists[i]) - np.mean(group_lists[j]))
@@ -482,13 +511,20 @@ def table_tukey(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
                 names[i], names[j], fmt_num(mean_diff), fmt_num(se_val),
                 fmt_p_display(p), f"{fmt_num(lo)}–{fmt_num(hi)}",
             ])
+            if p < 0.05:
+                significant_pairs.append({
+                    "group_i": names[i], "group_j": names[j],
+                    "p": round(p, 3), "mean_diff": round(mean_diff, 3),
+                })
     if not rows:
         return None
+    labels = _comparison_labels(cv, sv)
     no, title = tc.next(build_measure_analysis_title(sv, "Post-Hoc Tukey HSD Çoklu Karşılaştırması"))
     return make_result(
         "tukey", no, title,
         ["(I) Grup", "(J) Grup", "Ort. Fark (I–J)", "Std. Hata", "p", "95% GA (Alt–Üst)"],
         rows, "Not. * p < .05. GA = Güven Aralığı.",
+        significant_pairs=significant_pairs, **labels,
     )
 
 def table_kruskal(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) -> dict:
@@ -498,6 +534,8 @@ def table_kruskal(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable
     rows = []
     for name, g in zip(groups.index, group_lists):
         rows.append([format_category_value(name), str(len(g)), fmt_num(np.median(g))])
+    labels = _comparison_labels(cv, sv)
+    groups_meta = _groups_from_lists(groups.index, group_lists)
     no, title = tc.next(build_group_comparison_title(cv, sv, "Kruskal-Wallis"))
     note = "Not. * p < .05. Non-parametrik test uygulanmıştır."
     if p < 0.05:
@@ -508,6 +546,7 @@ def table_kruskal(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable
         rows + [["H", fmt_num(h), fmt_p_display(p)]],
         note,
         H=round(float(h), 3), p=round(float(p), 3), significant=bool(p < 0.05),
+        groups=groups_meta, **labels,
     )
 
 def table_dunn(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) -> Optional[dict]:
@@ -528,6 +567,7 @@ def table_dunn(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) -
         return None
 
     rows = []
+    significant_pairs = []
     group_keys = list(dunn_df.columns)
     for i in range(len(group_keys)):
         for j in range(i + 1, len(group_keys)):
@@ -540,6 +580,10 @@ def table_dunn(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) -
             direction = ""
             if p_val < 0.05:
                 direction = f"{g1_label} daha yüksek" if med1 > med2 else f"{g2_label} daha yüksek"
+                significant_pairs.append({
+                    "group_i": g1_label, "group_j": g2_label,
+                    "p": round(p_val, 3), "direction": direction,
+                })
             rows.append([
                 g1_label, g2_label, fmt_num(med1), fmt_num(med2),
                 fmt_p_display(p_val), direction,
@@ -548,12 +592,14 @@ def table_dunn(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) -
     if not rows:
         return None
 
+    labels = _comparison_labels(cv, sv)
     no, title = tc.next(build_measure_analysis_title(sv, "Post-Hoc Dunn Çoklu Karşılaştırması"))
     return make_result(
         "dunn", no, title,
         ["(I) Grup", "(J) Grup", "Medyan (I)", "Medyan (J)", "p (Bonferroni)", "Yorum"],
         rows,
         "Not. * p < .05. Bonferroni düzeltmeli Dunn testi. Anlamlı çiftlerde medyanı yüksek olan grup belirtilmiştir.",
+        significant_pairs=significant_pairs, **labels,
     )
 
 def table_correlation_matrix(
@@ -612,6 +658,18 @@ def table_correlation_matrix(
         row.append(str(int(np.max(n_matrix[i])) if np.max(n_matrix[i]) else len(df)))
         rows.append(row)
 
+    significant_pairs = []
+    sym = "ρ" if not use_pearson else "r"
+    for i in range(n_vars):
+        for j in range(i + 1, n_vars):
+            p_ij = float(p_matrix[i, j])
+            if p_ij < 0.05:
+                significant_pairs.append({
+                    "var_i": labels[i], "var_j": labels[j],
+                    "r": round(float(matrix[i, j]), 4), "p": round(p_ij, 3),
+                    "symbol": sym,
+                })
+
     no, title = tc.next(f"Değişkenler Arası {method} Korelasyon Katsayıları")
     note = (
         f"Not. {method} korelasyon katsayıları. "
@@ -619,7 +677,7 @@ def table_correlation_matrix(
     )
     return make_result(
         "correlation_matrix", no, title, headers, rows, note,
-        method=method, variables=labels,
+        method=method, variables=labels, significant_pairs=significant_pairs,
     )
 
 def table_regression(tc: TableCounter, df: pd.DataFrame, v1: Variable, v2: Variable) -> dict:
