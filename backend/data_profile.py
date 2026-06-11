@@ -2,12 +2,160 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+import re
+from difflib import SequenceMatcher
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
+from scipy import stats
 
 from data_cleaning import detect_scale_groups
 from schemas import Variable
+
+_DERIVED_SUFFIXES = (
+    "_kategori", "_kat", "_grup", "_grubu", "_grp", "_binary", "_bin",
+    "_risk", "_sinif", "_level", "_class", "_cut",
+)
+
+_STEM_SIMILARITY_MIN = 0.85
+_CORR_MIN = 0.80
+_LOW_CARDINALITY_MAX = 8
+_WIDE_RANGE_MIN_UNIQUE = 9
+
+
+def _normalize_var_stem(name: str) -> str:
+    n = (name or "").lower().strip()
+    for suffix in _DERIVED_SUFFIXES:
+        if n.endswith(suffix):
+            n = n[: -len(suffix)]
+            break
+    return re.sub(r"[_\s-]+", "", n)
+
+
+def _stem_similarity(left: str, right: str) -> float:
+    sa, sb = _normalize_var_stem(left), _normalize_var_stem(right)
+    if not sa or not sb:
+        return 0.0
+    if sa == sb:
+        return 1.0
+    return SequenceMatcher(None, sa, sb).ratio()
+
+
+def _numeric_series(series: pd.Series) -> pd.Series:
+    return pd.to_numeric(series, errors="coerce")
+
+
+def _unique_count(series: pd.Series) -> int:
+    return int(series.dropna().nunique())
+
+
+def _is_wide_range_continuous(series: pd.Series) -> bool:
+    numeric = _numeric_series(series).dropna()
+    if len(numeric) < 5:
+        return False
+    span = float(numeric.max()) - float(numeric.min())
+    return _unique_count(numeric) >= _WIDE_RANGE_MIN_UNIQUE and span > 3
+
+
+def _is_low_cardinality(series: pd.Series) -> bool:
+    return _unique_count(series) <= _LOW_CARDINALITY_MAX
+
+
+def _spearman_abs(source: pd.Series, derived: pd.Series) -> Optional[float]:
+    sub = pd.DataFrame({"s": _numeric_series(source), "d": _numeric_series(derived)}).dropna()
+    if len(sub) < 10:
+        sub = pd.DataFrame({"s": source, "d": derived}).dropna()
+    if len(sub) < 10:
+        return None
+    try:
+        r, _ = stats.spearmanr(sub["s"], sub["d"], nan_policy="omit")
+    except Exception:
+        return None
+    if r is None or pd.isna(r):
+        return None
+    return abs(float(r))
+
+
+def find_derived_variables(
+    df: pd.DataFrame,
+    variables: List[Variable],
+) -> List[dict]:
+    """Türev değişkenleri tespit eder — isim benzerliği + Spearman korelasyonu."""
+    active = [v.name for v in variables if v.included and v.name in df.columns]
+    hits: Dict[str, dict] = {}
+
+    for i, left in enumerate(active):
+        for right in active[i + 1:]:
+            if _stem_similarity(left, right) < _STEM_SIMILARITY_MIN:
+                continue
+            s_left, s_right = df[left], df[right]
+            if _is_wide_range_continuous(s_left) and _is_low_cardinality(s_right) and not _is_wide_range_continuous(s_right):
+                derived, source = right, left
+            elif _is_wide_range_continuous(s_right) and _is_low_cardinality(s_left) and not _is_wide_range_continuous(s_left):
+                derived, source = left, right
+            else:
+                continue
+            entry = hits.setdefault(derived, {
+                "name": derived,
+                "source": source,
+                "rule_name": False,
+                "rule_corr": False,
+            })
+            entry["rule_name"] = True
+            entry["source"] = source
+
+    for derived in active:
+        d_series = df[derived]
+        if not _is_low_cardinality(d_series):
+            continue
+        for source in active:
+            if source == derived:
+                continue
+            if not _is_wide_range_continuous(df[source]):
+                continue
+            corr = _spearman_abs(df[source], d_series)
+            if corr is None or corr <= _CORR_MIN:
+                continue
+            entry = hits.setdefault(derived, {
+                "name": derived,
+                "source": source,
+                "rule_name": False,
+                "rule_corr": False,
+            })
+            entry["rule_corr"] = True
+            if not entry.get("source"):
+                entry["source"] = source
+
+    results: List[dict] = []
+    for derived, info in hits.items():
+        source = info["source"]
+        d_series = df[derived]
+        s_series = df[source]
+        n_unique = _unique_count(d_series)
+        is_binary = n_unique == 2 and _is_wide_range_continuous(s_series)
+        confidence = "high" if info["rule_name"] and info["rule_corr"] else "medium"
+
+        if is_binary:
+            action = "exclude"
+            recommended_role = None
+            kind = "binary"
+        else:
+            action = "move_to_grouping"
+            recommended_role = "grouping"
+            kind = "categorical"
+
+        results.append({
+            "name": derived,
+            "source": source,
+            "confidence": confidence,
+            "kind": kind,
+            "action": action,
+            "recommended_role": recommended_role,
+            "unique_n": n_unique,
+            "spearman_r": round(_spearman_abs(s_series, d_series) or 0, 3),
+        })
+
+    return sorted(results, key=lambda x: x["name"])
 
 
 def _numeric_stats(series: pd.Series) -> dict:
@@ -111,3 +259,48 @@ def profile_json(profile: dict, max_chars: int = 12000) -> str:
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 20] + "\n... (kısaltıldı)"
+
+
+def build_spearman_summary(
+    df: pd.DataFrame,
+    column_names: List[str],
+    min_r: float = 0.50,
+    max_pairs: int = 50,
+) -> List[dict]:
+    """Kompakt Spearman özeti — yüksek korelasyonlu çiftler (ham veri Gemini'ye gitmez)."""
+    numeric_cols = []
+    for col in column_names:
+        if col not in df.columns:
+            continue
+        s = _numeric_series(df[col]).dropna()
+        if len(s) >= 10 and s.nunique() >= 3:
+            numeric_cols.append(col)
+    if len(numeric_cols) < 2:
+        return []
+
+    pairs: List[dict] = []
+    for i, left in enumerate(numeric_cols):
+        for right in numeric_cols[i + 1:]:
+            sub = pd.DataFrame({
+                "a": _numeric_series(df[left]),
+                "b": _numeric_series(df[right]),
+            }).dropna()
+            if len(sub) < 10:
+                continue
+            try:
+                r, _ = stats.spearmanr(sub["a"], sub["b"], nan_policy="omit")
+            except Exception:
+                continue
+            if r is None or pd.isna(r):
+                continue
+            abs_r = abs(float(r))
+            if abs_r >= min_r:
+                pairs.append({
+                    "a": left,
+                    "b": right,
+                    "r": round(float(r), 3),
+                    "abs_r": round(abs_r, 3),
+                })
+
+    pairs.sort(key=lambda p: p["abs_r"], reverse=True)
+    return pairs[:max_pairs]

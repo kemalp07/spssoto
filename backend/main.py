@@ -25,6 +25,7 @@ from schemas import (
     ExtractContextRequest,
     PairedRequest,
     PlanRequest,
+    DetectDerivedRequest,
     ParseHypothesesRequest,
     PlanTestsRequest,
     BulguSummaryRequest,
@@ -44,6 +45,8 @@ from data_cleaning import (
     missing_data_report,
     prepare_analysis_df,
 )
+from data_profile import find_derived_variables
+from data_cleaning import apply_scale_item_resolution
 from stat_tests import (
     TableCounter,
     cronbach_analysis,
@@ -76,6 +79,8 @@ from test_planner import (
 )
 from hypothesis_engine import (
     compact_candidate_preview,
+    enrich_hypotheses_for_display,
+    filter_unmatched_for_display,
     parse_research_questions,
     tag_results_with_hypotheses,
 )
@@ -129,6 +134,17 @@ async def generate_analysis_plan(req: PlanRequest):
     return sanitize({"tests": rule_based, "source": "rules"})
 
 
+@app.post("/detect-derived")
+@limiter.limit("20/minute")
+async def detect_derived_endpoint(request: Request, req: DetectDerivedRequest):
+    rows = [r.values for r in req.data]
+    df = pd.DataFrame(rows)
+    variables = normalize_variable_labels(req.variables)
+    df = prepare_analysis_df(df, variables, req.missing_codes)
+    derived = find_derived_variables(df, variables)
+    return sanitize({"derived": derived})
+
+
 @app.post("/parse-hypotheses")
 @limiter.limit("10/minute")
 async def parse_hypotheses_endpoint(request: Request, req: ParseHypothesesRequest):
@@ -146,9 +162,16 @@ async def parse_hypotheses_endpoint(request: Request, req: ParseHypothesesReques
         uygun,
         df=df,
     )
+    candidates = compact_candidate_preview(uygun, variables)
+    hypotheses = enrich_hypotheses_for_display(
+        parsed.get("hypotheses") or [], candidates,
+    )
+    unmatched_display = filter_unmatched_for_display(parsed.get("unmatched") or [])
     return sanitize({
-        **parsed,
-        "candidates": compact_candidate_preview(uygun, variables),
+        "hypotheses": hypotheses,
+        "unmatched": parsed.get("unmatched") or [],
+        "unmatched_display": unmatched_display,
+        "candidates": candidates,
         "meta": meta,
     })
 
@@ -245,7 +268,8 @@ def detect_item_columns(req: DetectScalesRequest):
     other_columns: List[str] = []
 
     item_pattern = re.compile(
-        r"^([a-zA-Z_]{1,10}?)(\d{1,3})(_ters|_t|_r|_T|_rev)?$",
+        r"^(?:recoded_|rev_|inv_)?([a-zA-Z_]{1,15}?)(\d{1,3})"
+        r"(?:_reversed|_recoded|_inverted|_ters|_rev|_rc|_inv|_t|_r)?$",
         re.I,
     )
     total_re = re.compile(
@@ -325,8 +349,15 @@ def detect_item_columns(req: DetectScalesRequest):
         if col not in processed:
             other_columns.append(col)
 
+    all_items = sorted(item_columns)
+    resolved = apply_scale_item_resolution(all_items)
+
     return {
-        "item_columns": list(item_columns),
+        "item_columns": all_items,
+        "item_columns_display": resolved["items"],
+        "cronbach_items": resolved["cronbach_items"],
+        "item_count": resolved["item_count"],
+        "item_variant_map": resolved["item_variant_map"],
         "scale_groups": scale_groups,
         "total_columns": total_columns,
         "other_columns": other_columns,
@@ -348,7 +379,7 @@ async def analyze_cronbach_batch(req: CronbachBatchRequest):
 
     for scale in req.scales:
         name = scale.get("name", "Ölçek")
-        items = scale.get("items", [])
+        items = scale.get("cronbach_items") or scale.get("items", [])
         valid_items = []
         for col in items:
             if col in df.columns:

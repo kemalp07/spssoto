@@ -48,7 +48,10 @@ _TR_ASCII = str.maketrans({
     "ç": "c", "Ç": "c",
 })
 _TOTAL_MARKERS = ("toplam", "total", "puan", "skor", "score")
-_ITEM_COL_RE = re.compile(r"(?:^|_)\d+(?:_ters|_t)?$", re.I)
+_ITEM_COL_RE = re.compile(
+    r"(?:^|_)\d+(?:_reversed|_recoded|_inverted|_ters|_rev|_rc|_inv|_t|_r)?$",
+    re.I,
+)
 
 ETHICS_KEYWORDS = [
     "ölçek", "olcek", "anket", "cronbach", "alfa", "güvenilirlik",

@@ -1,4 +1,4 @@
-"""İki aşamalı LLM: Gemini veri zenginleştirme, Claude (Haiku) karar."""
+"""İki aşamalı LLM: Gemini veri analisti (veri_analisti.py), Claude karar verici (karar_verici.py)."""
 from __future__ import annotations
 
 import json

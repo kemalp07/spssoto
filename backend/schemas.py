@@ -46,6 +46,12 @@ class PlanRequest(BaseModel):
     use_ai: Optional[bool] = True
 
 
+class DetectDerivedRequest(BaseModel):
+    variables: List[Variable]
+    data: List[DataRow]
+    missing_codes: Optional[List[str]] = None
+
+
 class ParseHypothesesRequest(BaseModel):
     variables: List[Variable]
     data: List[DataRow]
@@ -130,6 +136,8 @@ class ClassifyRequest(BaseModel):
     labels: Optional[Dict[str, str]] = None
     research_topic: Optional[str] = None
     variable_measure: Optional[Dict[str, str]] = None
+    data: Optional[List[DataRow]] = None
+    missing_codes: Optional[List[str]] = None
 
 
 class DetectScalesRequest(BaseModel):

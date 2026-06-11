@@ -226,7 +226,8 @@
   .col-checkbox.selected { border-color: var(--accent); background: var(--accent-muted); }
   .col-checkbox input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; }
   .col-name { font-weight: 600; font-size: 13px; }
-  .col-sample { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+  .col-code { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .col-sample { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.35; }
   .missing-badge { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin-top: 4px; display: inline-block; }
   .missing-badge.medium { background: var(--warn-muted); color: var(--warn); }
   .missing-badge.high { background: var(--danger-muted); color: var(--danger); }
@@ -504,6 +505,33 @@
   }
   .hypothesis-review-row:last-child { border-bottom: none; }
   .hypothesis-select { min-width: 220px; font-size: 12px; padding: 6px 8px; }
+  .badge-derived {
+    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 12px;
+    background: #ffedd5; color: #c2410c; white-space: nowrap;
+  }
+  .badge-not-rec {
+    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 12px;
+    background: #fee2e2; color: #b91c1c; white-space: nowrap;
+  }
+  .badge-ai-approved {
+    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 12px;
+    background: #dcfce7; color: #15803d; white-space: nowrap;
+  }
+  .badge-ai-review {
+    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 12px;
+    background: #fef9c3; color: #a16207; white-space: nowrap;
+  }
+  .col-checkbox-review-open {
+    border-color: #facc15; box-shadow: 0 0 0 2px #fef9c3;
+  }
+  .derived-source { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .col-checkbox-dim { opacity: 0.72; }
+  .hypothesis-summary-card {
+    border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: var(--space-3); background: var(--bg); margin-bottom: var(--space-2);
+  }
+  .hypothesis-summary-lines { font-size: 14px; line-height: 1.8; margin: 12px 0; }
+  .hypothesis-summary-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
   .plan-note {
     margin-top: var(--space-2); padding: var(--space-2);
     border-radius: var(--radius-md); border: 1px dashed var(--border);
@@ -772,9 +800,12 @@ let planUserTouched = false;
 let approvedHypotheses = [];
 let hypothesisCandidates = [];
 let unmatchedQuestions = [];
+let unmatchedDisplay = [];
 let hypothesesApproved = false;
+let hypothesisEditMode = false;
 let activeHypothesisFilter = null;
 let hypothesisParseMeta = {};
+let derivedVarMap = {};
 let bulguSummaryText = "";
 let approvedCutoffs = [];
 let researchTopicText = "";
@@ -852,6 +883,8 @@ const OUTCOME_CONT_PATTERNS = [
   /_ortalama$/i, /_mean$/i, /_avg$/i,
   /_endeks$/i, /_index$/i,
 ];
+let itemVariantMap = {};
+let itemDisplayColumns = [];
 let selectedItems = new Set();
 
 function normalizeDecimalValue(val) {
@@ -993,19 +1026,39 @@ async function runAIClassify(skipInit = false) {
   });
 
   try {
+    const payload = {
+      columns: nonItemCols,
+      samples,
+      labels: userLabels,
+      research_topic: researchTopicText || "",
+      variable_measure: variableMeasure,
+    };
+    if (parsedData.length) {
+      payload.data = parsedData.map(row => ({ values: row }));
+      payload.missing_codes = getMissingCodes();
+    }
+
     const res = await fetch(`${API}/classify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        columns: nonItemCols,
-        samples,
-        labels: userLabels,
-        research_topic: researchTopicText || "",
-        variable_measure: variableMeasure,
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error();
     const cls = await res.json();
+
+    if (cls.derived?.length) {
+      applyDerivedPlacements(cls.derived);
+      (cls.derived || []).forEach(d => {
+        derivedVarMap[d.name] = { ...derivedVarMap[d.name], ...d };
+      });
+    }
+
+    if (cls.manual_required && !cls.categorical?.length && !cls.continuous?.length) {
+      console.warn("AI katmanı yok — pattern sınıflandırma korunuyor");
+      if (parsedData.length) await fetchAndApplyDerivedVariables();
+      return;
+    }
+
     const mapped = mapClassifyResponse(cls, parsedData);
 
     if (!mapped.groupingCols.length && !mapped.outcomeCols.length) {
@@ -1021,11 +1074,13 @@ async function runAIClassify(skipInit = false) {
     lastRecommendations = mapped.recommendations;
 
     selectedCat = new Set(catColumns.filter(col => {
+      if (resolveAiStatus(col, lastRecommendations[col]) === "not_recommended") return false;
       if (prevSelectedCat.has(col)) return true;
       const rec = lastRecommendations[col];
       return !rec || rec.status !== "skip";
     }));
     selectedCont = new Set(contColumns.filter(col => {
+      if (resolveAiStatus(col, lastRecommendations[col]) === "not_recommended") return false;
       if (prevSelectedCont.has(col)) return true;
       const rec = lastRecommendations[col];
       return !rec || rec.status !== "skip";
@@ -1038,6 +1093,7 @@ async function runAIClassify(skipInit = false) {
     }
   } catch (e) {
     console.warn("AI classify başarısız, pattern kullanılıyor");
+    if (parsedData.length) await fetchAndApplyDerivedVariables();
   }
 }
 
@@ -1047,44 +1103,153 @@ const STATUS_BADGE = {
   skip:        { emoji: "❌", label: "Gereksiz", cls: "status-skip" },
 };
 
+const AI_STATUS_BADGE = {
+  approved: { label: "AI Onaylı", cls: "badge-ai-approved" },
+  review: { label: "Kontrol Edin", cls: "badge-ai-review" },
+  not_recommended: { label: "Önerilmez", cls: "badge-not-rec" },
+};
+
+function resolveAiStatus(col, rec = {}) {
+  if (rec.ai_status) return rec.ai_status;
+  const d = derivedVarMap[col];
+  if (d?.ai_status) return d.ai_status;
+  if (d?.action === "exclude") return "not_recommended";
+  if (d && d.confidence !== "high") return "review";
+  if (d) return "approved";
+  return rec.status === "skip" ? "not_recommended" : "approved";
+}
+
+function aiStatusBadgeHtml(col, rec = {}) {
+  const status = resolveAiStatus(col, rec);
+  const badge = AI_STATUS_BADGE[status] || AI_STATUS_BADGE.approved;
+  return `<span class="${badge.cls}">${badge.label}</span>`;
+}
+
+function variableCardHeaderHtml(col) {
+  const label = (userLabels[col] || "").trim();
+  const title = label || col;
+  return `
+    <div class="col-name">${escHtml(title)}</div>
+    <div class="col-code">${escHtml(col)}</div>`;
+}
+
+function valueLabelForCol(col, rawValue) {
+  const vl = valueLabels[col];
+  if (!vl) return null;
+  const key = String(rawValue).trim();
+  if (vl[key] != null) return String(vl[key]);
+  const asInt = parseInt(key, 10);
+  if (!Number.isNaN(asInt) && vl[String(asInt)] != null) return String(vl[String(asInt)]);
+  return null;
+}
+
+function variableSummaryText(col) {
+  if (!parsedData?.length) return "—";
+  const raw = parsedData
+    .map(r => r[col])
+    .filter(v => v !== "" && v != null && v !== undefined);
+  if (!raw.length) return "—";
+
+  const unique = [...new Set(raw.map(v => String(v).trim()))];
+  const nUnique = unique.length;
+  const nums = raw.map(v => parseFloat(String(v).replace(",", ".")));
+  const numericRatio = nums.filter(n => !Number.isNaN(n)).length / raw.length;
+  const isContinuous = numericRatio > 0.8 && nUnique > 8;
+
+  if (isContinuous) {
+    const valid = nums.filter(n => !Number.isNaN(n));
+    if (!valid.length) return "—";
+    const min = Math.min(...valid);
+    const max = Math.max(...valid);
+    const fmt = n => (Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100));
+    return `${fmt(min)} – ${fmt(max)}`;
+  }
+
+  if (nUnique === 2) {
+    const sorted = unique.slice().sort((a, b) => {
+      const na = parseFloat(a);
+      const nb = parseFloat(b);
+      if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+      return a.localeCompare(b, "tr");
+    });
+    return `2 kategori (${sorted.join("/")})`;
+  }
+
+  const catLabels = unique
+    .map(v => valueLabelForCol(col, v))
+    .filter(Boolean)
+    .slice(0, 3);
+
+  if (catLabels.length) {
+    return `${nUnique} kategori — ${catLabels.join(", ")}${nUnique > 3 ? "…" : ""}`;
+  }
+  return `${nUnique} kategori`;
+}
+
 function renderSelectionGrids(groupingCols, outcomeCols, recommendations = {}) {
   const catGrid = document.getElementById("catGrid");
   const contGrid = document.getElementById("contGrid");
   if (!catGrid || !contGrid) return;
 
+  function derivedMetaHtml(col) {
+    const d = derivedVarMap[col];
+    if (!d || d.action === "exclude") return "";
+    return `<div class="derived-source">Kaynak: ${escHtml(d.source || "—")}</div>`;
+  }
+
+  function excludeBadgeHtml(col) {
+    const d = derivedVarMap[col];
+    if (d?.action === "exclude") {
+      return `<span class="badge-not-rec">Önerilmez</span>`;
+    }
+    return "";
+  }
+
   catGrid.innerHTML = groupingCols.length ? groupingCols.map(col => {
     const rec = recommendations[col] || {};
     const status = rec.status || "optional";
-    const badge = STATUS_BADGE[status] || STATUS_BADGE.optional;
-    const checked = status !== "skip";
-    const samples = [...new Set(parsedData.slice(0, 3).map(r => r[col]))].join(", ");
+    const aiStatus = resolveAiStatus(col, rec);
+    const reviewOpen = aiStatus === "review";
+    const checked = aiStatus !== "not_recommended" && status !== "skip" && selectedCat.has(col);
     const id = colDomId("cat", col);
     const c = escAttr(col);
+    const reasonBlock = rec.reason
+      ? `<div class="text-xs text-muted reason-note">${escHtml(rec.reason)}</div>`
+      : "";
     return `
-      <label class="col-checkbox ${checked ? "selected" : ""}" id="${id}">
+      <label class="col-checkbox ${checked ? "selected" : ""} ${reviewOpen ? "col-checkbox-review-open" : ""}" id="${id}">
         <input type="checkbox" ${checked ? "checked" : ""} onchange="toggleCol('cat','${c}',this.checked)" />
         <div class="flex-1">
-          <div class="col-name">${col}</div>
-          <div class="col-sample">${samples}</div>
-          ${rec.reason ? `<div class="text-xs text-muted reason-note">${rec.reason}</div>` : ""}
+          ${variableCardHeaderHtml(col)}
+          <div class="col-sample">${escHtml(variableSummaryText(col))}</div>
+          ${derivedMetaHtml(col)}
+          ${reasonBlock}
         </div>
-        <span class="status-badge ${badge.cls}">${badge.emoji} ${badge.label}</span>
+        ${derivedVarMap[col]
+          ? `<span class="badge-derived">Türev</span>${aiStatusBadgeHtml(col, rec)}`
+          : aiStatusBadgeHtml(col, rec)}
       </label>`;
   }).join("") : '<p class="text-sm text-muted">Gruplandırma değişkeni bulunamadı.</p>';
 
   contGrid.innerHTML = outcomeCols.length ? outcomeCols.map(col => {
-    const badge = STATUS_BADGE.recommended;
-    const samples = [...new Set(parsedData.slice(0, 3).map(r => r[col]))].join(", ");
+    const rec = recommendations[col] || {};
+    const d = derivedVarMap[col];
+    const aiStatus = resolveAiStatus(col, rec);
+    const reviewOpen = aiStatus === "review";
+    const isExcludedDerived = d?.action === "exclude" || aiStatus === "not_recommended";
+    const checked = !isExcludedDerived && selectedCont.has(col);
     const id = colDomId("cont", col);
     const c = escAttr(col);
     return `
-      <label class="col-checkbox selected" id="${id}">
-        <input type="checkbox" checked onchange="toggleCol('cont','${c}',this.checked)" />
+      <label class="col-checkbox ${checked ? "selected" : ""} ${isExcludedDerived ? "col-checkbox-dim" : ""} ${reviewOpen ? "col-checkbox-review-open" : ""}" id="${id}">
+        <input type="checkbox" ${checked ? "checked" : ""} onchange="toggleCol('cont','${c}',this.checked)" />
         <div class="flex-1">
-          <div class="col-name">${col}</div>
-          <div class="col-sample">${samples}</div>
+          ${variableCardHeaderHtml(col)}
+          <div class="col-sample">${escHtml(variableSummaryText(col))}</div>
+          ${isExcludedDerived ? `<div class="derived-source">Kaynak: ${escHtml(d?.source || rec.source || "—")} · analiz dışı bırakın</div>` : derivedMetaHtml(col)}
+          ${rec.reason ? `<div class="text-xs text-muted reason-note">${escHtml(rec.reason)}</div>` : ""}
         </div>
-        <span class="status-badge ${badge.cls}">${badge.emoji} ${badge.label}</span>
+        ${isExcludedDerived ? aiStatusBadgeHtml(col, rec) : aiStatusBadgeHtml(col, rec)}
       </label>`;
   }).join("") : '<p class="text-sm text-muted">Analiz değişkeni bulunamadı.</p>';
 }
@@ -1633,6 +1798,66 @@ function refreshCurrentStep() {
   const slide = document.querySelector(".slide-active");
   if (slide) slide.innerHTML = renderStep(currentStep);
   initStep(currentStep);
+}
+
+function buildVariablesForDerivedDetection() {
+  const cols = [...new Set([...catColumns, ...contColumns])];
+  return cols.map(name => {
+    const vals = parsedData.map(r => r[name]).filter(v => v !== "" && v != null);
+    const numeric = vals.filter(v => !Number.isNaN(parseFloat(v)));
+    const nuniq = new Set(vals.map(v => String(v))).size;
+    const type = (numeric.length / Math.max(vals.length, 1) > 0.8 && nuniq > 8)
+      ? "continuous"
+      : "categorical";
+    const role = catColumns.includes(name) ? "grouping" : "outcome";
+    return {
+      name,
+      label: userLabels[name] || name,
+      type,
+      role,
+      included: true,
+    };
+  });
+}
+
+function applyDerivedPlacements(derivedList) {
+  derivedVarMap = {};
+  (derivedList || []).forEach(d => {
+    derivedVarMap[d.name] = d;
+    if (d.action === "move_to_grouping") {
+      contColumns = contColumns.filter(c => c !== d.name);
+      selectedCont.delete(d.name);
+      if (!catColumns.includes(d.name)) catColumns.push(d.name);
+      selectedCat.add(d.name);
+    } else if (d.action === "exclude") {
+      catColumns = catColumns.filter(c => c !== d.name);
+      selectedCat.delete(d.name);
+      if (!contColumns.includes(d.name)) contColumns.push(d.name);
+      selectedCont.delete(d.name);
+    }
+  });
+}
+
+async function fetchAndApplyDerivedVariables() {
+  if (!parsedData.length) return;
+  const variables = buildVariablesForDerivedDetection();
+  if (!variables.length) return;
+  try {
+    const res = await fetch(`${API}/detect-derived`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variables,
+        data: parsedData.map(row => ({ values: row })),
+        missing_codes: getMissingCodes(),
+      }),
+    });
+    if (!res.ok) return;
+    const json = await res.json();
+    applyDerivedPlacements(json.derived || []);
+  } catch (e) {
+    console.warn("Türev tespiti başarısız:", e);
+  }
 }
 
 async function proceedToPhase2() {
@@ -2354,8 +2579,12 @@ async function loadData(json, fileName, researchTopic) {
 
   const detection = await detectItemColumns(columns, samples);
   aiExcluded = new Set();
+  itemVariantMap = {};
+  itemDisplayColumns = [];
   if (detection?.item_columns) {
     aiExcluded = new Set(detection.item_columns);
+    itemDisplayColumns = detection.item_columns_display || detection.item_columns;
+    itemVariantMap = detection.item_variant_map || {};
   }
 
   const nonItemColumns = columns.filter(col =>
@@ -2433,9 +2662,11 @@ function showCronbachPanel() {
   panel.style.display = isHidden ? "block" : "none";
   if (!isHidden) return;
 
-  const itemCols = columns.filter(col =>
-    ITEM_PATTERNS.some(p => p.test(col)) || excludeColumns.includes(col)
-  );
+  const itemCols = (itemDisplayColumns.length
+    ? itemDisplayColumns
+    : columns.filter(col =>
+        ITEM_PATTERNS.some(p => p.test(col)) || excludeColumns.includes(col)
+      ));
 
   const grid = document.getElementById("itemGrid");
   if (!itemCols.length) {
@@ -2447,12 +2678,24 @@ function showCronbachPanel() {
     const id = itemDomId(col);
     const c = escAttr(col);
     const checked = selectedItems.has(col);
+    const cronbachCol = itemVariantMap[col] || col;
+    const derivNote = cronbachCol !== col
+      ? `<div class="text-xs text-muted">Cronbach: ${escHtml(cronbachCol)}</div>`
+      : "";
     return `
       <label class="col-checkbox ${checked ? "selected" : ""}" id="${id}">
         <input type="checkbox" ${checked ? "checked" : ""} onchange="toggleItem('${c}', this.checked)" />
-        <div><div class="col-name">${col}</div></div>
+        <div>
+          ${variableCardHeaderHtml(col)}
+          <div class="col-sample">${escHtml(variableSummaryText(col))}</div>
+          ${derivNote}
+        </div>
       </label>`;
   }).join("");
+}
+
+function resolveCronbachItemColumns(cols) {
+  return cols.map(col => itemVariantMap[col] || col);
 }
 
 function toggleItem(col, checked) {
@@ -2477,7 +2720,7 @@ async function runCronbach() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        columns: [...selectedItems],
+        columns: resolveCronbachItemColumns([...selectedItems]),
         data: parsedData.map(row => ({ values: row })),
       }),
     });
@@ -2683,6 +2926,7 @@ async function setPlanProfile(profile) {
   planProfile = profile;
   planUserTouched = false;
   hypothesesApproved = false;
+  hypothesisEditMode = false;
   await loadHypothesisReview();
 }
 
@@ -2729,12 +2973,63 @@ function toggleHypothesisFilter(hid) {
 }
 
 function renderUnmatchedWarning() {
-  if (!unmatchedQuestions.length) return "";
+  if (!unmatchedDisplay.length || !hypothesisEditMode) return "";
   return `
     <div class="alert alert-warn text-sm mb-2">
-      Şu sorular veriyle eşleştirilemedi: ${escHtml(unmatchedQuestions.join("; "))}
-      <div class="text-xs mt-1">Aşağıdaki listeden manuel test eşlemesi yapabilirsiniz.</div>
+      Şu sorular veriyle eşleştirilemedi: ${escHtml(unmatchedDisplay.join("; "))}
+      <div class="text-xs mt-1">Manuel test eşlemesi için adayları seçin.</div>
     </div>`;
+}
+
+function renderHypothesisSummaryCard() {
+  const lines = approvedHypotheses.map(h =>
+    escHtml(h.summary || buildHypothesisSummaryLine(h))
+  ).join("<br>");
+  const decider = hypothesisParseMeta?.claude_used
+    ? "Claude karar verici"
+    : (hypothesisParseMeta?.gemini_used ? "Gemini (Claude yok)" : "Kural tabanlı");
+  const emptyNote = approvedHypotheses.length
+    ? ""
+    : "<p class=\"text-sm text-muted\">Otomatik hipotez eşlemesi bulunamadı; hipotezsiz devam edebilirsiniz.</p>";
+  return `
+    <div class="hypothesis-summary-card">
+      <div class="wizard-title" style="font-size:1.05rem;margin-bottom:6px;">Sistem şunu anladı:</div>
+      <div class="text-xs text-muted mb-1">${escHtml(decider)}</div>
+      <div class="hypothesis-summary-lines">${lines || emptyNote}</div>
+      <div class="hypothesis-summary-actions">
+        <button type="button" class="btn btn-primary" onclick="approveHypothesesAndLoadPlan()">Onayla ve Devam Et</button>
+        <button type="button" class="btn btn-secondary" onclick="openHypothesisEditMode()">Düzenle</button>
+        <button type="button" class="btn btn-ghost" onclick="skipHypothesisReview()">Hipotezsiz devam</button>
+      </div>
+    </div>`;
+}
+
+function buildHypothesisSummaryLine(h) {
+  if (h.summary) return h.summary;
+  const parts = (h.candidate_ids || []).map(id => {
+    const c = hypothesisCandidates.find(x => x.id === id);
+    if (!c) return id;
+    const names = {
+      ttest: "t-Testi", anova: "ANOVA", chi_square: "Ki-Kare",
+      mann_whitney: "Mann-Whitney", kruskal_wallis: "Kruskal-Wallis",
+      correlation: "Korelasyon",
+    };
+    const tname = names[c.test] || c.test || "Test";
+    let detail = c.label || id;
+    for (const sep of ["—", "–", "-"]) {
+      if (detail.includes(sep)) {
+        detail = detail.split(sep).slice(1).join(sep).trim();
+        break;
+      }
+    }
+    return `${tname} (${detail})`;
+  });
+  return `${h.id} → ${parts.join(", ") || h.label || "—"}`;
+}
+
+function openHypothesisEditMode() {
+  hypothesisEditMode = true;
+  renderHypothesisReviewUI();
 }
 
 function renderHypothesisReviewRows() {
@@ -2798,10 +3093,17 @@ async function loadHypothesisReview() {
       type: h.type || "fark",
       candidate_ids: [...(h.candidate_ids || [])],
       var_hints: h.var_hints || [],
+      summary: h.summary || "",
     }));
     unmatchedQuestions = json.unmatched || [];
+    unmatchedDisplay = json.unmatched_display || [];
     hypothesisCandidates = json.candidates || [];
-    hypothesisParseMeta = json.meta || {};
+    hypothesisParseMeta = {
+      ...(json.meta || {}),
+      claude_used: json.meta?.claude_used ?? json.meta?.llm_provider === "anthropic",
+      gemini_used: json.meta?.gemini_used ?? !!json.meta?.enrich_provider,
+    };
+    hypothesisEditMode = false;
     renderHypothesisReviewUI();
   } catch (e) {
     planEl.innerHTML = `
@@ -2816,16 +3118,26 @@ async function loadHypothesisReview() {
 function renderHypothesisReviewUI() {
   const planEl = document.getElementById("planContainer");
   if (!planEl) return;
+
+  if (!hypothesisEditMode) {
+    planEl.innerHTML = `
+      <div class="hypothesis-review">
+        <div class="wizard-title" style="font-size:1.1rem;margin-bottom:8px;">🔬 Araştırma sorusu eşlemesi</div>
+        <p class="text-sm text-muted mb-2">Çekirdek tablolar (demografi, tanımlayıcı, güvenirlik) otomatik eklenir.</p>
+        ${renderHypothesisSummaryCard()}
+      </div>`;
+    return;
+  }
+
   planEl.innerHTML = `
     <div class="hypothesis-review">
-      <div class="wizard-title" style="font-size:1.1rem;margin-bottom:8px;">🔬 Araştırma sorusu eşlemesi</div>
-      <p class="text-sm text-muted mb-2">Eşlemeleri kontrol edin; onayladıktan sonra analiz planı oluşturulur.</p>
+      <div class="wizard-title" style="font-size:1.1rem;margin-bottom:8px;">🔬 Hipotez eşlemesini düzenle</div>
+      <p class="text-sm text-muted mb-2">Her soru için test adaylarını seçin.</p>
       ${renderUnmatchedWarning()}
       ${renderHypothesisReviewRows()}
       <div class="wizard-nav" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
-        <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
-        <button class="btn btn-secondary" onclick="skipHypothesisReview()">Hipotezsiz devam</button>
-        <button class="btn btn-primary" onclick="approveHypothesesAndLoadPlan()">Hipotezleri Onayla →</button>
+        <button type="button" class="btn btn-ghost" onclick="hypothesisEditMode=false; renderHypothesisReviewUI()">← Özet</button>
+        <button type="button" class="btn btn-primary" onclick="approveHypothesesAndLoadPlan()">Onayla ve Devam Et</button>
       </div>
     </div>`;
 }
@@ -3048,7 +3360,6 @@ function renderAnalysisPlan() {
   el.innerHTML = `
     ${renderPlanProfileToolbar()}
     ${renderHypothesisSummaryCards()}
-    ${renderUnmatchedWarning()}
     <div id="planTotalBar" class="alert alert-info text-sm plan-total-bar"></div>
     ${intro}
     ${renderCoreSection()}
@@ -3143,6 +3454,7 @@ async function runAnalysis(activeTypes = null, enabledTests = null) {
           );
           return {
             ...scale,
+            items: scale.cronbach_items || scale.items,
             name: (matchingCol && userLabels[matchingCol] !== matchingCol)
               ? userLabels[matchingCol]
               : scale.name,
@@ -3500,7 +3812,8 @@ function buildReviewScaleList() {
     seen.add(id);
     const cols = match?.matched_columns || items || [];
     const itemCols = match?.item_columns || items || [];
-    const cb = findCronbachForItems(itemCols.length ? itemCols : items);
+    const cronbachCols = match?.cronbach_items || itemCols;
+    const cb = findCronbachForItems(cronbachCols.length ? cronbachCols : items);
     const alpha = cb?.alpha ?? null;
     const displayName = customLabels[`scale:${id}`] || name;
     const confidence = match?.confidence || (cols.length ? "medium" : "low");
@@ -3510,8 +3823,9 @@ function buildReviewScaleList() {
       name,
       displayName,
       items: itemCols,
+      cronbachItems: cronbachCols,
       columns: cols,
-      itemCount: itemCols.length || items?.length || 0,
+      itemCount: match?.item_count ?? itemCols.length ?? items?.length ?? 0,
       alpha,
       confidence,
       okMatch,

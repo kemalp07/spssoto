@@ -10,12 +10,14 @@ from docx import Document
 from fastapi import HTTPException
 from pypdf import PdfReader
 from config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL, BULGU_MODEL
+from data_cleaning import apply_scale_item_resolution
 from data_profile import profile_from_samples, profile_json
 from llm_router import (
     claude_decide,
     format_enrichment_block,
     gemini_enrich_profile,
     has_claude,
+    has_gemini_enrich,
     merge_meta,
 )
 from schemas import Variable, ColumnLabel
@@ -573,15 +575,20 @@ def match_scale_to_columns(scale_name: str, all_columns: List[str]) -> dict:
         c for c in matched_columns
         if c not in item_columns and c not in total_columns
     ]
+    all_items = item_columns
+    resolved = apply_scale_item_resolution(all_items)
 
     return {
         "scale_name": scale_name,
         "keywords_used": keywords,
         "matched_columns": matched_columns,
-        "item_columns": item_columns,
+        "item_columns": resolved["items"],
+        "cronbach_items": resolved["cronbach_items"],
+        "item_count": resolved["item_count"],
+        "all_item_columns": resolved["all_items"],
         "total_columns": total_columns,
         "subscale_columns": subscale_columns,
-        "confidence": _match_confidence(total_columns, item_columns, subscale_columns),
+        "confidence": _match_confidence(total_columns, resolved["items"], subscale_columns),
     }
 
 def match_all_scales(scale_names: List[str], all_columns: List[str]) -> dict:
@@ -611,14 +618,18 @@ def match_all_scales(scale_names: List[str], all_columns: List[str]) -> dict:
             c for c in owned
             if c not in item_columns and c not in total_columns
         ]
+        resolved = apply_scale_item_resolution(item_columns)
         final_matches.append({
             "scale_name": match["scale_name"],
             "keywords_used": match["keywords_used"],
             "matched_columns": owned,
-            "item_columns": item_columns,
+            "item_columns": resolved["items"],
+            "cronbach_items": resolved["cronbach_items"],
+            "item_count": resolved["item_count"],
+            "all_item_columns": resolved["all_items"],
             "total_columns": total_columns,
             "subscale_columns": subscale_columns,
-            "confidence": _match_confidence(total_columns, item_columns, subscale_columns),
+            "confidence": _match_confidence(total_columns, resolved["items"], subscale_columns),
         })
 
     assigned = set(col_owner.keys())
@@ -854,76 +865,52 @@ Bu değişkenler için istatistiksel analiz planı oluştur."""
 
 
 def run_classify(req: ClassifyRequest) -> dict:
-    if not has_claude():
-        raise HTTPException(
-            status_code=500,
-            detail="ANTHROPIC_API_KEY ayarlanmamış (karar katmanı Claude Haiku)",
-        )
+    from ai_pipeline import run_variable_ai_pipeline
+    from data_cleaning import normalize_variable_labels, prepare_analysis_df
+    import pandas as pd
 
-    profile = profile_from_samples(
-        req.columns,
-        req.samples,
-        req.labels,
-        req.variable_measure,
-    )
-    enrichment, enrich_meta = gemini_enrich_profile(
-        "classify",
-        profile,
-        req.research_topic or "",
-    )
+    df = None
+    variables = None
+    if req.data:
+        rows = [r.values for r in req.data]
+        df = pd.DataFrame(rows)
+        variables = [
+            Variable(
+                name=c,
+                label=(req.labels or {}).get(c, c),
+                type="continuous",
+                role="outcome",
+                included=True,
+            )
+            for c in req.columns
+        ]
+        variables = normalize_variable_labels(variables)
+        df = prepare_analysis_df(df, variables, req.missing_codes)
 
-    topic_part = f"\nAraştırma konusu: {req.research_topic}" if req.research_topic else ""
-    user_msg = (
-        f"Sütunları sınıflandır:{topic_part}\n\n"
-        f"Veri profili:\n{profile_json(profile)}"
-        f"{format_enrichment_block(enrichment)}"
-    )
-    try:
-        text, decide_meta = claude_decide(CLASSIFY_SYSTEM, user_msg, max_tokens=1500)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    llm_meta = merge_meta(enrich_meta, decide_meta)
+    result = run_variable_ai_pipeline(req, df=df, variables=variables)
 
-    parsed = _parse_llm_json(text)
-    variables = parsed.get("variables", {})
-    categorical: List[str] = []
-    continuous: List[str] = []
-    exclude: List[str] = []
-    recommendations: Dict[str, dict] = {}
-
-    for col, info in variables.items():
-        if col not in req.columns:
-            continue
-        t = info.get("type", "exclude")
-        role = info.get("role", "exclude")
-        rec = info.get("recommended", False)
-        reason = info.get("reason", "")
-
-        if t == "exclude" or role == "exclude":
-            exclude.append(col)
-        elif t == "categorical":
-            categorical.append(col)
-        else:
-            continuous.append(col)
-
-        recommendations[col] = {
-            "status": "recommended" if rec else "optional",
-            "role": role,
-            "reason": reason,
-        }
-
-    for col in req.columns:
-        if col not in variables:
-            exclude.append(col)
+    if result.get("manual_required") and not result.get("categorical") and not result.get("continuous"):
+        if not has_claude() and not has_gemini_enrich():
+            raise HTTPException(
+                status_code=503,
+                detail="AI katmanı kullanılamıyor — manuel sınıflandırma kullanın",
+            )
 
     return {
-        "categorical": categorical,
-        "continuous": continuous,
-        "exclude": exclude,
-        "recommendations": recommendations,
-        "llm_meta": llm_meta,
-        "data_profile": profile,
-        "gemini_enrichment": enrichment or None,
+        "categorical": result.get("categorical") or [],
+        "continuous": result.get("continuous") or [],
+        "exclude": result.get("exclude") or [],
+        "recommendations": result.get("recommendations") or {},
+        "derived": result.get("derived") or [],
+        "derived_approved": result.get("derived_approved") or [],
+        "derived_review": result.get("derived_review") or [],
+        "scales": result.get("scales") or [],
+        "research_context": result.get("research_context") or {},
+        "llm_meta": result.get("llm_meta") or {},
+        "data_profile": result.get("data_profile"),
+        "gemini_analysis": result.get("gemini_analysis"),
+        "derivative_decision": result.get("derivative_decision"),
+        "manual_required": result.get("manual_required", False),
     }
 
 
@@ -934,7 +921,11 @@ def run_detect_scales(req: DetectScalesRequest) -> dict:
             detail="ANTHROPIC_API_KEY ayarlanmamış (karar katmanı Claude Haiku)",
         )
 
-    item_pattern = re.compile(r"^[a-zA-Z]+_\d+(_ters|_T)?$", re.IGNORECASE)
+    item_pattern = re.compile(
+        r"^(?:recoded_|rev_|inv_)?[a-zA-Z]+_\d+"
+        r"(?:_reversed|_recoded|_inverted|_ters|_rev|_rc|_inv|_t|_r)?$",
+        re.IGNORECASE,
+    )
     item_cols = [c for c in req.columns if item_pattern.match(c)]
 
     if len(item_cols) < 2:
@@ -988,6 +979,17 @@ SADECE JSON döndür:
         try:
             result = json.loads(match.group())
             if result.get("scales"):
+                normalized_scales = []
+                for scale in result["scales"]:
+                    items = scale.get("items") or []
+                    resolved = apply_scale_item_resolution(items)
+                    normalized_scales.append({
+                        **scale,
+                        "items": resolved["items"],
+                        "cronbach_items": resolved["cronbach_items"],
+                        "item_count": resolved["item_count"],
+                    })
+                result["scales"] = normalized_scales
                 result["llm_meta"] = merge_meta(enrich_meta, decide_meta)
                 result["gemini_enrichment"] = enrichment or None
                 return result
@@ -997,14 +999,14 @@ SADECE JSON döndür:
     scales = []
     scale_names = {"oys": "OYŞTÖ", "neq": "GYA", "sbito": "SBİTO"}
     for prefix, cols in valid_groups.items():
-        ters_cols = {
-            c.replace("_ters", "").replace("_T", "")
-            for c in cols
-            if "_ters" in c.lower() or c.endswith("_T")
-        }
-        final_items = [c for c in cols if c not in ters_cols]
+        resolved = apply_scale_item_resolution(cols)
         name = scale_names.get(prefix.lower(), prefix.upper())
-        scales.append({"name": name, "items": final_items})
+        scales.append({
+            "name": name,
+            "items": resolved["items"],
+            "cronbach_items": resolved["cronbach_items"],
+            "item_count": resolved["item_count"],
+        })
 
     return {"scales": scales}
 

@@ -212,8 +212,12 @@ async def parse_research_questions(
     uygun_candidates: List[dict],
     scale_groups: Optional[Dict[str, List[str]]] = None,
     df: Optional[pd.DataFrame] = None,
+    gemini_context: Optional[dict] = None,
 ) -> Tuple[dict, dict]:
-    """Gemini enrich → Claude decide (veya tek aşama fallback)."""
+    """Gemini veri analizi → Claude karar verici (hipotez eşleşmesi)."""
+    from karar_verici import run_hypothesis_matching
+    from veri_analisti import run_veri_analisti
+
     meta = {"llm_calls": 0, "approx_input_tokens": 0, "approx_output_tokens": 0}
     text = (text or "").strip()
     if not text or not uygun_candidates:
@@ -222,66 +226,43 @@ async def parse_research_questions(
     labels = compact_labels(variables)
     valid_ids = {c["id"] for c in uygun_candidates}
     compact = _compact_candidates_for_llm(uygun_candidates)
-    scale_groups = scale_groups or detect_scale_groups(
-        [v.name for v in variables if v.included],
-    )
+
+    g_ctx = gemini_context or {}
+    if not g_ctx and df is not None and has_gemini_enrich():
+        cols = [v.name for v in variables if v.included and v.name in df.columns]
+        samples = {
+            c: df[c].dropna().head(5).tolist()
+            for c in cols[:40]
+        }
+        g_ctx, gem_meta = run_veri_analisti(
+            df, cols, samples,
+            {v.name: v.label for v in variables},
+            research_topic=text,
+            variables=variables,
+        )
+        meta = merge_meta(meta, gem_meta)
+
+    if has_claude() or has_gemini_enrich():
+        parsed, decide_meta = run_hypothesis_matching(
+            text, compact, g_ctx, labels,
+        )
+        meta = merge_meta(meta, decide_meta)
+        meta["claude_used"] = bool(has_claude() and decide_meta.get("llm_provider") == "anthropic")
+        meta["gemini_used"] = bool(
+            decide_meta.get("enrich_provider") or (not has_claude() and decide_meta.get("llm_calls"))
+        )
+        hypotheses, unmatched = _normalize_hypothesis_response(parsed, valid_ids)
+        if hypotheses:
+            return {"hypotheses": hypotheses, "unmatched": unmatched}, meta
 
     split_items: list = []
     enrich_meta: dict = {}
-    gemini_block = ""
-
     if has_gemini_enrich():
         split_items, enrich_meta = _gemini_split_questions(text, labels)
-        if split_items:
-            gemini_block = (
-                "\n\nGemini aday sorular:\n"
-                + json.dumps(split_items, ensure_ascii=False)[:4000]
-            )
-
-    if has_claude():
-        if split_items:
-            user_msg = (
-                f"Araştırma metni:\n{text[:2000]}\n"
-                f"Etiketler: {json.dumps(labels, ensure_ascii=False)}\n"
-                f"Ölçek grupları: {json.dumps(list(scale_groups.keys())[:12], ensure_ascii=False)}\n"
-                f"{gemini_block}\n"
-                f"Test adayları: {json.dumps(compact, ensure_ascii=False)}"
-            )
-            system = HYPOTHESIS_DECIDE_SYSTEM
-        else:
-            user_msg = (
-                f"Araştırma metni:\n{text[:2000]}\n"
-                f"Etiketler: {json.dumps(labels, ensure_ascii=False)}\n"
-                f"Test adayları: {json.dumps(compact, ensure_ascii=False)}"
-            )
-            system = HYPOTHESIS_SINGLE_STAGE_SYSTEM
-
-        if df is not None and variables and has_gemini_enrich():
-            from data_profile import profile_from_dataframe, profile_json
-            profile = profile_from_dataframe(df, variables)
-            enrichment, profile_meta = gemini_enrich_profile(
-                "hypotheses", profile, text,
-            )
-            enrich_meta = merge_meta(enrich_meta, profile_meta)
-            user_msg += (
-                f"\nVeri profili:\n{profile_json(profile)[:6000]}"
-                f"{format_enrichment_block(enrichment)}"
-            )
-
-        try:
-            raw, decide_meta = claude_decide(
-                system, user_msg, max_tokens=MAX_HYPOTHESIS_TOKENS,
-            )
-            meta = merge_meta(enrich_meta, decide_meta)
-            parsed = _parse_json_object(raw)
-            hypotheses, unmatched = _normalize_hypothesis_response(parsed, valid_ids)
-            return {"hypotheses": hypotheses, "unmatched": unmatched}, meta
-        except RuntimeError:
-            pass
+        meta = merge_meta(meta, enrich_meta)
 
     if split_items:
         hypotheses, unmatched = _fallback_match_by_hints(split_items, uygun_candidates, labels)
-        meta = merge_meta(enrich_meta, meta)
         return {"hypotheses": hypotheses, "unmatched": unmatched}, meta
 
     return {"hypotheses": [], "unmatched": [text[:200]]}, meta
@@ -413,3 +394,73 @@ def compact_candidate_preview(uygun: List[dict], variables: List[Variable]) -> L
         }
         for c in uygun[:40]
     ]
+
+
+COMPARISON_TESTS = frozenset({
+    "ttest", "mann_whitney", "anova", "chi_square", "kruskal_wallis",
+})
+
+CORE_TABLE_TESTS = frozenset({
+    "descriptive", "frequency", "cronbach", "correlation", "normality",
+})
+
+_TEST_DISPLAY = {
+    "ttest": "t-Testi",
+    "mann_whitney": "Mann-Whitney",
+    "anova": "ANOVA",
+    "chi_square": "Ki-Kare",
+    "kruskal_wallis": "Kruskal-Wallis",
+    "correlation": "Korelasyon",
+}
+
+_CORE_UNMATCHED_RE = re.compile(
+    r"tanımlayıcı|frekans|demograf|cronbach|güvenirlik|güvenilirlik|"
+    r"örneklem|güvenilir|betimle|alpha",
+    re.I,
+)
+
+
+def filter_unmatched_for_display(unmatched: List[str]) -> List[str]:
+    """Çekirdek tablo sorularını unmatched uyarısından çıkar."""
+    return [
+        str(item).strip()
+        for item in (unmatched or [])
+        if str(item).strip() and not _CORE_UNMATCHED_RE.search(str(item))
+    ]
+
+
+def hypothesis_summary_line(
+    hypothesis: dict,
+    candidates_by_id: Dict[str, dict],
+) -> str:
+    hid = str(hypothesis.get("id") or "H?")
+    parts: List[str] = []
+    for cid in hypothesis.get("candidate_ids") or []:
+        cand = candidates_by_id.get(str(cid), {})
+        test = str(cand.get("test") or "")
+        label = str(cand.get("label") or cid)
+        test_name = _TEST_DISPLAY.get(test, test or "Test")
+        detail = label
+        for sep in ("—", "–", "-"):
+            if sep in label:
+                tail = label.split(sep, 1)[-1].strip()
+                if tail:
+                    detail = tail
+                break
+        parts.append(f"{test_name} ({detail})")
+    if not parts:
+        parts.append(str(hypothesis.get("label") or "").strip() or "—")
+    return f"{hid} → {', '.join(parts)}"
+
+
+def enrich_hypotheses_for_display(
+    hypotheses: List[dict],
+    candidates: List[dict],
+) -> List[dict]:
+    by_id = {str(c["id"]): c for c in candidates}
+    enriched: List[dict] = []
+    for hyp in hypotheses or []:
+        item = dict(hyp)
+        item["summary"] = hypothesis_summary_line(item, by_id)
+        enriched.append(item)
+    return enriched

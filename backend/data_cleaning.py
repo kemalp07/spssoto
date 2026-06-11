@@ -182,6 +182,111 @@ def detect_scale_groups(columns: List[str]) -> Dict[str, List[str]]:
     }
 
 
+# Madde türev ekleri — ters/kodlanmış versiyonlar ayrı madde sayılmaz
+ITEM_DERIV_SUFFIXES = (
+    "_reversed", "_recoded", "_inverted",
+    "_ters", "_rev", "_rc", "_inv",
+    "_t", "_r",
+)
+
+ITEM_DERIV_PREFIXES = (
+    "recoded_", "rev_", "inv_",
+)
+
+_ITEM_DERIV_SUFFIX_RE = (
+    r"(?:_reversed|_recoded|_inverted|_ters|_rev|_rc|_inv|_t|_r)?"
+)
+_ITEM_DERIV_PREFIX_RE = r"(?:recoded_|rev_|inv_)?"
+ITEM_COLUMN_PATTERN = re.compile(
+    rf"^{_ITEM_DERIV_PREFIX_RE}[a-zA-Z_]{{1,20}}\d{{1,3}}{_ITEM_DERIV_SUFFIX_RE}$",
+    re.I,
+)
+
+
+def normalize_item_root(name: str) -> str:
+    """Türev ön/son ekleri temizlenmiş madde kökü."""
+    n = (name or "").strip().lower()
+    for suffix in ITEM_DERIV_SUFFIXES:
+        if n.endswith(suffix):
+            n = n[: -len(suffix)]
+            break
+    for prefix in ITEM_DERIV_PREFIXES:
+        if n.startswith(prefix):
+            n = n[len(prefix):]
+            break
+    return n
+
+
+def has_item_deriv_affix(name: str) -> bool:
+    n = (name or "").strip().lower()
+    return any(n.endswith(s) for s in ITEM_DERIV_SUFFIXES) or any(
+        n.startswith(p) for p in ITEM_DERIV_PREFIXES
+    )
+
+
+def is_item_column_name(name: str) -> bool:
+    return bool(ITEM_COLUMN_PATTERN.match(name or ""))
+
+
+def group_item_variants(columns: List[str]) -> Dict[str, List[str]]:
+    groups: Dict[str, List[str]] = {}
+    for col in columns:
+        groups.setdefault(normalize_item_root(col), []).append(col)
+    return groups
+
+
+def partition_item_variants(
+    item_columns: List[str],
+) -> Tuple[List[str], List[str], int]:
+    """
+    Madde listesi → (gösterim, cronbach, benzersiz madde sayısı).
+
+    Türev sütunlar listede gösterilmez; cronbach'ta türev varsa o kullanılır.
+    """
+    if not item_columns:
+        return [], [], 0
+
+    display: List[str] = []
+    cronbach: List[str] = []
+    for _, cols in sorted(group_item_variants(item_columns).items()):
+        cols_sorted = sorted(set(cols))
+        bases = [c for c in cols_sorted if not has_item_deriv_affix(c)]
+        derivs = [c for c in cols_sorted if has_item_deriv_affix(c)]
+
+        if bases:
+            display.append(bases[0])
+        elif len(cols_sorted) == 1:
+            display.append(cols_sorted[0])
+
+        if derivs:
+            cronbach.append(derivs[0])
+        elif bases:
+            cronbach.append(bases[0])
+        elif cols_sorted:
+            cronbach.append(cols_sorted[0])
+
+    return display, cronbach, len(group_item_variants(item_columns))
+
+
+def apply_scale_item_resolution(items: List[str]) -> dict:
+    """Ölçek maddelerini gösterim ve cronbach için ayır."""
+    display, cronbach, count = partition_item_variants(items)
+    variant_map: Dict[str, str] = {}
+    for _, cols in group_item_variants(items).items():
+        group_display, group_cronbach, _ = partition_item_variants(cols)
+        if group_display and group_cronbach:
+            variant_map[group_display[0]] = group_cronbach[0]
+        elif group_display:
+            variant_map[group_display[0]] = group_display[0]
+    return {
+        "items": display,
+        "cronbach_items": cronbach,
+        "item_count": count,
+        "all_items": list(items),
+        "item_variant_map": variant_map,
+    }
+
+
 def _likert_bounds_from_scale_info(si: dict) -> Tuple[Optional[float], Optional[float]]:
     item_count = si.get("item_count")
     if not item_count:

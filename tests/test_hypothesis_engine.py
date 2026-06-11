@@ -125,8 +125,8 @@ async def test_parse_research_questions_claude_mock(
         '"unmatched":["Regresyon sorusu"]}'
     )
     with patch(
-        "hypothesis_engine.claude_decide",
-        return_value=(claude_response, {"llm_calls": 1}),
+        "karar_verici.claude_decide",
+        return_value=(claude_response, {"llm_calls": 1, "llm_provider": "anthropic"}),
     ):
         parsed, meta = await parse_research_questions(
             "OYŞTÖ ile GYA arasında ilişki var mı?\nRegresyon sorusu",
@@ -146,8 +146,8 @@ async def test_parse_unmatched_only_when_no_match(
 ):
     claude_response = '{"hypotheses":[],"unmatched":["Bilinmeyen soru"]}'
     with patch(
-        "hypothesis_engine.claude_decide",
-        return_value=(claude_response, {"llm_calls": 1}),
+        "karar_verici.claude_decide",
+        return_value=(claude_response, {"llm_calls": 1, "llm_provider": "anthropic"}),
     ):
         parsed, _ = await parse_research_questions(
             "Bilinmeyen soru",

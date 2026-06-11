@@ -19,7 +19,7 @@ GEMINI_USE_VERTEX = os.getenv("GEMINI_USE_VERTEX", "").lower() in (
 )
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
 GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-# Gemini yalnızca veri profili zenginleştirme için (karar her zaman Claude)
+# Gemini — proaktif veri analisti (veri_analisti.py); Claude — karar verici (karar_verici.py)
 ENABLE_GEMINI_ENRICH = os.getenv("ENABLE_GEMINI_ENRICH", "true").lower() in (
     "1", "true", "yes", "on",
 )
