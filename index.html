@@ -1547,7 +1547,7 @@ function renderTopicStep() {
         placeholder="Araştırma sorularınızı yazın; her satıra bir soru yazabilirsiniz.">${escHtml(topic)}</textarea>
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
-        <button class="btn btn-primary" onclick="nextStep()">Devam →</button>
+        <button class="btn btn-primary" id="btnTopicNext" onclick="nextStep()">Devam →</button>
       </div>
     </div>`;
 }
@@ -1782,6 +1782,13 @@ function setButtonLoading(btn, loading, loadingText, defaultHtml) {
   }
 }
 
+function getWizardNextButton() {
+  const slide = document.querySelector(".slide-active");
+  if (!slide) return null;
+  return slide.querySelector(".wizard-nav .btn-primary")
+    || slide.querySelector(".btn-primary");
+}
+
 function initStep(step) {
   const name = STEPS[step];
   if (name === "upload") initUploadZoneDragDrop();
@@ -1964,20 +1971,13 @@ async function nextStep() {
   if (STEPS[next] === "variables") {
     variablesPhase = 1;
     if (!variablesDataReady) {
-      const btn = document.querySelector(".slide-active .btn-success");
-      const prevText = btn ? btn.innerHTML : "";
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = "⏳ Değişkenler hazırlanıyor...";
-      }
+      const btn = getWizardNextButton();
+      setButtonLoading(btn, true, "Veriler hazırlanıyor...");
       try {
         await loadData(pendingJson, pendingFileName, researchTopicText);
         applyScaleMatchToColumns();
       } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = prevText;
-        }
+        setButtonLoading(btn, false, "", "Devam →");
       }
     }
   }
