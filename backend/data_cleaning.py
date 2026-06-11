@@ -1,0 +1,371 @@
+"""Eksik değer ve kategorik veri temizleme."""
+import re
+from typing import List, Optional, Dict, Tuple
+import pandas as pd
+import numpy as np
+from schemas import Variable
+from formatting import format_display_label, fmt_num
+from constants import DEFAULT_MISSING_CODES, DEMO_LABEL_KEYWORDS, SCALE_SCORE_RE
+
+def parse_missing_codes(codes: Optional[List[str]]) -> set:
+    if not codes:
+        return set(DEFAULT_MISSING_CODES)
+    parsed = {str(c).strip() for c in codes if str(c).strip()}
+    return parsed or set(DEFAULT_MISSING_CODES)
+
+def matches_missing_code(val, codes: set) -> bool:
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return False
+    s = str(val).strip()
+    if s in codes:
+        return True
+    try:
+        num = float(s.replace(",", "."))
+        if num == int(num) and str(int(num)) in codes:
+            return True
+    except ValueError:
+        pass
+    return False
+
+def format_category_value(val) -> str:
+    """Boş kategori veya eksik veri kodu → Kayıp Veri."""
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return "Kayıp Veri"
+    s = str(val).strip()
+    if s in ("", "nan", "None", "NaN", "<NA>", "NaT"):
+        return "Kayıp Veri"
+    if matches_missing_code(val, DEFAULT_MISSING_CODES):
+        return "Kayıp Veri"
+    return s
+
+def apply_missing_codes(
+    df: pd.DataFrame, variables: List[Variable], codes: Optional[List[str]] = None
+) -> pd.DataFrame:
+    """SPSS eksik veri kodlarını (99 vb.) NaN'a çevir."""
+    code_set = parse_missing_codes(codes)
+    df = df.copy()
+    for v in variables:
+        if v.name not in df.columns:
+            continue
+        if v.type != "categorical":
+            continue
+        mask = df[v.name].apply(lambda x: matches_missing_code(x, code_set))
+        df.loc[mask, v.name] = np.nan
+    return df
+
+def is_missing_value(val, code_set: Optional[set] = None) -> bool:
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return True
+    s = str(val).strip()
+    if s in ("", "nan", "None", "NaN", "<NA>", "NaT"):
+        return True
+    codes = code_set if code_set is not None else set(DEFAULT_MISSING_CODES)
+    return matches_missing_code(val, codes)
+
+def _map_value_label(val, value_labels: Dict[str, str]):
+    if pd.isna(val):
+        return val
+    key = str(val).strip()
+    if key in value_labels:
+        return value_labels[key]
+    try:
+        num = float(key.replace(",", "."))
+        if num == int(num):
+            int_key = str(int(num))
+            if int_key in value_labels:
+                return value_labels[int_key]
+    except ValueError:
+        pass
+    return val
+
+def _ordered_category_labels(value_labels: Optional[Dict[str, str]]) -> List[str]:
+    if not value_labels:
+        return []
+    keys = sorted(
+        value_labels.keys(),
+        key=lambda x: int(x) if str(x).replace(".", "").isdigit() else str(x),
+    )
+    return [str(value_labels[k]) for k in keys]
+
+def normalize_categorical_columns(
+    df: pd.DataFrame, variables: List[Variable]
+) -> pd.DataFrame:
+    """Boş / geçersiz metin değerlerini kategorik sütunlarda NaN yap; value_labels ile kodları etiketle."""
+    df = df.copy()
+    for v in variables:
+        if v.type != "categorical" or v.name not in df.columns:
+            continue
+        col = df[v.name]
+        blank = col.apply(
+            lambda x: x is None
+            or (isinstance(x, float) and np.isnan(x))
+            or str(x).strip() in ("", "nan", "None", "NaN", "<NA>", "NaT")
+        )
+        df.loc[blank, v.name] = np.nan
+        if v.value_labels:
+            vl = v.value_labels
+            df[v.name] = df[v.name].apply(
+                lambda x, labels=vl: _map_value_label(x, labels) if pd.notna(x) else x
+            )
+    return df
+
+def _infer_valid_categories(series: pd.Series, code_set: set) -> set:
+    """Beklenen kategori kümesini frekans profiline göre çıkar; nadir hatalı kodları dışla."""
+    valid_s = series.dropna()
+    valid_s = valid_s[~valid_s.apply(lambda x: matches_missing_code(x, code_set))]
+    if len(valid_s) == 0:
+        return set()
+
+    counts = valid_s.value_counts()
+    threshold = max(2, int(len(valid_s) * 0.005))
+
+    numeric_map: Dict[float, object] = {}
+    for val in counts.index:
+        try:
+            num = float(str(val).strip().replace(",", "."))
+            if num == int(num):
+                numeric_map[int(num)] = val
+        except ValueError:
+            pass
+
+    if numeric_map and len(numeric_map) == len(counts):
+        ints = sorted(numeric_map.keys())
+        if ints == [1, 2]:
+            return {str(numeric_map[i]).strip() for i in ints}
+        if 1 in ints and 2 in ints:
+            main_count = int(counts[numeric_map[1]]) + int(counts[numeric_map[2]])
+            if main_count / len(valid_s) >= 0.95:
+                return {str(numeric_map[1]).strip(), str(numeric_map[2]).strip()}
+        valid_keys = set()
+        for i in ints:
+            raw = numeric_map[i]
+            if int(counts[raw]) >= threshold:
+                valid_keys.add(str(raw).strip())
+        return valid_keys
+
+    return {str(v).strip() for v, c in counts.items() if int(c) >= threshold}
+
+def sanitize_invalid_categorical_codes(
+    df: pd.DataFrame,
+    variables: List[Variable],
+    codes: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    """Beklenen kategori dışındaki hatalı girişleri (örn. Evet/Hayır'da 3) NaN yap."""
+    code_set = parse_missing_codes(codes)
+    df = df.copy()
+    for v in variables:
+        if v.type != "categorical" or v.name not in df.columns:
+            continue
+        if v.categories:
+            valid = {str(c).strip() for c in v.categories}
+        else:
+            valid = _infer_valid_categories(df[v.name], code_set)
+        if not valid:
+            continue
+        mask = df[v.name].notna() & ~df[v.name].apply(
+            lambda x: is_missing_value(x, code_set)
+            or str(x).strip() in valid
+        )
+        df.loc[mask, v.name] = np.nan
+    return df
+
+def detect_scale_groups(columns: List[str]) -> Dict[str, List[str]]:
+    pattern = re.compile(r"^([a-zA-Z]+)(\d+)$", re.IGNORECASE)
+    groups: Dict[str, List[str]] = {}
+    for col in columns:
+        m = pattern.match(col)
+        if m:
+            groups.setdefault(m.group(1).lower(), []).append(col)
+    return {
+        p: sorted(c, key=lambda x: int(re.search(r"\d+", x).group()))
+        for p, c in groups.items() if len(c) >= 2
+    }
+
+
+def _likert_bounds_from_scale_info(si: dict) -> Tuple[Optional[float], Optional[float]]:
+    item_count = si.get("item_count")
+    if not item_count:
+        return None, None
+    try:
+        n_items = int(item_count)
+    except (TypeError, ValueError):
+        return None, None
+    if n_items <= 0:
+        return None, None
+    likert_max = 5
+    if si.get("likert"):
+        m = re.search(r"(\d+)", str(si["likert"]))
+        if m:
+            likert_max = int(m.group(1))
+    return float(n_items), float(n_items * likert_max)
+
+def infer_theoretical_range(
+    variable: Variable,
+    df: pd.DataFrame,
+    scale_info: Optional[dict] = None,
+) -> Optional[str]:
+    si = resolve_scale_info(variable, scale_info)
+    if si and si.get("min_score") is not None and si.get("max_score") is not None:
+        return f"{fmt_num(si['min_score'])} – {fmt_num(si['max_score'])}"
+    if si:
+        inferred_min, inferred_max = _likert_bounds_from_scale_info(si)
+        if inferred_min is not None and inferred_max is not None:
+            return f"{fmt_num(inferred_min)} – {fmt_num(inferred_max)}"
+    if variable.scale_min is not None and variable.scale_max is not None:
+        return f"{fmt_num(variable.scale_min)} – {fmt_num(variable.scale_max)}"
+
+    prefix = re.match(r"^([a-zA-Z]+)", variable.name or "", re.I)
+    prefix_key = prefix.group(1).lower() if prefix else ""
+    groups = detect_scale_groups(list(df.columns))
+    items = groups.get(prefix_key, [])
+    if items:
+        n_items = len(items)
+        likert_max = 5
+        if si and si.get("likert"):
+            m = re.search(r"(\d+)", str(si["likert"]))
+            if m:
+                likert_max = int(m.group(1))
+        return f"{fmt_num(n_items)} – {fmt_num(n_items * likert_max)}"
+    return None
+
+def filter_chi_square_data(
+    df: pd.DataFrame,
+    v1: Variable,
+    v2: Variable,
+    codes: Optional[List[str]] = None,
+) -> Tuple[pd.DataFrame, int]:
+    """Ki-kare matrisine yalnızca her iki değişkende de geçerli değeri olan satırları al."""
+    code_set = parse_missing_codes(codes)
+    sub = df[[v1.name, v2.name]].copy()
+    invalid_mask = sub.apply(
+        lambda row: is_missing_value(row[v1.name], code_set)
+        or is_missing_value(row[v2.name], code_set)
+        or format_category_value(row[v1.name]) == "Kayıp Veri"
+        or format_category_value(row[v2.name]) == "Kayıp Veri",
+        axis=1,
+    )
+    excluded = int(invalid_mask.sum())
+    return sub.loc[~invalid_mask], excluded
+
+def normalize_variable_labels(variables: List[Variable]) -> List[Variable]:
+    return [
+        v.model_copy(update={"label": format_display_label(v.name, v.label)})
+        for v in variables
+    ]
+
+def _normalize_scale_key(s: str) -> str:
+    tr = str(s).upper()
+    for src, dst in [("Ö", "O"), ("Ş", "S"), ("İ", "I"), ("Ü", "U"), ("Ğ", "G"), ("Ç", "C")]:
+        tr = tr.replace(src, dst)
+    return tr
+
+def resolve_scale_info(variable: Variable, scale_info: Optional[dict]) -> Optional[dict]:
+    if not scale_info:
+        return None
+    if variable.label in scale_info:
+        return scale_info[variable.label]
+    if variable.name in scale_info:
+        return scale_info[variable.name]
+    name_upper = variable.name.upper()
+    name_prefix = _normalize_scale_key(name_upper.split("_")[0])[:4]
+    for short_name, info in scale_info.items():
+        if not isinstance(info, dict):
+            continue
+        short_norm = _normalize_scale_key(short_name)[:4]
+        full = info.get("full_name") or ""
+        if full and variable.label == full:
+            return info
+        if name_prefix and short_norm and (
+            name_prefix.startswith(short_norm[:3])
+            or short_norm.startswith(name_prefix[:3])
+        ):
+            if "TOPLAM" in name_upper or variable.role == "outcome":
+                return info
+    return None
+
+def apply_scale_info_to_variables(
+    variables: List[Variable], scale_info: Optional[dict]
+) -> List[Variable]:
+    if not scale_info:
+        return variables
+    out: List[Variable] = []
+    for v in variables:
+        si = resolve_scale_info(v, scale_info)
+        if not si:
+            out.append(v)
+            continue
+        min_s, max_s = si.get("min_score"), si.get("max_score")
+        if min_s is None or max_s is None:
+            inferred_min, inferred_max = _likert_bounds_from_scale_info(si)
+            if inferred_min is not None:
+                min_s, max_s = inferred_min, inferred_max
+        if min_s is not None and max_s is not None:
+            v = v.model_copy(update={
+                "scale_min": float(min_s),
+                "scale_max": float(max_s),
+            })
+        out.append(v)
+    return out
+
+def normalize_continuous_columns(df: pd.DataFrame, variables: List[Variable]) -> pd.DataFrame:
+    df = df.copy()
+    for v in variables:
+        if v.type != "continuous" or v.name not in df.columns:
+            continue
+        df[v.name] = (
+            df[v.name].astype(str)
+            .str.strip()
+            .str.replace(",", ".", regex=False)
+        )
+        df[v.name] = pd.to_numeric(df[v.name], errors="coerce")
+    return df
+
+def is_numeric_continuous(df: pd.DataFrame, v: Variable, norm_map: dict) -> bool:
+    """Gerçekten sayısal sürekli mi? Kategorik kodlanmış değilse."""
+    if v.name not in df.columns:
+        return False
+    series = df[v.name].dropna()
+    if len(series) < 3:
+        return False
+    unique_count = series.nunique()
+    if unique_count < 10:
+        return False
+    return True
+
+def missing_data_report(df: pd.DataFrame, variables: List[Variable]) -> list:
+    total = len(df)
+    report = []
+    for v in variables:
+        if v.name not in df.columns:
+            continue
+        col = df[v.name]
+        missing = col.isna() | (col.astype(str).str.strip().isin(["", "nan", "None", "NaN"]))
+        pct = round(float(missing.sum()) / total * 100, 1) if total else 0.0
+        warning = "none"
+        if pct > 30:
+            warning = "high"
+        elif pct > 10:
+            warning = "medium"
+        report.append({
+            "column": v.label, "name": v.name,
+            "missing_pct": pct, "missing_n": int(missing.sum()), "warning": warning,
+        })
+    return report
+
+
+def prepare_analysis_df(
+    df: pd.DataFrame,
+    variables: List[Variable],
+    missing_codes: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    df = normalize_continuous_columns(df, variables)
+    df = normalize_categorical_columns(df, variables)
+    df = apply_missing_codes(df, variables, missing_codes)
+    df = sanitize_invalid_categorical_codes(df, variables, missing_codes)
+    for v in variables:
+        if re.match(r"^vki$", v.name, re.I) and v.name in df.columns:
+            max_val = df[v.name].max()
+            if pd.notna(max_val) and max_val > 1000:
+                df[v.name] = pd.to_numeric(df[v.name], errors="coerce")
+    return df
+
