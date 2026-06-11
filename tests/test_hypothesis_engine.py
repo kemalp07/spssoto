@@ -17,7 +17,7 @@ from layout_config import DEFAULT_LAYOUT_CONFIG
 from schemas import Variable
 from table_budget import apply_table_budget, core_candidate_ids, enrich_catalog_metadata
 from test_planner import TIER_KESIN, TIER_ONERILEN, build_test_catalog, pick_kesin_core_ids
-from word_export import _group_results_for_export
+from word_export import _group_results_for_export, _hypothesis_section_title
 
 
 @pytest.fixture
@@ -155,10 +155,18 @@ def test_word_export_grouping_sample_first():
     titles = [s[0] for s in sections]
     assert titles[0] == "Örnekleme İlişkin Bulgular"
     assert "Araştırma Sorusu 1'e İlişkin Bulgular" in titles
-    assert "Araştırma Sorusu 2'e İlişkin Bulgular" in titles
+    assert "Araştırma Sorusu 2'ye İlişkin Bulgular" in titles
     sample_items = sections[0][1]
     assert len(sample_items) == 2
     assert sample_items[0][1]["type"] == "demographics"
+
+
+def test_hypothesis_section_title_turkish_suffixes():
+    hyp = {"id": "H1", "label": "Örnek"}
+    assert _hypothesis_section_title(hyp, 2) == "Araştırma Sorusu 2'ye İlişkin Bulgular"
+    assert _hypothesis_section_title(hyp, 6) == "Araştırma Sorusu 6'ya İlişkin Bulgular"
+    assert _hypothesis_section_title(hyp, 1) == "Araştırma Sorusu 1'e İlişkin Bulgular"
+    assert _hypothesis_section_title(hyp, 9) == "Araştırma Sorusu 9'a İlişkin Bulgular"
 
 
 def test_hypothesis_linked_non_core_demotes_plain_kesin(uygun_candidates, planner_vars):

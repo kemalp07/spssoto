@@ -240,11 +240,15 @@ def _is_sample_section_result(result: dict) -> bool:
     return not result.get("hypothesis_id")
 
 
+SAYI_EKI = {
+    1: "'e", 2: "'ye", 3: "'e", 4: "'e", 5: "'e",
+    6: "'ya", 7: "'ye", 8: "'e", 9: "'a", 10: "'a",
+}
+
+
 def _hypothesis_section_title(hypothesis: dict, index: int) -> str:
-    label = str(hypothesis.get("label") or hypothesis.get("id") or "").strip()
-    if label:
-        return f"Araştırma Sorusu {index}'e İlişkin Bulgular"
-    return f"Araştırma Sorusu {index}'e İlişkin Bulgular"
+    eki = SAYI_EKI.get(index, "'e")
+    return f"Araştırma Sorusu {index}{eki} İlişkin Bulgular"
 
 
 def _group_results_for_export(
