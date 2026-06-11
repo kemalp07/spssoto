@@ -477,6 +477,8 @@ def compact_result_summary(result: dict) -> dict:
         "sig": bool(result.get("significant")),
         "p": fmt_p(result.get("p")) if result.get("p") is not None else None,
     }
+    if result.get("hypothesis_id"):
+        summary["hypothesis_id"] = result["hypothesis_id"]
     if direction:
         summary["direction"] = direction
     return summary

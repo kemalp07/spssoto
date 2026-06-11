@@ -443,6 +443,67 @@
   }
   .plan-section-actions button:hover { text-decoration: underline; }
   .plan-total-bar { margin-bottom: var(--space-2); }
+  .plan-toolbar {
+    display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+    gap: var(--space-3); margin-bottom: var(--space-3);
+  }
+  .plan-profile-segments {
+    display: flex; gap: 4px; background: var(--bg); padding: 4px;
+    border-radius: var(--radius-md); border: 1px solid var(--border);
+  }
+  .plan-profile-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    min-width: 92px; padding: 8px 12px; border: none; border-radius: 8px;
+    background: transparent; color: var(--muted); cursor: pointer; font-family: inherit;
+    transition: all 0.15s;
+  }
+  .plan-profile-btn.active {
+    background: var(--card); color: var(--text); box-shadow: var(--shadow-card);
+  }
+  .plan-profile-approx { font-size: 10px; font-weight: 500; opacity: 0.8; }
+  .plan-table-counter-card {
+    padding: 10px 16px; border-radius: var(--radius-md);
+    border: 1px solid var(--accent-muted); background: var(--accent-muted);
+    color: var(--accent); font-size: 13px; white-space: nowrap;
+  }
+  .plan-card-core { background: var(--bg); border-style: dashed; }
+  .plan-lock { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .plan-badge-budget {
+    font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
+    background: #fee2e2; color: #b91c1c; flex-shrink: 0; white-space: nowrap;
+  }
+  .hypothesis-toolbar { margin-bottom: var(--space-3); }
+  .hypothesis-cards {
+    display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2);
+  }
+  .hypothesis-card {
+    min-width: 180px; max-width: 260px; padding: 10px 12px; border-radius: var(--radius-md);
+    border: 1px solid var(--border); background: var(--card); cursor: pointer;
+    transition: box-shadow 0.15s, border-color 0.15s;
+  }
+  .hypothesis-card.active {
+    border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-muted);
+  }
+  .hypothesis-card-id {
+    font-size: 11px; font-weight: 700; color: var(--accent); margin-bottom: 4px;
+  }
+  .hypothesis-card-label { font-size: 12px; line-height: 1.4; }
+  .hypothesis-card-count { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .plan-badge-hyp {
+    font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 20px;
+    background: #dbeafe; color: #1d4ed8; flex-shrink: 0; white-space: nowrap;
+  }
+  .plan-card-hyp-highlight { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .hypothesis-review {
+    border: 1px solid var(--border); border-radius: var(--radius-md);
+    padding: var(--space-3); background: var(--card); margin-bottom: var(--space-3);
+  }
+  .hypothesis-review-row {
+    display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+    padding: 8px 0; border-bottom: 1px dashed var(--border);
+  }
+  .hypothesis-review-row:last-child { border-bottom: none; }
+  .hypothesis-select { min-width: 220px; font-size: 12px; padding: 6px 8px; }
   .plan-note {
     margin-top: var(--space-2); padding: var(--space-2);
     border-radius: var(--radius-md); border: 1px dashed var(--border);
@@ -706,6 +767,14 @@ let analysisPlan = [];
 let analysisPlanCatalog = [];
 let analysisPlanExcluded = [];
 let planTestsMeta = {};
+let planProfile = "standart";
+let planUserTouched = false;
+let approvedHypotheses = [];
+let hypothesisCandidates = [];
+let unmatchedQuestions = [];
+let hypothesesApproved = false;
+let activeHypothesisFilter = null;
+let hypothesisParseMeta = {};
 let bulguSummaryText = "";
 let approvedCutoffs = [];
 let researchTopicText = "";
@@ -1472,10 +1541,10 @@ function renderTopicStep() {
   const topic = wizardFormState.topic || researchTopicText;
   return `
     <div class="wizard-card">
-      <div class="wizard-title">🎯 Araştırma konusu</div>
-      <div class="wizard-subtitle">Bir iki cümleyle araştırmanızı özetleyin. AI değişkenleri sınıflandırırken kullanacak.</div>
-      <textarea id="researchTopic" class="form-textarea" rows="3"
-        placeholder="örn: Sağlık bilimleri öğrencilerinin online yemek siparişi tutumu ile gece yeme davranışı ilişkisi">${escHtml(topic)}</textarea>
+      <div class="wizard-title">🎯 Araştırma soruları</div>
+      <div class="wizard-subtitle">Her satıra bir soru yazabilirsiniz; hipotez eşlemesi plan adımında yapılır.</div>
+      <textarea id="researchTopic" class="form-textarea" rows="5"
+        placeholder="Araştırma sorularınızı yazın; her satıra bir soru yazabilirsiniz.">${escHtml(topic)}</textarea>
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
         <button class="btn btn-primary" onclick="nextStep()">Devam →</button>
@@ -1767,7 +1836,10 @@ function initStep(step) {
   }
 
   if (name === "plan") {
-    setTimeout(() => loadAnalysisPlan(), 50);
+    setTimeout(() => {
+      if (!hypothesesApproved) loadHypothesisReview();
+      else loadAnalysisPlan();
+    }, 50);
   }
 
   if (name === "results") {
@@ -1845,6 +1917,8 @@ function validateStep(step) {
     }
     researchTopicText = topic;
     wizardFormState.topic = topic;
+    hypothesesApproved = false;
+    approvedHypotheses = [];
   }
 
   if (name === "variables") {
@@ -2560,25 +2634,230 @@ function normalizeCatalogItem(t) {
     enabled: enabledDefault,
     enabled_default: enabledDefault,
     recommended: tier === "kesin_onerilen" || tier === "onerilen",
+    cekirdek: Boolean(t.cekirdek),
+    butce_disi: Boolean(t.butce_disi),
+    merge_key: t.merge_key || t.id,
+    hypothesis_id: t.hypothesis_id || null,
   };
 }
 
+function estimatePlanTableCount(catalog) {
+  const keys = new Set();
+  catalog.forEach(t => {
+    if (t.cekirdek || t.enabled !== false) {
+      keys.add(t.merge_key || t.id);
+    }
+  });
+  return keys.size;
+}
+
+function updatePlanTableCountCard() {
+  const el = document.getElementById("planTableCount");
+  if (el) el.textContent = String(estimatePlanTableCount(analysisPlanCatalog));
+}
+
+function renderPlanProfileToolbar() {
+  const profiles = [
+    { id: "oz", label: "Öz", approx: 8 },
+    { id: "standart", label: "Standart", approx: 12 },
+    { id: "kapsamli", label: "Kapsamlı", approx: 18 },
+  ];
+  const segments = profiles.map(p => `
+    <button type="button" class="plan-profile-btn ${planProfile === p.id ? "active" : ""}"
+      data-profile="${p.id}" onclick="setPlanProfile('${p.id}')">
+      <span>${p.label}</span>
+      <span class="plan-profile-approx">≈${p.approx} tablo</span>
+    </button>`).join("");
+  return `
+    <div class="plan-toolbar">
+      <div class="plan-profile-segments">${segments}</div>
+      <div class="plan-table-counter-card">
+        Bu plan <strong id="planTableCount">0</strong> tablo üretecek
+      </div>
+    </div>`;
+}
+
+async function setPlanProfile(profile) {
+  if (profile === planProfile) return;
+  if (planUserTouched && !confirm("Seçimleriniz sıfırlanacak, devam?")) return;
+  planProfile = profile;
+  planUserTouched = false;
+  hypothesesApproved = false;
+  await loadHypothesisReview();
+}
+
+function buildTestHypothesisMap(catalog) {
+  const map = {};
+  catalog.forEach(t => {
+    if (t.hypothesis_id) map[t.id] = t.hypothesis_id;
+  });
+  return map;
+}
+
+function countHypothesisTables(hypothesisId) {
+  const keys = new Set();
+  analysisPlanCatalog.forEach(t => {
+    if ((t.cekirdek || t.enabled !== false) && t.hypothesis_id === hypothesisId) {
+      keys.add(t.merge_key || t.id);
+    }
+  });
+  return keys.size;
+}
+
+function renderHypothesisSummaryCards() {
+  if (!approvedHypotheses.length) return "";
+  const cards = approvedHypotheses.map(h => {
+    const count = countHypothesisTables(h.id);
+    const active = activeHypothesisFilter === h.id ? " active" : "";
+    return `
+      <div class="hypothesis-card${active}" onclick="toggleHypothesisFilter('${escAttr(h.id)}')">
+        <div class="hypothesis-card-id">${escHtml(h.id)}</div>
+        <div class="hypothesis-card-label">${escHtml(h.label || "")}</div>
+        <div class="hypothesis-card-count">${count} tablo</div>
+      </div>`;
+  }).join("");
+  return `
+    <div class="hypothesis-toolbar">
+      <div class="text-sm text-muted mb-1">Araştırma soruları — karta tıklayınca ilgili testler vurgulanır</div>
+      <div class="hypothesis-cards">${cards}</div>
+    </div>`;
+}
+
+function toggleHypothesisFilter(hid) {
+  activeHypothesisFilter = activeHypothesisFilter === hid ? null : hid;
+  renderAnalysisPlan();
+}
+
+function renderUnmatchedWarning() {
+  if (!unmatchedQuestions.length) return "";
+  return `
+    <div class="alert alert-warn text-sm mb-2">
+      Şu sorular veriyle eşleştirilemedi: ${escHtml(unmatchedQuestions.join("; "))}
+      <div class="text-xs mt-1">Aşağıdaki listeden manuel test eşlemesi yapabilirsiniz.</div>
+    </div>`;
+}
+
+function renderHypothesisReviewRows() {
+  const rows = approvedHypotheses.map((h, idx) => {
+    const options = hypothesisCandidates.map(c =>
+      `<option value="${escAttr(c.id)}" ${(h.candidate_ids || []).includes(c.id) ? "selected" : ""}>${escHtml(c.label || c.id)}</option>`
+    ).join("");
+    return `
+      <div class="hypothesis-review-row">
+        <div class="flex-1">
+          <strong>${escHtml(h.id)}</strong> — ${escHtml(h.label || "")}
+        </div>
+        <select class="form-input hypothesis-select" id="hypCand_${idx}" multiple size="3"
+          onchange="updateHypothesisCandidates(${idx})">
+          ${options}
+        </select>
+      </div>`;
+  }).join("");
+  return rows || "<p class=\"text-sm text-muted\">Hipotez bulunamadı; yine de plan oluşturabilirsiniz.</p>";
+}
+
+function updateHypothesisCandidates(idx) {
+  const sel = document.getElementById(`hypCand_${idx}`);
+  if (!sel || !approvedHypotheses[idx]) return;
+  approvedHypotheses[idx].candidate_ids = [...sel.selectedOptions].map(o => o.value);
+}
+
+async function loadHypothesisReview() {
+  const planEl = document.getElementById("planContainer");
+  if (!planEl) return;
+  planEl.innerHTML = '<div class="empty"><div class="icon">⏳</div><p>Araştırma soruları analiz ediliyor...</p></div>';
+
+  if (!researchTopicText.trim()) {
+    planEl.innerHTML = '<p class="text-sm text-muted">Araştırma soruları boş. Önceki adımda en az bir soru girin.</p>';
+    return;
+  }
+
+  const variables = buildVariables();
+  const data = buildData(variables);
+
+  try {
+    const res = await fetch(`${API}/parse-hypotheses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variables,
+        data,
+        missing_codes: getMissingCodes(),
+        research_aim: researchTopicText.trim(),
+        use_ai: true,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Hipotez analizi hatası");
+    }
+    const json = await res.json();
+    approvedHypotheses = (json.hypotheses || []).map(h => ({
+      id: h.id,
+      label: h.label,
+      type: h.type || "fark",
+      candidate_ids: [...(h.candidate_ids || [])],
+      var_hints: h.var_hints || [],
+    }));
+    unmatchedQuestions = json.unmatched || [];
+    hypothesisCandidates = json.candidates || [];
+    hypothesisParseMeta = json.meta || {};
+    renderHypothesisReviewUI();
+  } catch (e) {
+    planEl.innerHTML = `
+      <div class="alert alert-warn text-sm">
+        Hipotez eşlemesi yapılamadı. Sorularınızı kontrol edin.
+        <div class="text-xs mt-1">${escHtml(e.message || "Bilinmeyen hata")}</div>
+        <button class="btn btn-secondary mt-2" onclick="skipHypothesisReview()">Hipotezsiz devam et</button>
+      </div>`;
+  }
+}
+
+function renderHypothesisReviewUI() {
+  const planEl = document.getElementById("planContainer");
+  if (!planEl) return;
+  planEl.innerHTML = `
+    <div class="hypothesis-review">
+      <div class="wizard-title" style="font-size:1.1rem;margin-bottom:8px;">🔬 Araştırma sorusu eşlemesi</div>
+      <p class="text-sm text-muted mb-2">Eşlemeleri kontrol edin; onayladıktan sonra analiz planı oluşturulur.</p>
+      ${renderUnmatchedWarning()}
+      ${renderHypothesisReviewRows()}
+      <div class="wizard-nav" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+        <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
+        <button class="btn btn-secondary" onclick="skipHypothesisReview()">Hipotezsiz devam</button>
+        <button class="btn btn-primary" onclick="approveHypothesesAndLoadPlan()">Hipotezleri Onayla →</button>
+      </div>
+    </div>`;
+}
+
+function skipHypothesisReview() {
+  approvedHypotheses = [];
+  unmatchedQuestions = [];
+  hypothesesApproved = true;
+  loadAnalysisPlan();
+}
+
+function approveHypothesesAndLoadPlan() {
+  approvedHypotheses.forEach((_, idx) => updateHypothesisCandidates(idx));
+  hypothesesApproved = true;
+  loadAnalysisPlan();
+}
+
 function syncAnalysisPlanFromCatalog() {
-  analysisPlan = analysisPlanCatalog.filter(t => t.enabled !== false);
+  analysisPlan = analysisPlanCatalog.filter(t => t.cekirdek || t.enabled !== false);
 }
 
 function updatePlanTotalBar() {
   const bar = document.getElementById("planTotalBar");
   if (!bar) return;
-  const selected = analysisPlanCatalog.filter(t => t.enabled !== false);
-  const totalTests = selected.reduce((s, t) => s + (t.count || 1), 0);
+  const selected = analysisPlanCatalog.filter(t => t.cekirdek || t.enabled !== false);
+  const tableCount = estimatePlanTableCount(analysisPlanCatalog);
   const catalogTotal = planTestsMeta.catalog_count || analysisPlanCatalog.length;
   const kesinCount = planTestsMeta.kesin_count
     ?? analysisPlanCatalog.filter(t => t.tier === "kesin_onerilen").length;
   const onerilenCount = planTestsMeta.onerilen_count
     ?? analysisPlanCatalog.filter(t => t.tier === "onerilen").length;
-  const defaultSelected = planTestsMeta.recommended_count
-    ?? analysisPlanCatalog.filter(t => t.enabled_default !== false).length;
+  const budget = planTestsMeta.table_budget || 12;
   const aiNote = planTestsMeta.ai_used && planTestsMeta.llm_calls > 0
     ? " · Claude önerisi aktif"
     : (planTestsMeta.ai_used === false ? "" : "");
@@ -2589,14 +2868,17 @@ function updatePlanTotalBar() {
     `📋 <strong>${catalogTotal}</strong> uygun aday · `
     + `<strong>${kesinCount}</strong> kesin · `
     + `<strong>${onerilenCount}</strong> önerilen · `
-    + `<strong>${selected.length}</strong> seçili (~${totalTests} tablo)`
+    + `<strong>${selected.length}</strong> seçili · `
+    + `<strong>${tableCount}</strong> / ${budget} tablo bütçesi`
     + `${aiNote}${tok}`
   );
+  updatePlanTableCountCard();
 }
 
 function togglePlanTier(tier, checked) {
+  planUserTouched = true;
   analysisPlanCatalog.forEach((t, i) => {
-    if (t.tier !== tier) return;
+    if (t.tier !== tier || t.cekirdek) return;
     t.enabled = checked;
     const card = document.getElementById(`plancard_${i}`);
     if (card) card.classList.toggle("disabled", !checked);
@@ -2657,6 +2939,8 @@ async function loadAnalysisPlan() {
         missing_codes: getMissingCodes(),
         research_aim: researchTopicText.trim(),
         use_ai: true,
+        profile: planProfile,
+        hypotheses: approvedHypotheses.length ? approvedHypotheses : undefined,
       }),
     });
     if (!res.ok) {
@@ -2665,6 +2949,9 @@ async function loadAnalysisPlan() {
     }
     const json = await res.json();
     planTestsMeta = json.meta || {};
+    if (json.estimated_tables != null) {
+      planTestsMeta.estimated_tables = json.estimated_tables;
+    }
     analysisPlanCatalog = (json.catalog && json.catalog.length)
       ? json.catalog.map(normalizeCatalogItem)
       : catalogFromLegacy(json).map(normalizeCatalogItem);
@@ -2680,14 +2967,42 @@ async function loadAnalysisPlan() {
   }
 }
 
+function renderCoreSection() {
+  const items = analysisPlanCatalog
+    .map((t, i) => ({ ...t, catalogIndex: i }))
+    .filter(t => t.cekirdek);
+  if (!items.length) return "";
+  const cards = items.map(t => `
+    <div class="plan-card plan-card-core" id="plancard_${t.catalogIndex}">
+      <span class="plan-lock" title="Çekirdek tablo — kapatılamaz">🔒</span>
+      <div class="flex-1">
+        <div class="plan-label">${escHtml(t.label || t.id)}</div>
+        <div class="plan-detail">${escHtml((t.test || "") + (t.vars ? " · " + t.vars.join(", ") : ""))}</div>
+      </div>
+      <span class="plan-badge-kesin">Çekirdek</span>
+    </div>
+  `).join("");
+  return `
+    <div class="plan-section-header">
+      <div class="plan-section-label">Çekirdek tablolar (${items.length})</div>
+    </div>
+    <p class="text-xs text-muted mb-1">Her planda zorunlu; tablo bütçesine dahildir.</p>
+    ${cards}`;
+}
+
 function renderCatalogSection(tier, title, badgeText, badgeClass, hint = "") {
   const items = analysisPlanCatalog
     .map((t, i) => ({ ...t, catalogIndex: i }))
-    .filter(t => t.tier === tier);
+    .filter(t => t.tier === tier && !t.cekirdek);
   if (!items.length) return "";
   const dimmed = tier === "onerilmeyen";
-  const cards = items.map(t => `
-    <div class="plan-card ${t.enabled !== false ? "" : "disabled"} ${dimmed ? "plan-card-excluded" : ""}"
+  const cards = items.map(t => {
+    const hypBadge = t.hypothesis_id
+      ? `<span class="plan-badge-hyp">${escHtml(t.hypothesis_id)}</span>` : "";
+    const highlight = activeHypothesisFilter && t.hypothesis_id === activeHypothesisFilter
+      ? " plan-card-hyp-highlight" : "";
+    return `
+    <div class="plan-card ${t.enabled !== false ? "" : "disabled"} ${dimmed ? "plan-card-excluded" : ""}${highlight}"
       id="plancard_${t.catalogIndex}">
       <input type="checkbox" ${t.enabled !== false ? "checked" : ""}
         onchange="togglePlanCatalog(${t.catalogIndex}, this.checked)" />
@@ -2696,10 +3011,10 @@ function renderCatalogSection(tier, title, badgeText, badgeClass, hint = "") {
         <div class="plan-detail">${escHtml((t.test || "") + (t.vars ? " · " + t.vars.join(", ") : ""))}</div>
         ${t.reason ? `<div class="plan-detail plan-detail-warn">${escHtml(t.reason)}</div>` : ""}
       </div>
-      <span class="${badgeClass}">${badgeText}</span>
-      <span class="plan-count">${t.count || 1} tablo</span>
-    </div>
-  `).join("");
+      ${hypBadge}
+      ${t.butce_disi ? `<span class="plan-badge-budget">Bütçe dışı</span>` : `<span class="${badgeClass}">${badgeText}</span>`}
+    </div>`;
+  }).join("");
   const header = `
     <div class="plan-section-header">
       <div class="plan-section-label">${title} (${items.length})</div>
@@ -2731,8 +3046,12 @@ function renderAnalysisPlan() {
     </p>`;
 
   el.innerHTML = `
+    ${renderPlanProfileToolbar()}
+    ${renderHypothesisSummaryCards()}
+    ${renderUnmatchedWarning()}
     <div id="planTotalBar" class="alert alert-info text-sm plan-total-bar"></div>
     ${intro}
+    ${renderCoreSection()}
     ${renderCatalogSection("kesin_onerilen", "Kesin önerilen", "⭐ Kesin", "plan-badge-kesin", "Varsayılan seçili — tez için temel paket")}
     ${renderCatalogSection("onerilen", "Önerilen", "✅ Önerilen", "plan-badge-rec", "Araştırma amacına uygun ek testler")}
     ${renderCatalogSection("onerilmeyen", "Önerilmeyen", "○ Düşük öncelik", "plan-badge-not", "İsterseniz işaretleyip analize dahil edin")}
@@ -2745,7 +3064,8 @@ function renderAnalysisPlan() {
 
 function togglePlanCatalog(i, checked) {
   const item = analysisPlanCatalog[i];
-  if (!item) return;
+  if (!item || item.cekirdek) return;
+  planUserTouched = true;
   item.enabled = checked;
   syncAnalysisPlanFromCatalog();
   const card = document.getElementById(`plancard_${i}`);
@@ -2755,7 +3075,7 @@ function togglePlanCatalog(i, checked) {
 
 async function runAnalysisFromPlan() {
   const enabledTests = analysisPlanCatalog
-    .filter(t => t.enabled !== false)
+    .filter(t => t.cekirdek || t.enabled !== false)
     .map(t => t.id);
   if (!enabledTests.length) return alert("En az bir test seçmelisiniz.");
   await runAnalysis(null, enabledTests);
@@ -2793,6 +3113,8 @@ async function runAnalysis(activeTypes = null, enabledTests = null) {
     data,
     missing_codes: getMissingCodes(),
     scale_info: scaleInfo,
+    test_hypothesis_map: buildTestHypothesisMap(analysisPlanCatalog),
+    hypotheses: approvedHypotheses.length ? approvedHypotheses : undefined,
   };
   if (enabledTests && enabledTests.length) {
     payload.enabled_tests = enabledTests;
@@ -3068,6 +3390,7 @@ async function generateAllBulgu() {
           body: JSON.stringify({
             summaries,
             research_topic: researchTopicText || analysisMeta.research_topic || "",
+            hypotheses: approvedHypotheses.length ? approvedHypotheses : undefined,
           }),
         });
         if (res.ok) {
@@ -3132,12 +3455,14 @@ async function generateBulgu(i, current = null, total = null) {
 
 function compactBulguSummaryClient(r) {
   const vars = r.var1 && r.var2 ? `${r.var1}×${r.var2}` : (r.variable || (r.variables || []).slice(0, 3).join("×"));
-  return {
+  const summary = {
     test: r.type,
     vars,
     sig: !!r.significant,
     p: r.p != null ? String(r.p) : null,
   };
+  if (r.hypothesis_id) summary.hypothesis_id = r.hypothesis_id;
+  return summary;
 }
 
 function alphaReliabilityBadge(alpha) {
@@ -3428,6 +3753,7 @@ async function downloadWord() {
         label_map: userLabels,
         custom_labels: exportCustomLabels,
         custom_titles: customTitles,
+        hypotheses: approvedHypotheses.length ? approvedHypotheses : undefined,
       })
     });
     if (!res.ok) throw new Error("Word oluşturulamadı");

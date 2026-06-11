@@ -1,4 +1,7 @@
-"""Deterministik test planlama ve token-verimli LLM seçimi."""
+"""Deterministik test planlama ve token-verimli LLM seçimi.
+
+Not: Kural/sezgisel fonksiyonlar büyüdükçe plan_rules.py modülüne taşınabilir.
+"""
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -22,8 +25,25 @@ from constants import (
     _TR_ASCII,
 )
 from data_cleaning import detect_scale_groups, is_numeric_continuous
+from hypothesis_engine import apply_hypothesis_to_catalog, build_test_hypothesis_map
+from layout_config import DEFAULT_LAYOUT_CONFIG, LayoutConfig
 from schemas import Variable
 from stat_tests import assess_normality
+from table_budget import (
+    PLAN_PROFILES,
+    apply_table_budget,
+    core_candidate_ids,
+    enrich_catalog_metadata,
+    estimate_table_count,
+)
+
+def build_plan(
+    catalog: List[dict],
+    profile: str,
+    layout_config: Optional[LayoutConfig] = None,
+) -> Tuple[List[dict], int]:
+    """Profil bütçesine göre varsayılan seçimleri uygular."""
+    return apply_table_budget(catalog, profile, layout_config)
 
 _LABEL_MAX = 40
 _MIN_GROUP_N = 10
@@ -823,6 +843,9 @@ async def plan_tests(
     variables: List[Variable],
     research_aim: str,
     use_ai: bool = True,
+    profile: str = "standart",
+    layout_config: Optional[LayoutConfig] = None,
+    hypotheses: Optional[List[dict]] = None,
 ) -> Tuple[List[dict], List[dict], List[dict], dict]:
     """Önerilen ve elenen test listeleri + meta döndürür."""
     norm_map = build_norm_map(df, variables)
@@ -898,7 +921,14 @@ async def plan_tests(
             })
 
     catalog = build_test_catalog(uygun, selected_ids, excluded, variables)
-    recommended = [c for c in catalog if c["tier"] in (TIER_KESIN, TIER_ONERILEN)]
+    cfg = layout_config or DEFAULT_LAYOUT_CONFIG
+    core_ids = core_candidate_ids(uygun)
+    enrich_catalog_metadata(catalog, cfg, core_ids)
+    if hypotheses:
+        apply_hypothesis_to_catalog(catalog, hypotheses, core_ids)
+    catalog, estimated_tables = build_plan(catalog, profile, cfg)
+    recommended = [c for c in catalog if c.get("enabled_default")]
+    hyp_linked = sum(1 for c in catalog if c.get("hypothesis_id"))
     return recommended, excluded, catalog, {
         "llm_calls": llm_meta.get("llm_calls", 0),
         "approx_input_tokens": llm_meta.get("approx_input_tokens", 0),
@@ -919,6 +949,11 @@ async def plan_tests(
         ),
         "catalog_count": len(catalog),
         "ai_used": bool(use_ai and research_aim.strip()),
+        "profile": profile if profile in PLAN_PROFILES else "standart",
+        "table_budget": PLAN_PROFILES.get(profile, PLAN_PROFILES["standart"]),
+        "estimated_tables": estimated_tables,
+        "hypothesis_count": len(hypotheses or []),
+        "hypothesis_linked_count": hyp_linked,
         "norm_map": {
             k: {"is_parametric": v.get("is_parametric"), "normal": v.get("normal")}
             for k, v in norm_map.items()

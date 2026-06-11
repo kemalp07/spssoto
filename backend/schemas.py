@@ -19,6 +19,14 @@ class DataRow(BaseModel):
     values: dict
 
 
+class HypothesisItem(BaseModel):
+    id: str
+    label: str
+    type: Optional[str] = "fark"
+    candidate_ids: List[str] = []
+    var_hints: Optional[List[str]] = None
+
+
 class AnalysisRequest(BaseModel):
     variables: List[Variable]
     data: List[DataRow]
@@ -26,6 +34,8 @@ class AnalysisRequest(BaseModel):
     enabled_tests: Optional[List[str]] = None
     missing_codes: Optional[List[str]] = None
     scale_info: Optional[dict] = None
+    test_hypothesis_map: Optional[Dict[str, str]] = None
+    hypotheses: Optional[List[HypothesisItem]] = None
 
 
 class PlanRequest(BaseModel):
@@ -36,12 +46,22 @@ class PlanRequest(BaseModel):
     use_ai: Optional[bool] = True
 
 
+class ParseHypothesesRequest(BaseModel):
+    variables: List[Variable]
+    data: List[DataRow]
+    research_aim: str
+    missing_codes: Optional[List[str]] = None
+    use_ai: Optional[bool] = True
+
+
 class PlanTestsRequest(BaseModel):
     variables: List[Variable]
     data: List[DataRow]
     research_aim: str
     missing_codes: Optional[List[str]] = None
     use_ai: Optional[bool] = True
+    profile: Optional[str] = "standart"
+    hypotheses: Optional[List[HypothesisItem]] = None
 
 
 class BulguRequest(BaseModel):
@@ -57,6 +77,7 @@ class BulguRequest(BaseModel):
 class BulguSummaryRequest(BaseModel):
     summaries: List[dict]
     research_topic: Optional[str] = None
+    hypotheses: Optional[List[dict]] = None
 
 
 class LayoutConfigModel(BaseModel):
@@ -82,6 +103,7 @@ class WordExportRequest(BaseModel):
     label_map: Optional[Dict[str, str]] = None
     custom_labels: Optional[Dict[str, str]] = None
     custom_titles: Optional[Dict[str, str]] = None
+    hypotheses: Optional[List[dict]] = None
 
 
 class CronbachRequest(BaseModel):

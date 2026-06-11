@@ -123,6 +123,7 @@ def apa_italicize_stats(text: str) -> str:
 
     for phrase in ("Kayıp Veri", "Belirtilmeyen"):
         result = re.sub(re.escape(phrase), _shield, result)
+    tr_letters = "A-Za-zÇĞİÖŞÜçğıöşüâî"
     patterns = [
         (r"χ²", "<em>χ²</em>"),
         (r"η²", "<em>η²</em>"),
@@ -139,8 +140,8 @@ def apa_italicize_stats(text: str) -> str:
         (r"\br\b", "<em>r</em>"),
         (r"\bz\b", "<em>z</em>"),
         (r"\bN\b", "<em>N</em>"),
-        (r"(?<![a-zA-Z])n(?![a-zA-Z])", "<em>n</em>"),
-        (r"(?<![a-zA-Z])p(?![a-zA-Z])", "<em>p</em>"),
+        (rf"(?<![{tr_letters}])n(?![{tr_letters}])", "<em>n</em>"),
+        (rf"(?<![{tr_letters}])p(?![{tr_letters}])", "<em>p</em>"),
     ]
     for pattern, repl in patterns:
         result = re.sub(pattern, repl, result)

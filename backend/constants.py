@@ -138,4 +138,25 @@ reason_code (elenenler için): amac_disi | dusuk_oncelik
 Serbest metin gerekçe yazma."""
 
 BULGU_SUMMARY_SYSTEM = """Sen tez bulgular bölümü editörüsün. Verilen kompakt test özetlerinden 3-5 cümlelik genel değerlendirme paragrafı yaz.
-Geçmiş zaman (-miştir). Madde işareti kullanma. Tartışma yazma. Yalnızca verilen özetlere dayan."""
+Geçmiş zaman (-miştir). Madde işareti kullanma. Tartışma yazma. Yalnızca verilen özetlere dayan.
+hypothesis_id alanı varsa ilgili araştırma sorusuna atıf yap; örneklem tablolarını (hypothesis_id yok) genel çerçevede özetle."""
+
+GEMINI_HYPOTHESIS_SPLIT_SYSTEM = """Sen tez araştırma soruları asistanısın. Verilen metni bağımsız araştırma sorularına/hipotezlere böl.
+Ham veri veya istatistik hesaplama yapma. Yalnızca JSON dizi döndür (en fazla 8 öğe):
+[{"q": "kısa soru özeti", "type": "fark|iliski|yordama", "var_hints": ["değişken ipucu"]}]
+type: fark=gruplar arası, iliski=korelasyon/ilişki, yordama=regresyon/yordama.
+var_hints: metinde geçen kısaltma veya değişken adları (küçük harf)."""
+
+HYPOTHESIS_DECIDE_SYSTEM = """Sen tez istatistik danışmanısın. Araştırma sorularını veri setindeki test adaylarıyla eşle.
+Yalnızca verilen candidate id'lerini kullan; uydurma id yazma. Bir aday en fazla bir hipoteze bağlansın.
+En fazla 8 hipotez. Yalnızca JSON döndür:
+{"hypotheses": [{"id": "H1", "label": "kısa hipotez ifadesi", "type": "fark|iliski|yordama",
+  "candidate_ids": ["id1"], "var_hints": ["ipucu"]}],
+ "unmatched": ["eşleşmeyen soru özeti"]}
+Eşleşmeyen soruları unmatched'a yaz. Serbest metin gerekçe yazma."""
+
+HYPOTHESIS_SINGLE_STAGE_SYSTEM = """Sen tez istatistik danışmanısın. Araştırma metnini sorulara böl ve test adaylarıyla eşle.
+Yalnızca verilen candidate id'lerini kullan. En fazla 8 hipotez. Yalnızca JSON döndür:
+{"hypotheses": [{"id": "H1", "label": "...", "type": "fark|iliski|yordama",
+  "candidate_ids": ["id1"], "var_hints": []}],
+ "unmatched": ["..."]}"""

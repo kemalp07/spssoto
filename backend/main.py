@@ -25,6 +25,7 @@ from schemas import (
     ExtractContextRequest,
     PairedRequest,
     PlanRequest,
+    ParseHypothesesRequest,
     PlanTestsRequest,
     BulguSummaryRequest,
     RegressionRequest,
@@ -67,7 +68,17 @@ from ai_services import (
     run_detect_scales,
     run_import_ethics_report,
 )
-from test_planner import plan_tests
+from test_planner import (
+    apply_deterministic_flags,
+    build_candidate_tests,
+    build_norm_map,
+    plan_tests,
+)
+from hypothesis_engine import (
+    compact_candidate_preview,
+    parse_research_questions,
+    tag_results_with_hypotheses,
+)
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="StatAI - Akademik Analiz API")
@@ -118,6 +129,30 @@ async def generate_analysis_plan(req: PlanRequest):
     return sanitize({"tests": rule_based, "source": "rules"})
 
 
+@app.post("/parse-hypotheses")
+@limiter.limit("10/minute")
+async def parse_hypotheses_endpoint(request: Request, req: ParseHypothesesRequest):
+    rows = [r.values for r in req.data]
+    df = pd.DataFrame(rows)
+    variables = normalize_variable_labels(req.variables)
+    df = prepare_analysis_df(df, variables, req.missing_codes)
+    norm_map = build_norm_map(df, variables)
+    candidates = build_candidate_tests(df, variables, norm_map)
+    candidates = apply_deterministic_flags(df, variables, candidates)
+    uygun = [c for c in candidates if c.get("auto_flag") == "uygun"]
+    parsed, meta = await parse_research_questions(
+        req.research_aim,
+        variables,
+        uygun,
+        df=df,
+    )
+    return sanitize({
+        **parsed,
+        "candidates": compact_candidate_preview(uygun, variables),
+        "meta": meta,
+    })
+
+
 @app.post("/plan-tests")
 @limiter.limit("10/minute")
 async def plan_tests_endpoint(request: Request, req: PlanTestsRequest):
@@ -130,12 +165,16 @@ async def plan_tests_endpoint(request: Request, req: PlanTestsRequest):
         variables,
         req.research_aim,
         use_ai=req.use_ai if req.use_ai is not None else True,
+        profile=req.profile or "standart",
+        hypotheses=[h.model_dump() for h in req.hypotheses] if req.hypotheses else None,
     )
     return sanitize({
         "recommended": recommended,
         "excluded": excluded,
         "catalog": catalog,
         "meta": meta,
+        "estimated_tables": meta.get("estimated_tables", 0),
+        "hypotheses": [h.model_dump() for h in req.hypotheses] if req.hypotheses else [],
     })
 
 
@@ -155,6 +194,12 @@ async def analyze(req: AnalysisRequest):
         req.scale_info,
         req.missing_codes,
     )
+    if req.test_hypothesis_map:
+        results = tag_results_with_hypotheses(
+            results, req.test_hypothesis_map, variables,
+        )
+    if req.hypotheses:
+        meta["hypotheses"] = [h.model_dump() for h in req.hypotheses]
     return sanitize({"results": results, "missing_data": missing_data, "meta": meta})
 
 
@@ -426,7 +471,9 @@ async def ai_bulgu(request: Request, req: BulguRequest):
 @app.post("/ai/bulgu-summary")
 @limiter.limit("10/minute")
 async def ai_bulgu_summary(request: Request, req: BulguSummaryRequest):
-    text, meta = generate_bulgu_summary(req.summaries, req.research_topic)
+    text, meta = generate_bulgu_summary(
+        req.summaries, req.research_topic, req.hypotheses,
+    )
     return {"summary": text, "meta": meta}
 
 
@@ -440,6 +487,7 @@ async def export_word(req: WordExportRequest):
             req.label_map,
             req.custom_labels,
             req.custom_titles,
+            req.hypotheses,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Word dosyası oluşturulamadı: {str(e)}")

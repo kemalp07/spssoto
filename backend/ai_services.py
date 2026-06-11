@@ -244,15 +244,26 @@ def generate_bulgu(
 def generate_bulgu_summary(
     summaries: List[dict],
     research_topic: Optional[str] = None,
+    hypotheses: Optional[List[dict]] = None,
 ) -> Tuple[str, dict]:
     if not summaries:
         return "", _empty_llm_meta()
     if not ANTHROPIC_API_KEY:
         return "", _empty_llm_meta()
-    user_msg = json.dumps({
+    payload = {
         "konu": research_topic or "",
         "ozetler": summaries,
-    }, ensure_ascii=False)
+    }
+    if hypotheses:
+        payload["hipotezler"] = [
+            {
+                "id": h.get("id"),
+                "label": h.get("label"),
+            }
+            for h in hypotheses
+            if h.get("id")
+        ]
+    user_msg = json.dumps(payload, ensure_ascii=False)
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     msg = client.messages.create(
         model=BULGU_MODEL,

@@ -230,6 +230,73 @@ def _merge_label_maps(
     return merged or None
 
 
+from hypothesis_engine import SAMPLE_SECTION_TYPES
+
+
+def _is_sample_section_result(result: dict) -> bool:
+    rtype = str(result.get("type") or "")
+    if rtype in SAMPLE_SECTION_TYPES:
+        return True
+    return not result.get("hypothesis_id")
+
+
+def _hypothesis_section_title(hypothesis: dict, index: int) -> str:
+    label = str(hypothesis.get("label") or hypothesis.get("id") or "").strip()
+    if label:
+        return f"Araştırma Sorusu {index}'e İlişkin Bulgular"
+    return f"Araştırma Sorusu {index}'e İlişkin Bulgular"
+
+
+def _group_results_for_export(
+    results: List[dict],
+    hypotheses: Optional[List[dict]] = None,
+) -> List[Tuple[str, List[Tuple[int, dict]]]]:
+    """(bölüm başlığı, [(orijinal_index, result), ...]) listesi döndürür."""
+    hypotheses = hypotheses or []
+    sections: List[Tuple[str, List[Tuple[int, dict]]]] = []
+
+    sample_items = [
+        (i, r) for i, r in enumerate(results) if _is_sample_section_result(r)
+    ]
+    if sample_items:
+        sections.append(("Örnekleme İlişkin Bulgular", sample_items))
+
+    hyp_ids = [str(h.get("id")) for h in hypotheses if h.get("id")]
+    seen = set(hyp_ids)
+    for idx, hid in enumerate(hyp_ids, start=1):
+        items = [
+            (i, r) for i, r in enumerate(results)
+            if str(r.get("hypothesis_id") or "") == hid
+        ]
+        if items:
+            hyp = next((h for h in hypotheses if str(h.get("id")) == hid), {})
+            sections.append((_hypothesis_section_title(hyp, idx), items))
+
+    other_ids = {
+        str(r.get("hypothesis_id"))
+        for r in results
+        if r.get("hypothesis_id") and str(r.get("hypothesis_id")) not in seen
+    }
+    for hid in sorted(other_ids):
+        items = [
+            (i, r) for i, r in enumerate(results)
+            if str(r.get("hypothesis_id") or "") == hid
+        ]
+        if items:
+            sections.append((f"{hid} Bulguları", items))
+
+    ungrouped = [
+        (i, r) for i, r in enumerate(results)
+        if not _is_sample_section_result(r) and not r.get("hypothesis_id")
+    ]
+    if ungrouped:
+        sections.append(("Diğer Analiz Bulguları", ungrouped))
+
+    if not sections:
+        return [("", [(i, r) for i, r in enumerate(results)])]
+    return sections
+
+
 def build_word_document(
     results: List[dict],
     bulgular: Optional[Dict[str, str]] = None,
@@ -237,6 +304,7 @@ def build_word_document(
     label_map: Optional[Dict[str, str]] = None,
     custom_labels: Optional[Dict[str, str]] = None,
     custom_titles: Optional[Dict[str, str]] = None,
+    hypotheses: Optional[List[dict]] = None,
 ) -> bytes:
     doc = Document()
     style = doc.styles["Normal"]
@@ -249,25 +317,30 @@ def build_word_document(
     doc.add_paragraph()
 
     resolved_labels = _merge_label_maps(label_map, custom_labels)
+    sections = _group_results_for_export(results, hypotheses)
 
-    for i, result in enumerate(results):
-        export_result = dict(result)
-        custom_key = str(i)
-        if custom_titles and custom_key in custom_titles and custom_titles[custom_key]:
-            num, _ = _split_table_title(export_result.get("title", ""))
-            export_result["title"] = f"{num}. {custom_titles[custom_key]}"
-        add_apa_table(doc, export_result, resolved_labels)
-        doc.add_paragraph()
-        key = str(i)
-        if bulgular and key in bulgular and bulgular[key]:
-            bulgu_p = doc.add_paragraph(bulgular[key])
-            bulgu_p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            bulgu_p.paragraph_format.first_line_indent = Pt(0)
-            for run in bulgu_p.runs:
-                run.font.color.rgb = RGBColor(0, 0, 0)
-        doc.add_paragraph()
-        spacer = doc.add_paragraph()
-        spacer.paragraph_format.space_after = Pt(12)
+    for section_title, items in sections:
+        if section_title:
+            doc.add_heading(section_title, level=2)
+            doc.add_paragraph()
+        for i, result in items:
+            export_result = dict(result)
+            custom_key = str(i)
+            if custom_titles and custom_key in custom_titles and custom_titles[custom_key]:
+                num, _ = _split_table_title(export_result.get("title", ""))
+                export_result["title"] = f"{num}. {custom_titles[custom_key]}"
+            add_apa_table(doc, export_result, resolved_labels)
+            doc.add_paragraph()
+            key = str(i)
+            if bulgular and key in bulgular and bulgular[key]:
+                bulgu_p = doc.add_paragraph(bulgular[key])
+                bulgu_p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                bulgu_p.paragraph_format.first_line_indent = Pt(0)
+                for run in bulgu_p.runs:
+                    run.font.color.rgb = RGBColor(0, 0, 0)
+            doc.add_paragraph()
+            spacer = doc.add_paragraph()
+            spacer.paragraph_format.space_after = Pt(12)
 
     buffer = io.BytesIO()
     doc.save(buffer)

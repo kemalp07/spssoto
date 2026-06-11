@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from formatting import TableCounter, fmt_p_display, fmt_r, make_result
 from layout_config import DEFAULT_LAYOUT_CONFIG, LayoutConfig
+from table_budget import grouping_merge_key_result
 
 _CRONBACH_HEADERS = [
     "Ölçek",
@@ -368,14 +369,7 @@ def renumber_tables(results: List[dict], config: LayoutConfig) -> List[dict]:
     return out
 
 
-def _grouping_merge_key(result: dict) -> Tuple[str, str]:
-    rtype = str(result.get("type") or "")
-    grouping = (
-        result.get("grouping_name")
-        or result.get("grouping_label")
-        or ""
-    )
-    return rtype, str(grouping).strip().lower()
+# Kalıcı çözüm: stat_tests.make_result meta/merge_payload ile yapısal veri.
 
 
 def _parse_ttest_rows(result: dict) -> Optional[Dict[str, Any]]:
@@ -612,7 +606,7 @@ def _merge_by_grouping(
     for i, r in enumerate(results):
         if r.get("type") != test_type or r.get("combined"):
             continue
-        key = _grouping_merge_key(r)
+        key = grouping_merge_key_result(r)
         if not key[1]:
             continue
         buckets[key].append(i)

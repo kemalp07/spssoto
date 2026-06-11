@@ -209,6 +209,17 @@ def claude_decide(system: str, user: str, max_tokens: int = 1000) -> Tuple[str, 
     return text, meta
 
 
+def gemini_json_task(system: str, user: str, max_tokens: int = 1200) -> Tuple[str, dict]:
+    """Gemini'den ham JSON metni döndürür (enrich / hipotez ayrıştırma)."""
+    if not has_gemini_enrich():
+        return "", _empty_meta()
+    try:
+        return _gemini_json(system, user, max_tokens)
+    except Exception as exc:
+        logger.warning("Gemini JSON task failed: %s", exc)
+        return "", _empty_meta()
+
+
 def format_enrichment_block(enrichment: dict) -> str:
     if not enrichment:
         return ""
