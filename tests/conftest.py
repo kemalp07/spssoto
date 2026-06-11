@@ -67,3 +67,11 @@ def fisher_df() -> pd.DataFrame:
         "g": [1, 1, 2, 2, 1, 2],
         "o": [1, 2, 1, 2, 1, 2],
     })
+
+
+def make_variables(names, role="outcome", vtype="continuous"):
+    """Yardımcı: Variable listesi oluşturur."""
+    return [
+        Variable(name=n, label=n, type=vtype, role=role, included=True)
+        for n in names
+    ]
