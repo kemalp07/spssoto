@@ -1,7 +1,7 @@
 """Hipotez motoru ve plan entegrasyonu testleri (LLM mock)."""
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -18,6 +18,18 @@ from schemas import Variable
 from table_budget import apply_table_budget, core_candidate_ids, enrich_catalog_metadata
 from test_planner import TIER_KESIN, TIER_ONERILEN, build_test_catalog, pick_kesin_core_ids
 from word_export import _group_results_for_export, _hypothesis_section_title
+
+_EMPTY_LLM_META = {"llm_calls": 0, "approx_input_tokens": 0, "approx_output_tokens": 0}
+
+
+@pytest.fixture
+def mock_hypothesis_llm():
+    """Claude/Gemini cagrilarini tamamen yerel mock'a al."""
+    with patch("hypothesis_engine.has_claude", return_value=True), \
+         patch("hypothesis_engine.has_gemini_enrich", return_value=False), \
+         patch("hypothesis_engine.gemini_enrich_profile", return_value=({}, _EMPTY_LLM_META)), \
+         patch("hypothesis_engine._gemini_split_questions", return_value=([], _EMPTY_LLM_META)):
+        yield
 
 
 @pytest.fixture
@@ -104,15 +116,18 @@ def test_budget_prioritizes_hypothesis_linked(uygun_candidates, planner_vars):
 
 
 @pytest.mark.asyncio
-async def test_parse_research_questions_claude_mock(uygun_candidates, planner_vars, planner_df):
+async def test_parse_research_questions_claude_mock(
+    mock_hypothesis_llm, uygun_candidates, planner_vars, planner_df,
+):
     claude_response = (
         '{"hypotheses":[{"id":"H1","label":"OYŞTÖ ile GYA ilişkisi","type":"iliski",'
         '"candidate_ids":["correlation"],"var_hints":["oys","gya"]}],'
         '"unmatched":["Regresyon sorusu"]}'
     )
-    with patch("hypothesis_engine.has_claude", return_value=True), \
-         patch("hypothesis_engine.has_gemini_enrich", return_value=False), \
-         patch("hypothesis_engine.claude_decide", return_value=(claude_response, {"llm_calls": 1})):
+    with patch(
+        "hypothesis_engine.claude_decide",
+        return_value=(claude_response, {"llm_calls": 1}),
+    ):
         parsed, meta = await parse_research_questions(
             "OYŞTÖ ile GYA arasında ilişki var mı?\nRegresyon sorusu",
             planner_vars,
@@ -126,11 +141,14 @@ async def test_parse_research_questions_claude_mock(uygun_candidates, planner_va
 
 
 @pytest.mark.asyncio
-async def test_parse_unmatched_only_when_no_match(uygun_candidates, planner_vars):
+async def test_parse_unmatched_only_when_no_match(
+    mock_hypothesis_llm, uygun_candidates, planner_vars,
+):
     claude_response = '{"hypotheses":[],"unmatched":["Bilinmeyen soru"]}'
-    with patch("hypothesis_engine.has_claude", return_value=True), \
-         patch("hypothesis_engine.has_gemini_enrich", return_value=False), \
-         patch("hypothesis_engine.claude_decide", return_value=(claude_response, {"llm_calls": 1})):
+    with patch(
+        "hypothesis_engine.claude_decide",
+        return_value=(claude_response, {"llm_calls": 1}),
+    ):
         parsed, _ = await parse_research_questions(
             "Bilinmeyen soru",
             planner_vars,

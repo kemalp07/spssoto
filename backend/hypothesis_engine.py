@@ -256,7 +256,7 @@ async def parse_research_questions(
             )
             system = HYPOTHESIS_SINGLE_STAGE_SYSTEM
 
-        if df is not None and variables:
+        if df is not None and variables and has_gemini_enrich():
             from data_profile import profile_from_dataframe, profile_json
             profile = profile_from_dataframe(df, variables)
             enrichment, profile_meta = gemini_enrich_profile(
