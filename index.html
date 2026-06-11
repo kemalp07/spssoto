@@ -725,6 +725,38 @@
     font-size: 16px; padding: 4px 8px; border-radius: var(--radius-sm);
   }
   .review-edit-btn:hover { color: var(--accent); background: var(--bg); }
+  .quality-band {
+    border-radius: var(--radius-md); padding: var(--space-2) var(--space-3);
+    margin-bottom: var(--space-3); font-size: 13px; line-height: 1.5;
+  }
+  .quality-band.clean {
+    background: color-mix(in srgb, var(--success) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--success) 35%, transparent);
+    color: var(--success);
+  }
+  .quality-band.issue {
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  }
+  .quality-band.error {
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  }
+  .quality-finding {
+    display: flex; gap: 8px; align-items: flex-start;
+    padding: 6px 0; border-bottom: 1px dashed var(--border);
+  }
+  .quality-finding:last-child { border-bottom: none; }
+  .quality-sev {
+    font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px;
+    flex-shrink: 0; text-transform: uppercase;
+  }
+  .quality-sev.hata { background: #fee2e2; color: #b91c1c; }
+  .quality-sev.uyari { background: #fef9c3; color: #a16207; }
+  .quality-scroll-link {
+    font-size: 11px; color: var(--accent); cursor: pointer; white-space: nowrap;
+  }
+  .quality-scroll-link:hover { text-decoration: underline; }
   @media (max-width: 640px) {
     .review-card-head { flex-direction: column; align-items: flex-start; }
     .review-header { flex-direction: column; }
@@ -827,6 +859,8 @@ let customTitles = {};
 let customLabels = {};
 let reviewExpandedScales = new Set();
 let reviewScalesCache = [];
+let qualityCheckResult = null;
+let qualityCheckForceExport = false;
 
 const STEPS = ["upload", "ethics", "scales", "topic", "variables", "plan", "results", "review"];
 const STEP_LABELS = ["Dosya", "Rapor", "Ölçekler", "Konu", "Değişkenler", "Plan", "Sonuçlar", "Gözden Geçir"];
@@ -3888,7 +3922,71 @@ async function initReviewStep() {
     }
   }
 
+  await runQualityCheck();
   renderReviewContent();
+}
+
+function tableIndexByNumber(tableNo) {
+  if (tableNo == null) return -1;
+  return analysisResults.findIndex(r => (r.table_number ?? -1) === tableNo);
+}
+
+function scrollToQualityTable(tableNo) {
+  const idx = tableIndexByNumber(tableNo);
+  if (idx < 0) return;
+  const row = document.getElementById(`reviewTitleRow_${idx}`);
+  if (row) {
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.classList.add("col-checkbox-review-open");
+    setTimeout(() => row.classList.remove("col-checkbox-review-open"), 2500);
+  }
+}
+
+async function runQualityCheck() {
+  qualityCheckResult = null;
+  qualityCheckForceExport = false;
+  if (!analysisResults.length) return;
+  try {
+    const res = await fetch(`${API}/quality-check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        results: analysisResults,
+        bulgular: Object.fromEntries(Object.entries(bulgular).map(([k, v]) => [String(k), v])),
+        intro: analysisMeta.intro || "",
+        hypotheses: approvedHypotheses.length ? approvedHypotheses : undefined,
+        n_total: parsedData?.length || null,
+      }),
+    });
+    if (!res.ok) return;
+    qualityCheckResult = await res.json();
+  } catch (e) {
+    console.warn("Kalite kontrolü başarısız:", e);
+  }
+}
+
+function renderQualityBand() {
+  if (!qualityCheckResult) {
+    return `<div class="quality-band issue">Tutarlılık kontrolü çalıştırılamadı.</div>`;
+  }
+  const findings = qualityCheckResult.findings || [];
+  if (qualityCheckResult.overall === "temiz" || !findings.length) {
+    return `<div class="quality-band clean">✓ Tutarlılık kontrolü temiz</div>`;
+  }
+  const hasError = qualityCheckResult.has_errors || findings.some(f => f.severity === "hata");
+  const cls = hasError ? "error" : "issue";
+  const items = findings.map(f => {
+    const sev = f.severity === "hata" ? "hata" : "uyari";
+    const link = f.table_no != null
+      ? `<a class="quality-scroll-link" href="#" onclick="scrollToQualityTable(${Number(f.table_no)}); return false;">Tablo ${f.table_no}</a>`
+      : "";
+    return `
+      <div class="quality-finding">
+        <span class="quality-sev ${sev}">${sev === "hata" ? "Hata" : "Uyarı"}</span>
+        <div class="flex-1">${escHtml(f.message || "")} ${link}</div>
+      </div>`;
+  }).join("");
+  return `<div class="quality-band ${cls}"><strong>Tutarlılık bulguları</strong>${items}</div>`;
 }
 
 function renderReviewContent() {
@@ -3945,6 +4043,7 @@ function renderReviewContent() {
   }).join("") : `<div class="review-empty">Henüz tablo sonucu yok.</div>`;
 
   el.innerHTML = `
+    ${renderQualityBand()}
     <div class="review-section">
       <div class="review-section-title">Ölçek Eşleşmeleri</div>
       ${scalesHtml}
@@ -4042,7 +4141,16 @@ function startTitleEdit(index) {
   input.select();
 }
 
-async function downloadWord() {
+async function downloadWord(force = false) {
+  const hasErrors = qualityCheckResult?.has_errors
+    || (qualityCheckResult?.findings || []).some(f => f.severity === "hata");
+  if (hasErrors && !force && !qualityCheckForceExport) {
+    if (!confirm("Tutarlılık kontrolünde HATA bulundu. Yine de Word'e aktarmak istiyor musunuz?")) {
+      return;
+    }
+    qualityCheckForceExport = true;
+  }
+
   const btnWord = document.getElementById("btnWord");
   const btnAll = document.getElementById("btnAllBulgu");
   const prevWordText = btnWord ? btnWord.innerHTML : "";

@@ -35,6 +35,7 @@ from schemas import (
     Variable,
     LayoutResultsRequest,
     WordExportRequest,
+    QualityCheckRequest,
 )
 from utils import sanitize
 from layout_config import LayoutConfig
@@ -44,9 +45,9 @@ from data_cleaning import (
     apply_scale_info_to_variables,
     missing_data_report,
     prepare_analysis_df,
+    apply_scale_item_resolution,
 )
 from data_profile import find_derived_variables
-from data_cleaning import apply_scale_item_resolution
 from stat_tests import (
     TableCounter,
     cronbach_analysis,
@@ -77,6 +78,7 @@ from test_planner import (
     build_norm_map,
     plan_tests,
 )
+from juri_simulatoru import run_quality_check
 from hypothesis_engine import (
     compact_candidate_preview,
     enrich_hypotheses_for_display,
@@ -506,6 +508,27 @@ async def ai_bulgu_summary(request: Request, req: BulguSummaryRequest):
         req.summaries, req.research_topic, req.hypotheses,
     )
     return {"summary": text, "meta": meta}
+
+
+@app.post("/quality-check")
+@limiter.limit("15/minute")
+async def quality_check_endpoint(request: Request, req: QualityCheckRequest):
+    output, meta = run_quality_check(
+        req.results,
+        req.intro or "",
+        req.hypotheses,
+        req.n_total,
+        req.bulgular,
+    )
+    compact_rows = output.pop("compact_rows", [])
+    has_errors = output.pop("has_errors", False)
+    return sanitize({
+        **output,
+        "has_errors": has_errors,
+        "compact_rows": compact_rows,
+        "meta": meta,
+        "llm_meta": meta,
+    })
 
 
 @app.post("/export/word")

@@ -112,6 +112,14 @@ class WordExportRequest(BaseModel):
     hypotheses: Optional[List[dict]] = None
 
 
+class QualityCheckRequest(BaseModel):
+    results: List[dict]
+    bulgular: Optional[Dict[str, str]] = None
+    intro: Optional[str] = None
+    hypotheses: Optional[List[dict]] = None
+    n_total: Optional[int] = None
+
+
 class CronbachRequest(BaseModel):
     columns: List[str]
     data: List[DataRow]
