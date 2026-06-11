@@ -142,7 +142,12 @@ Serbest metin gerekçe yazma."""
 
 BULGU_SUMMARY_SYSTEM = """Sen tez bulgular bölümü editörüsün. Verilen kompakt test özetlerinden 3-5 cümlelik genel değerlendirme paragrafı yaz.
 Geçmiş zaman (-miştir). Madde işareti kullanma. Tartışma yazma. Yalnızca verilen özetlere dayan.
-hypothesis_id alanı varsa ilgili araştırma sorusuna atıf yap; örneklem tablolarını (hypothesis_id yok) genel çerçevede özetle."""
+sig=true ise anlamlı sonuç vardır; sig=false ise anlamlı fark/ilişki yoktur — asla tersini yazma.
+direction alanı varsa hangi grubun daha yüksek olduğunu belirt.
+posthoc_sig_pairs=0 ise post-hoc analizde anlamlı çift bulunmadığını açıkça yaz.
+posthoc_pairs varsa anlamlı post-hoc çiftlerini özetle.
+hypothesis_id alanı varsa ilgili araştırma sorusuna atıf yap; örneklem tablolarını (hypothesis_id yok) genel çerçevede özetle.
+Tek tek tablo istatistiklerini tekrarlama; araştırmanın temel sonuçlarını sentezle."""
 
 GEMINI_HYPOTHESIS_SPLIT_SYSTEM = """Sen tez araştırma soruları asistanısın. Verilen metni bağımsız araştırma sorularına/hipotezlere böl.
 Ham veri veya istatistik hesaplama yapma. Yalnızca JSON dizi döndür (en fazla 8 öğe):

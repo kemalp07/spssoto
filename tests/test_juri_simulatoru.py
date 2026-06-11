@@ -55,7 +55,7 @@ def test_claimed_higher_wrong_group_is_error():
         "istatistiksel olarak anlamlı bir fark saptanmıştır; Tıp grubunun ortalaması daha yüksektir."
     )
     rows = _compact_from_results(results, {"0": bulgu})
-    findings = run_python_checks(rows, "", [])
+    findings = run_python_checks(rows, "", [], results=results, bulgular={"0": bulgu})
     assert any(
         f.get("rule") == "claimed_higher_mismatch" and f.get("severity") == "hata"
         for f in findings
@@ -78,6 +78,23 @@ def test_intro_parametric_with_mann_whitney_is_error():
     }]
     findings = run_python_checks(rows, intro, [])
     assert any(f.get("rule") == "intro_parametric_mismatch" for f in findings)
+
+
+def test_bulgu_sig_mismatch_detected():
+    results = [{
+        "type": "ttest",
+        "table_number": 2,
+        "significant": True,
+        "p": 0.02,
+        "groups": [
+            {"name": "Kadın", "mean": 75},
+            {"name": "Erkek", "mean": 68},
+        ],
+    }]
+    bulgu = "Gruplar arasında anlamlı fark saptanmamıştır."
+    rows = _compact_from_results(results, {"0": bulgu})
+    findings = run_python_checks(rows, "", [], results=results, bulgular={"0": bulgu})
+    assert any(f.get("rule") == "bulgu_sig_mismatch" for f in findings)
 
 
 def test_clean_set_overall_temiz():

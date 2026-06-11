@@ -27,10 +27,11 @@ from constants import (
     ETHICS_KEYWORDS, ETHICS_MAX_FILTERED_CHARS, ETHICS_FALLBACK_CHARS,
     ETHICS_SYSTEM_PROMPT, BULGU_SUMMARY_SYSTEM,
 )
-from bulgu_templates import (
-    generate_bulgu_from_template,
-    has_bulgu_template,
-    compact_result_summary,
+from yorum_motoru import build_llm_rules_block
+from yorum_motoru import (
+    build_summaries_from_results,
+    generate_template_summary,
+    validate_summary_text,
 )
 from spss_import import convert_spss_to_apa_results, _markdown_tables_to_apa_results
 from stat_tests import (
@@ -174,6 +175,9 @@ def build_bulgu_user_message(
     if scales:
         parts.append("Ölçek: " + json.dumps(scales, ensure_ascii=False))
     parts.append("Tablo: " + json.dumps(_compact_bulgu_result(result), ensure_ascii=False))
+    rules = build_llm_rules_block()
+    if rules:
+        parts.append(rules)
     message = "\n".join(parts)
     if pdf_context:
         message += f"""
@@ -231,15 +235,19 @@ def generate_bulgu(
     scale_info: Optional[dict] = None,
     pdf_context: Optional[str] = None,
     force_llm: bool = False,
+    all_results: Optional[List[dict]] = None,
 ) -> Tuple[str, str, dict]:
     """(bulgu_metni, kaynak, meta) döndürür. kaynak: template | llm."""
     if not force_llm and has_bulgu_template(result):
-        template_text = generate_bulgu_from_template(result, label_map)
+        template_text = generate_bulgu_from_template(result, label_map, all_results)
         if template_text:
             return template_text, "template", _empty_llm_meta()
     text, meta = _generate_bulgu_text_llm(
         result, research_topic, label_map, approved_cutoffs, scale_info, pdf_context,
     )
+    if text and label_map:
+        text = substitute_variable_codes(text, label_map)
+        text = apply_academic_text_rules(text)
     return text, "llm", meta
 
 
@@ -248,10 +256,12 @@ def generate_bulgu_summary(
     research_topic: Optional[str] = None,
     hypotheses: Optional[List[dict]] = None,
 ) -> Tuple[str, dict]:
+    template_text = generate_template_summary(summaries, hypotheses)
     if not summaries:
         return "", _empty_llm_meta()
     if not ANTHROPIC_API_KEY:
-        return "", _empty_llm_meta()
+        return template_text, {**_empty_llm_meta(), "source": "template"}
+
     payload = {
         "konu": research_topic or "",
         "ozetler": summaries,
@@ -273,11 +283,22 @@ def generate_bulgu_summary(
         system=BULGU_SUMMARY_SYSTEM,
         messages=[{"role": "user", "content": user_msg}],
     )
-    return msg.content[0].text.strip(), _llm_meta_from_usage(msg.usage)
+    llm_text = msg.content[0].text.strip()
+    meta = _llm_meta_from_usage(msg.usage)
+    meta["source"] = "llm"
+    issues = validate_summary_text(llm_text, summaries)
+    if issues:
+        meta["summary_validation"] = issues
+        meta["template_fallback"] = True
+        return template_text, meta
+    return llm_text, meta
 
 
-def compact_summaries_from_results(results: List[dict]) -> List[dict]:
-    return [compact_result_summary(r) for r in results if r.get("type")]
+def compact_summaries_from_results(
+    results: List[dict],
+    bulgular: Optional[Dict[str, str]] = None,
+) -> List[dict]:
+    return build_summaries_from_results(results, bulgular)
 
 PLAN_SYSTEM = """
 Sen akademik araştırma metodolojisi uzmanısın.
@@ -1037,7 +1058,7 @@ def import_spss_tables_service(req: SpssTableRequest) -> dict:
     if req.auto_bulgu:
         for i, result in enumerate(results):
             try:
-                text = _generate_bulgu_text(result)
+                text, _, _ = generate_bulgu(result, all_results=results)
                 if text:
                     bulgular[str(i)] = text
             except Exception:

@@ -10,6 +10,7 @@ from scipy.stats import (
     shapiro, spearmanr, mannwhitneyu, kruskal, ttest_rel, ttest_ind,
     linregress, kstest, levene, tukey_hsd, wilcoxon, fisher_exact,
 )
+from statsmodels.stats.oneway import anova_oneway
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from schemas import Variable
 from constants import PRIMARY_GROUPING_KEYS, DEMO_LABEL_KEYWORDS, SCALE_SCORE_RE
@@ -105,6 +106,32 @@ def welch_df(g1: list, g2: list) -> float:
     den = (v1 / n1) ** 2 / (n1 - 1) + (v2 / n2) ** 2 / (n2 - 1)
     return float(num / den) if den else n1 + n2 - 2
 
+def games_howell_pair(g1: list, g2: list) -> Tuple[float, float]:
+    """Games-Howell ikili karşılaştırma — p ve ortalama farkı."""
+    a1 = np.asarray(g1, dtype=float)
+    a2 = np.asarray(g2, dtype=float)
+    n1, n2 = len(a1), len(a2)
+    if n1 < 2 or n2 < 2:
+        return 1.0, 0.0
+    m1, m2 = float(np.mean(a1)), float(np.mean(a2))
+    v1, v2 = float(np.var(a1, ddof=1)), float(np.var(a2, ddof=1))
+    se = np.sqrt(v1 / n1 + v2 / n2)
+    if se == 0:
+        return 1.0, 0.0
+    t_stat = abs(m1 - m2) / se
+    num = v1 / n1 + v2 / n2
+    den = (v1 / n1) ** 2 / (n1 - 1) + (v2 / n2) ** 2 / (n2 - 1)
+    df = num ** 2 / den if den else n1 + n2 - 2
+    p = float(2 * stats.t.sf(t_stat, df))
+    return p, m1 - m2
+
+
+def kruskal_epsilon_squared(h_stat: float, k: int, n_total: int) -> float:
+    if n_total <= k or k < 2:
+        return 0.0
+    return max(0.0, float((float(h_stat) - k + 1) / (n_total - k)))
+
+
 def eta_squared(group_lists: list) -> float:
     all_data = np.concatenate([np.array(g) for g in group_lists])
     grand = np.mean(all_data)
@@ -184,6 +211,7 @@ def table_descriptive(
     scale_info: Optional[dict] = None,
 ) -> Optional[dict]:
     rows = []
+    stats_meta = []
     for v in variables:
         if v.name not in df.columns:
             continue
@@ -191,11 +219,22 @@ def table_descriptive(
         if len(s) == 0:
             continue
         theory = infer_theoretical_range(v, df, scale_info) or "—"
+        q1, q3 = float(s.quantile(0.25)), float(s.quantile(0.75))
+        iqr = q3 - q1
         rows.append([
             v.label, str(len(s)),
             f"{fmt_num(s.mean())} ± {fmt_num(s.std(ddof=1))}",
             fmt_num(s.median()), f"{fmt_num(s.min())} – {fmt_num(s.max())}", theory,
         ])
+        stats_meta.append({
+            "label": v.label,
+            "n": int(len(s)),
+            "mean": round(float(s.mean()), 3),
+            "sd": round(float(s.std(ddof=1)), 3),
+            "median": round(float(s.median()), 3),
+            "iqr": round(float(iqr), 3),
+            "theory": theory,
+        })
     if not rows:
         return None
     no, title = tc.next("Tanımlayıcı İstatistikler")
@@ -203,6 +242,7 @@ def table_descriptive(
         "descriptive", no, title,
         ["Ölçek", "n", "x̄ ± SS", "Medyan", "Min – Maks", "Teorik Aralık"],
         rows, "Not. SS = Standart Sapma.",
+        variables_stats=stats_meta,
     )
 
 def table_normality(tc: TableCounter, variables: List[Variable], df: pd.DataFrame, norm_map: dict) -> Optional[dict]:
@@ -236,9 +276,11 @@ def table_normality(tc: TableCounter, variables: List[Variable], df: pd.DataFram
         "normal dağılım varsayımı karşılanmış kabul edilir."
     )
     no, title = tc.next("Normallik Testi Sonuçları")
+    norm_by_label = {v.label: norm_map[v.name] for v in variables if v.name in norm_map}
     return make_result(
         "normality", no, title, headers, rows, note,
         norm_map={v.name: norm_map[v.name] for v in variables if v.name in norm_map},
+        norm_by_label=norm_by_label,
     )
 
 def table_frequency(
@@ -373,6 +415,22 @@ def table_chi_square(
             f" Ki-kare analizine dahil edilmeyen {excluded_n} kayıp/hatalı kayıt"
             f" matristen çıkarılmıştır (Valid N={valid_n})."
         )
+    dominant_row = dominant_col = dominant_pct = dominant_n = None
+    if not use_fisher:
+        max_pct = -1.0
+        for idx in ct.index:
+            row_total = int(ct.loc[idx].sum())
+            if row_total <= 0:
+                continue
+            for col in ct.columns:
+                n_cell = int(ct.loc[idx, col])
+                pct = round(n_cell / row_total * 100, 1)
+                if pct > max_pct:
+                    max_pct = pct
+                    dominant_row = format_category_value(idx)
+                    dominant_col = format_category_value(col)
+                    dominant_n = n_cell
+                    dominant_pct = pct
     extra = {
         "p": round(float(p), 3),
         "dof": int(dof),
@@ -384,8 +442,34 @@ def table_chi_square(
     }
     if use_fisher:
         extra["odds_ratio"] = round(float(odds_ratio), 3)
+        extra["test_used"] = "fisher_exact"
     else:
         extra["chi2"] = chi2_report
+        n_valid = int(ct.values.sum())
+        k_dim = min(ct.shape[0], ct.shape[1])
+        if k_dim > 1 and n_valid > 0:
+            cramers_v = float(np.sqrt(float(chi2) / (n_valid * (k_dim - 1))))
+        else:
+            cramers_v = 0.0
+        if ct.shape == (2, 2) and n_valid > 0:
+            phi = float(np.sqrt(float(chi2) / n_valid))
+            extra["effect_size"] = round(phi, 3)
+            extra["effect_symbol"] = "φ"
+        else:
+            extra["effect_size"] = round(cramers_v, 3)
+            extra["effect_symbol"] = "Cramer's V"
+        extra["effect_interp"] = (
+            "güçlü" if cramers_v >= 0.50 else
+            "orta" if cramers_v >= 0.30 else
+            "zayıf" if cramers_v >= 0.10 else "ihmal edilebilir"
+        )
+        extra["n_total"] = n_valid
+        extra["test_used"] = "chi_square"
+        if dominant_row is not None:
+            extra["dominant_row"] = dominant_row
+            extra["dominant_col"] = dominant_col
+            extra["dominant_pct"] = dominant_pct
+            extra["dominant_n"] = dominant_n
     return make_result(
         test_type, no, title, headers, rows,
         note,
@@ -464,8 +548,23 @@ def table_anova(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
     group_lists = [g for g in groups]
     k = len(group_lists)
     lev_f, lev_p = levene(*group_lists)
-    f, p = stats.f_oneway(*group_lists)
-    df1, df2 = k - 1, sum(len(g) for g in group_lists) - k
+    levene_violated = bool(float(lev_p) < 0.05)
+    n_denom = sum(len(g) for g in group_lists) - k
+    if levene_violated:
+        welch_res = anova_oneway(group_lists, use_var="unequal")
+        f, p = float(welch_res.statistic), float(welch_res.pvalue)
+        df1, df2 = float(welch_res.df_num), float(welch_res.df_denom)
+        welch_anova = True
+        posthoc_type = "games_howell"
+        test_label = "Welch ANOVA"
+        posthoc_note = "Post-hoc: Games-Howell (anlamlıysa)."
+    else:
+        f, p = stats.f_oneway(*group_lists)
+        df1, df2 = k - 1, n_denom
+        welch_anova = False
+        posthoc_type = "tukey"
+        test_label = "Tek Yönlü ANOVA"
+        posthoc_note = "Post-hoc: Tukey HSD (anlamlıysa)."
     eta2 = eta_squared(group_lists)
     rows = []
     for name, g in zip(groups.index, group_lists):
@@ -479,19 +578,58 @@ def table_anova(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) 
     rows[0][5] = fmt_p_display(p)
     rows[0][6] = fmt_r(eta2)
     lev_note = (
-        f"Levene testi: F({k-1}, {sum(len(g) for g in group_lists)-k}) = {fmt_num(lev_f)}; p = {fmt_p(lev_p)}."
+        f"Levene testi: F({k-1}, {n_denom}) = {fmt_num(lev_f)}; p = {fmt_p(lev_p)}."
     )
+    if levene_violated:
+        lev_note += " Varyans homojenliği sağlanmadığından Welch ANOVA uygulanmıştır."
     labels = _comparison_labels(cv, sv)
     groups_meta = _groups_from_lists(groups.index, group_lists)
-    no, title = tc.next(build_group_comparison_title(cv, sv, "Tek Yönlü ANOVA"))
+    no, title = tc.next(build_group_comparison_title(cv, sv, test_label))
     return make_result(
         "anova", no, title,
         ["Grup", "n", "x̄ ± SS", "Alt–Üst", "F", "p", "η²"],
-        rows, f"Not. {lev_note} Post-hoc: Tukey HSD (anlamlıysa). ** p < .01",
+        rows, f"Not. {lev_note} {posthoc_note} ** p < .01",
         f=round(float(f), 3), p=round(float(p), 3), eta_squared=round(eta2, 3),
         eta_interp=eta_interpretation(eta2), significant=bool(p < 0.05),
-        df1=df1, df2=df2, groups=groups_meta, **labels,
+        df1=round(float(df1), 3) if welch_anova else int(df1),
+        df2=round(float(df2), 3) if welch_anova else int(df2),
+        levene_f=round(float(lev_f), 3), levene_p=round(float(lev_p), 3),
+        levene_violated=levene_violated,
+        welch_anova=welch_anova, posthoc_type=posthoc_type,
+        groups=groups_meta, **labels,
     )
+
+def table_games_howell(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) -> Optional[dict]:
+    groups = df.groupby(cv.name)[sv.name].apply(lambda x: pd.to_numeric(x, errors="coerce").dropna().tolist())
+    group_lists = [list(g) for g in groups]
+    names = [format_category_value(x) for x in groups.index]
+    if len(group_lists) < 2:
+        return None
+    rows = []
+    significant_pairs = []
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            p_val, mean_diff = games_howell_pair(group_lists[i], group_lists[j])
+            rows.append([
+                names[i], names[j], fmt_num(mean_diff), "",
+                fmt_p_display(p_val), "",
+            ])
+            if p_val < 0.05:
+                significant_pairs.append({
+                    "group_i": names[i], "group_j": names[j],
+                    "p": round(p_val, 3), "mean_diff": round(mean_diff, 3),
+                })
+    if not rows:
+        return None
+    labels = _comparison_labels(cv, sv)
+    no, title = tc.next(build_measure_analysis_title(sv, "Post-Hoc Games-Howell Çoklu Karşılaştırması"))
+    return make_result(
+        "games_howell", no, title,
+        ["(I) Grup", "(J) Grup", "Ort. Fark (I–J)", "Std. Hata", "p", "95% GA (Alt–Üst)"],
+        rows, "Not. * p < .05. Eşit varyans varsayılmayan gruplar için Games-Howell testi.",
+        significant_pairs=significant_pairs, **labels,
+    )
+
 
 def table_tukey(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable) -> Optional[dict]:
     groups = df.groupby(cv.name)[sv.name].apply(lambda x: pd.to_numeric(x, errors="coerce").dropna().tolist())
@@ -536,6 +674,9 @@ def table_kruskal(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable
     groups = df.groupby(cv.name)[sv.name].apply(lambda x: pd.to_numeric(x, errors="coerce").dropna().tolist())
     group_lists = [g for g in groups]
     h, p = kruskal(*group_lists)
+    n_total = sum(len(g) for g in group_lists)
+    df_h = len(group_lists) - 1
+    eps2 = kruskal_epsilon_squared(float(h), df_h + 1, n_total)
     rows = []
     for name, g in zip(groups.index, group_lists):
         rows.append([format_category_value(name), str(len(g)), fmt_num(np.median(g))])
@@ -551,6 +692,8 @@ def table_kruskal(tc: TableCounter, df: pd.DataFrame, cv: Variable, sv: Variable
         rows + [["H", fmt_num(h), fmt_p_display(p)]],
         note,
         H=round(float(h), 3), p=round(float(p), 3), significant=bool(p < 0.05),
+        df=df_h, n_total=n_total,
+        epsilon_squared=round(eps2, 3),
         groups=groups_meta, **labels,
     )
 
@@ -690,6 +833,8 @@ def table_regression(tc: TableCounter, df: pd.DataFrame, v1: Variable, v2: Varia
     y = pd.to_numeric(df[v2.name], errors="coerce").dropna()
     common = x.index.intersection(y.index)
     slope, intercept, r, p, se = linregress(x[common], y[common])
+    n = len(common)
+    t_stat = float(slope / se) if se else 0.0
     no, title = tc.next(f"{v1.label} → {v2.label} Basit Doğrusal Regresyon")
     rows = [
         ["β (eğim)", fmt_num(slope), "SE", fmt_num(se)],
@@ -701,8 +846,9 @@ def table_regression(tc: TableCounter, df: pd.DataFrame, v1: Variable, v2: Varia
         ["Parametre", "Değer", "Parametre", "Değer"],
         rows, "Not. * p < .05.",
         slope=round(float(slope), 3), intercept=round(float(intercept), 3),
+        beta=round(float(slope), 3), t=round(t_stat, 3),
         r_squared=round(float(r ** 2), 3), p=round(float(p), 3), se=round(float(se), 3),
-        significant=bool(p < 0.05), predictor=v1.label, outcome=v2.label,
+        n=n, significant=bool(p < 0.05), predictor=v1.label, outcome=v2.label,
     )
 
 def cronbach_analysis(df: pd.DataFrame, columns: List[str], table_no: Optional[int] = None) -> Optional[dict]:
@@ -717,13 +863,15 @@ def cronbach_analysis(df: pd.DataFrame, columns: List[str], table_no: Optional[i
     alpha = float((k / (k - 1)) * (1 - item_var / total_var))
 
     if alpha >= 0.90:
-        interp = "Yüksek güvenilirlik"
+        interp = "Mükemmel"
+    elif alpha >= 0.80:
+        interp = "Çok İyi"
     elif alpha >= 0.70:
-        interp = "İyi güvenilirlik"
+        interp = "İyi"
     elif alpha >= 0.60:
-        interp = "Kabul edilebilir"
+        interp = "Kabul Edilebilir"
     else:
-        interp = "Düşük güvenilirlik"
+        interp = "Düşük"
 
     if table_no is None:
         tc = TableCounter()
@@ -772,7 +920,8 @@ def paired_ttest(df: pd.DataFrame, col1: str, col2: str, label1: Optional[str] =
         mean_diff=round(float(np.mean(diff)), 2),
         sd_diff=round(float(np.std(diff, ddof=1)), 2),
         t=round(float(t), 3), p=round(float(p), 3),
-        cohens_d=round(d, 3), significant=bool(p < 0.05),
+        cohens_d=round(d, 3), cohens_d_interp=cohens_d_interpretation(d),
+        df=n - 1, significant=bool(p < 0.05),
         shapiro_p=round(float(shapiro_p), 3),
     )
 
@@ -836,6 +985,8 @@ def table_multiple_regression(
 
     y_sd = float(y.std(ddof=1)) if float(y.std(ddof=1)) > 0 else 1.0
     vif_warn = False
+    max_vif = 0.0
+    coef_rows = []
     rows = []
     const_b = float(model.params["const"])
     const_se = float(model.bse["const"])
@@ -854,8 +1005,18 @@ def table_multiple_regression(
         x_sd = float(sub[pred.name].std(ddof=1))
         beta_std = coef * (x_sd / y_sd) if x_sd > 0 else 0.0
         vif = float(variance_inflation_factor(x_raw.values, i))
+        max_vif = max(max_vif, vif)
         if vif > 10:
             vif_warn = True
+        coef_rows.append({
+            "label": pred.label,
+            "B": round(coef, 3),
+            "beta": round(beta_std, 3),
+            "t": round(t_val, 3),
+            "p": round(p_val, 3),
+            "vif": round(vif, 2),
+            "significant": bool(p_val < 0.05),
+        })
         rows.append([
             pred.label, fmt_num(coef), fmt_num(se), fmt_r(beta_std),
             fmt_num(t_val), fmt_p_display(p_val), fmt_num(vif, 2),
@@ -884,7 +1045,9 @@ def table_multiple_regression(
         rows, note,
         n=len(sub), r_squared=round(r2, 3), adj_r_squared=round(adj_r2, 3),
         f=round(f_stat, 3), p=round(f_p, 3), significant=bool(f_p < 0.05),
+        df1=df1, df2=df2,
         outcome=outcome.label, predictors=[p.label for p in predictors],
+        coefficients=coef_rows, max_vif=round(max_vif, 2),
         vif_warning=vif_warn,
     )
 
@@ -1230,9 +1393,12 @@ def run_analyze(
                         anova_res = table_anova(tc, df, cv, sv)
                         results.append(anova_res)
                         if anova_res.get("significant"):
-                            tukey = table_tukey(tc, df, cv, sv)
-                            if tukey:
-                                results.append(tukey)
+                            if anova_res.get("levene_violated"):
+                                posthoc = table_games_howell(tc, df, cv, sv)
+                            else:
+                                posthoc = table_tukey(tc, df, cv, sv)
+                            if posthoc:
+                                results.append(posthoc)
                     else:
                         kruskal_res = table_kruskal(tc, df, cv, sv)
                         results.append(kruskal_res)

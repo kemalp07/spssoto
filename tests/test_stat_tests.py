@@ -16,6 +16,7 @@ from stat_tests import (
     table_ttest,
     table_anova,
     table_tukey,
+    table_games_howell,
     table_mann_whitney,
     table_kruskal,
     table_dunn,
@@ -24,6 +25,8 @@ from stat_tests import (
     cronbach_analysis,
     table_multiple_regression,
     mann_whitney_z,
+    games_howell_pair,
+    kruskal_epsilon_squared,
 )
 
 
@@ -56,11 +59,69 @@ def test_anova_and_tukey(sample_df, cat_cv3, cont_sv):
 
     tc = TableCounter()
     anova = table_anova(tc, sample_df, cat_cv3, cont_sv)
-    assert anova["significant"] == (p_anova < 0.05)
+    if anova.get("welch_anova"):
+        from statsmodels.stats.oneway import anova_oneway
+        welch = anova_oneway(groups, use_var="unequal")
+        assert anova["significant"] == (float(welch.pvalue) < 0.05)
+    else:
+        assert anova["significant"] == (p_anova < 0.05)
     if anova["significant"]:
-        tukey = table_tukey(tc, sample_df, cat_cv3, cont_sv)
-        assert tukey is not None
-        assert tukey["type"] == "tukey"
+        if anova.get("levene_violated"):
+            posthoc = table_games_howell(tc, sample_df, cat_cv3, cont_sv)
+            assert posthoc is not None
+            assert posthoc["type"] == "games_howell"
+        else:
+            tukey = table_tukey(tc, sample_df, cat_cv3, cont_sv)
+            assert tukey is not None
+            assert tukey["type"] == "tukey"
+
+
+def test_welch_anova_when_levene_violated():
+    import pandas as pd
+    from schemas import Variable
+    from statsmodels.stats.oneway import anova_oneway
+
+    df = pd.DataFrame({
+        "grp": ["A"] * 12 + ["B"] * 12 + ["C"] * 12,
+        "score": (
+            list(np.random.default_rng(0).normal(10, 1, 12))
+            + list(np.random.default_rng(1).normal(12, 6, 12))
+            + list(np.random.default_rng(2).normal(11, 1, 12))
+        ),
+    })
+    cv = Variable(name="grp", label="Grup", type="categorical", role="grouping")
+    sv = Variable(name="score", label="Puan", type="continuous", role="outcome")
+    groups = [g["score"].tolist() for _, g in df.groupby("grp")]
+    _, lev_p = levene(*groups)
+    assert lev_p < 0.05
+
+    tc = TableCounter()
+    anova = table_anova(tc, df, cv, sv)
+    assert anova.get("welch_anova") is True
+    assert anova.get("posthoc_type") == "games_howell"
+    welch = anova_oneway(groups, use_var="unequal")
+    assert anova["f"] == pytest.approx(float(welch.statistic), rel=1e-3)
+    assert float(anova["p"]) == pytest.approx(float(welch.pvalue), abs=0.001)
+
+
+def test_games_howell_pairwise():
+    g1 = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    g2 = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+    p, diff = games_howell_pair(g1, g2)
+    assert 0 <= p <= 1
+    assert diff == pytest.approx(np.mean(g1) - np.mean(g2), abs=0.01)
+
+
+def test_kruskal_epsilon_squared():
+    eps = kruskal_epsilon_squared(12.5, 3, 30)
+    assert eps == pytest.approx((12.5 - 3 + 1) / (30 - 3), rel=1e-3)
+
+
+def test_kruskal_includes_epsilon_squared(sample_df, cat_cv3, cont_sv):
+    tc = TableCounter()
+    kw = table_kruskal(tc, sample_df, cat_cv3, cont_sv)
+    assert "epsilon_squared" in kw
+    assert kw["epsilon_squared"] >= 0
 
 
 def test_mann_whitney_r(sample_df, cat_cv, cont_sv_b):

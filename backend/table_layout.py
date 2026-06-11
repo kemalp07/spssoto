@@ -49,6 +49,7 @@ _TYPE_SORT_ORDER: Dict[str, int] = {
     "anova": 70,
     "kruskal_wallis": 70,
     "tukey": 80,
+    "games_howell": 80,
     "dunn": 80,
     "regression": 90,
     "multiple_regression": 90,

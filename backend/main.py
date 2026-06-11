@@ -102,7 +102,14 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {"status": "ok", "app": "StatAI"}
+    return {
+        "status": "ok",
+        "app": "StatAI",
+        "features": {
+            "quality_check": True,
+            "bulgu_summary": True,
+        },
+    }
 
 
 @app.post("/convert-spss-table")
@@ -497,6 +504,7 @@ async def ai_bulgu(request: Request, req: BulguRequest):
         req.scale_info,
         req.pdf_context,
         force_llm=bool(req.force_llm),
+        all_results=req.all_results,
     )
     return {"bulgu": text, "source": source, "meta": meta}
 
@@ -504,10 +512,14 @@ async def ai_bulgu(request: Request, req: BulguRequest):
 @app.post("/ai/bulgu-summary")
 @limiter.limit("10/minute")
 async def ai_bulgu_summary(request: Request, req: BulguSummaryRequest):
+    if req.results:
+        summaries = compact_summaries_from_results(req.results, req.bulgular)
+    else:
+        summaries = req.summaries or []
     text, meta = generate_bulgu_summary(
-        req.summaries, req.research_topic, req.hypotheses,
+        summaries, req.research_topic, req.hypotheses,
     )
-    return {"summary": text, "meta": meta}
+    return {"summary": text, "meta": meta, "summaries": summaries}
 
 
 @app.post("/quality-check")

@@ -140,7 +140,7 @@ def test_tukey_uses_significant_pairs_without_stars():
         ],
     }
     text = generate_bulgu_from_template(result)
-    assert "A–B" in text
+    assert "A grubunun puanları B grubundan daha yüksektir" in text
     assert "p = .003" in text
     assert "p = <" not in text
     assert "*" not in text

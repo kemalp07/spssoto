@@ -1,0 +1,129 @@
+{
+  "meta": {
+    "title": "Türkiye Sağlık ve Sosyal Bilimler Tezlerinde APA 7 Bulgu Raporlama",
+    "version": "2.0",
+    "language": "tr"
+  },
+  "effect_sizes": {
+    "cohens_d": {
+      "labels": [
+        {"min": 0.80, "label": "büyük"},
+        {"min": 0.50, "label": "orta"},
+        {"min": 0.20, "label": "küçük"},
+        {"min": 0.0, "label": "önemsiz"}
+      ]
+    },
+    "rank_r": {
+      "labels": [
+        {"min": 0.50, "label": "büyük"},
+        {"min": 0.30, "label": "orta"},
+        {"min": 0.10, "label": "küçük"},
+        {"min": 0.0, "label": "önemsiz"}
+      ]
+    },
+    "correlation": {
+      "labels": [
+        {"min": 0.50, "label": "güçlü"},
+        {"min": 0.30, "label": "orta düzeyde"},
+        {"min": 0.10, "label": "zayıf"},
+        {"min": 0.0, "label": "ihmal edilebilir düzeyde"}
+      ]
+    },
+    "eta_squared": {
+      "labels": [
+        {"min": 0.14, "label": "büyük"},
+        {"min": 0.06, "label": "orta"},
+        {"min": 0.01, "label": "küçük"},
+        {"min": 0.0, "label": "önemsiz"}
+      ]
+    },
+    "cramers_v": {
+      "labels": [
+        {"min": 0.50, "label": "güçlü düzeyde"},
+        {"min": 0.30, "label": "orta düzeyde"},
+        {"min": 0.10, "label": "zayıf düzeyde"},
+        {"min": 0.0, "label": "ihmal edilebilir düzeyde"}
+      ]
+    },
+    "epsilon_squared": {
+      "labels": [
+        {"min": 0.14, "label": "büyük"},
+        {"min": 0.06, "label": "orta"},
+        {"min": 0.01, "label": "küçük"},
+        {"min": 0.0, "label": "önemsiz"}
+      ]
+    }
+  },
+  "cronbach": {
+    "tiers": [
+      {"min": 0.90, "label": "Mükemmel"},
+      {"min": 0.80, "label": "Çok İyi"},
+      {"min": 0.70, "label": "İyi"},
+      {"min": 0.60, "label": "Kabul Edilebilir"},
+      {"min": 0.0, "label": "Düşük"}
+    ],
+    "warning_below_70": "Güvenilirlik katsayısı kabul edilebilir sınırın (α ≥ .70) altındadır; madde analizi veya ölçek revizyonu değerlendirilebilir.",
+    "warning_below_60": "Cronbach α değeri düşük düzeydedir; ölçek maddelerinin iç tutarlılığı sınırlı olabilir ve yorum dikkatle yapılmalıdır."
+  },
+  "vif": {
+    "tiers": [
+      {"min": 10.0, "label": "ciddi çoklu doğrusallık sorunu"},
+      {"min": 5.0, "label": "orta düzeyde çoklu doğrusallık riski"},
+      {"min": 0.0, "label": "çoklu doğrusallık sorunu bulunmamaktadır"}
+    ],
+    "warning_high": "VIF ≥ 10 olan yordayıcı(lar) bulunduğundan çoklu bağlantı riski vardır; yorum dikkatle yapılmalıdır.",
+    "ok_range": "Değişkenlerin VIF değerleri kabul edilebilir aralıktadır; çoklu doğrusallık sorunu bulunmamaktadır."
+  },
+  "posthoc": {
+    "tukey_no_pairs": "Tukey HSD post-hoc analizinde, çoklu karşılaştırma düzeltmeleri ve test güçleri arasındaki farklılıklar nedeniyle gruplar arası ikili karşılaştırmalarda anlamlı fark saptanmamıştır.",
+    "games_howell_no_pairs": "Games-Howell post-hoc analizinde gruplar arası ikili karşılaştırmalarda anlamlı fark saptanmamıştır.",
+    "dunn_no_pairs": "Dunn post-hoc analizinde, Bonferroni düzeltmesi sonrasında ikili karşılaştırmalarda anlamlı fark saptanmamıştır."
+  },
+  "decisions": {
+    "welch_ttest": "Levene testi varyans homojenliği varsayımının karşılanmadığını göstermiştir; bu nedenle eşit varyans varsayılmayan Welch t-testi sonuçları raporlanmıştır.",
+    "standard_ttest": "Levene testi varyansların homojen olduğunu göstermiştir; standart bağımsız örneklem t-testi uygulanmıştır.",
+    "welch_anova": "Levene testi varyans homojenliği varsayımının karşılanmadığını göstermiştir; bu nedenle Welch ANOVA ve Games-Howell post-hoc testi uygulanmıştır.",
+    "levene_anova_violated": "Levene testi varyans homojenliği varsayımının karşılanmadığını göstermiştir; Welch ANOVA ve Games-Howell post-hoc testi uygulanmıştır.",
+    "levene_anova_ok": "Levene testi varyansların homojen olduğunu göstermiştir; standart ANOVA ve Tukey HSD post-hoc uygulanmıştır.",
+    "normality_nonparametric": "Normallik varsayımı karşılanmadığı için non-parametrik test yöntemleri tercih edilmiştir.",
+    "normality_parametric": "Normallik varsayımının sağlanması nedeniyle parametrik testler uygulanmıştır.",
+    "normality_mixed": "Normallik testi anlamlı sapma göstermiş olsa da çarpıklık ve basıklık değerlerinin ±1,5–2,0 sınırları içinde kalması nedeniyle parametrik testler uygulanmıştır.",
+    "shapiro_used": "Örneklem büyüklüğü n < 50 olduğundan Shapiro-Wilk testi uygulanmıştır.",
+    "ks_used": "Örneklem büyüklüğü n ≥ 50 olduğundan Kolmogorov-Smirnov testi uygulanmıştır.",
+    "fisher_used": "Beklenen frekans varsayımı karşılanmadığından Fisher kesin olasılık testi uygulanmıştır.",
+    "chi_square_used": "Pearson ki-kare testi uygulanmıştır."
+  },
+  "label_cleanup": [
+    {"pattern": "Puanları Puanları", "replace": "Puanları"},
+    {"pattern": "puanları puanları", "replace": "puanları"},
+    {"pattern": "Puanı Puan", "replace": "Puanı"},
+    {"pattern": "Toplam Puanı Puanları", "replace": "Toplam Puanı"},
+    {"pattern": "puan ortalaması", "replace": "ortalama puanı"}
+  ],
+  "summary": {
+    "hypothesis_supported": "{id} hipotezi bulgularla desteklenmiştir.",
+    "hypothesis_not_supported": "{id} hipotezi bulgularla desteklenmemiştir.",
+    "no_repeat_tables": "Genel değerlendirme tablo istatistiklerini tekrar etmemeli; temel sonuçları ve hipotez desteğini özetlemelidir."
+  },
+  "qc_rules": {
+    "nonparametric_uses_mean": "Non-parametrik test bulgusunda ortalama/SS yerine medyan/IQR kullanılmalıdır.",
+    "parametric_uses_median_only": "Parametrik grup testi bulgusunda yalnızca medyan raporlanmış; ortalama/SS tercih edilmelidir.",
+    "anova_levene_tukey": "Varyans homojenliği ihlal edildiği halde Tukey HSD kullanımı yöntemsel olarak tutarsız olabilir.",
+    "sig_without_posthoc_text": "Anlamlı ANOVA/Kruskal sonucu için post-hoc yorumu eksik.",
+    "chi_sig_without_effect": "Anlamlı ki-kare sonucunda etki büyüklüğü (φ/Cramer's V) belirtilmelidir."
+  },
+  "llm_compact_rules": [
+    "Geçmiş zaman (-miştir). Tartışma yazma. p < .05 anlamlı; p ≥ .05 anlamsız — asla tersini yazma.",
+    "Grup karşılaştırmalarında hangi grubun daha yüksek olduğunu belirt; tablo yönüyle çelişme.",
+    "Non-parametrik testlerde medyan/IQR kullan; ortalama/SS kullanma.",
+    "Parametrik grup testlerinde ortalama ± SS kullan.",
+    "t-test: t(df), p, Cohen's d ve etki düzeyi. Mann-Whitney: U, z, p, r = |z|/√N.",
+    "ANOVA: F(df1, df2), p, η² ve etki düzeyi; Levene ihlalinde Welch ANOVA + Games-Howell; aksi halde Tukey post-hoc entegre et.",
+    "Kruskal-Wallis: H(df, N), p, ε² ve etki düzeyi; anlamlıysa Dunn post-hoc (Bonferroni p) entegre et.",
+    "Ki-kare: χ²(df, N), p, φ veya Cramer's V; anlamlıysa baskın kategori yüzdesini belirt. Fisher: OR ve p.",
+    "Korelasyon: yön + güç + r² açıklanan varyans.",
+    "Basit regresyon: R², β, t, p. Çoklu regresyon: model F, R², düzeltilmiş R², anlamlı β'lar, VIF.",
+    "Cronbach α kademe yorumu; düşük α'da uyarı.",
+    "Ham SPSS kodları kullanma; etiket tekrarı yapma."
+  ]
+}

@@ -5,12 +5,12 @@ import json
 import re
 from typing import Dict, List, Optional, Tuple
 
-from bulgu_templates import _higher_group_name
 from formatting import fmt_p
 from llm_router import _parse_json_object, claude_decide, has_claude, merge_meta
+from yorum_motoru import highest_group_name, posthoc_type_for, validate_bulgu_text
 
 PARAMETRIC_TYPES = frozenset({
-    "ttest", "anova", "tukey", "paired_ttest", "regression", "correlation",
+    "ttest", "anova", "tukey", "games_howell", "paired_ttest", "regression", "correlation",
 })
 NON_PARAMETRIC_TYPES = frozenset({
     "mann_whitney", "kruskal_wallis", "kruskal", "dunn", "paired_wilcoxon",
@@ -104,17 +104,14 @@ def _extract_claimed_higher(bulgu: str, result: dict) -> Optional[str]:
     if result.get("significant"):
         groups = result.get("groups") or []
         key = "median" if result.get("type") in NON_PARAMETRIC_TYPES else "mean"
-        return _higher_group_name(groups, key)
+        return highest_group_name(groups, key)
     return None
 
 
 def _posthoc_present(result: dict, all_results: List[dict]) -> bool:
     rtype = str(result.get("type") or "")
-    if rtype == "anova":
-        want = "tukey"
-    elif rtype in ("kruskal_wallis", "kruskal"):
-        want = "dunn"
-    else:
+    want = posthoc_type_for(result)
+    if not want:
         return True
     g_name = result.get("grouping_name")
     o_name = result.get("outcome_name")
@@ -217,10 +214,13 @@ def run_python_checks(
     intro: str,
     hypotheses: List[dict],
     n_total: Optional[int] = None,
+    results: Optional[List[dict]] = None,
+    bulgular: Optional[Dict[str, str]] = None,
 ) -> List[dict]:
     """Deterministik denetim kuralları."""
     findings: List[dict] = []
     grouping_ns: Dict[str, List[Tuple[int, int]]] = {}
+    bulgular = bulgular or {}
 
     for row in compact_rows:
         table_no = row.get("table_no")
@@ -312,6 +312,21 @@ def run_python_checks(
             "intro_nonparametric_mismatch",
         ))
 
+    if results:
+        for idx, result in enumerate(results):
+            if not isinstance(result, dict):
+                continue
+            bulgu = bulgular.get(str(idx)) or bulgular.get(idx) or ""
+            if not bulgu:
+                continue
+            for issue in validate_bulgu_text(result, bulgu):
+                findings.append(_finding(
+                    issue.get("severity", "uyari"),
+                    issue.get("message", ""),
+                    result.get("table_number"),
+                    issue.get("rule", "bulgu_validation"),
+                ))
+
     return findings
 
 
@@ -390,7 +405,12 @@ def run_quality_check(
     }
     compact_rows = build_compact_input(results, bulgular)
     python_findings = run_python_checks(
-        compact_rows, intro, hypotheses or [], n_total,
+        compact_rows,
+        intro,
+        hypotheses or [],
+        n_total,
+        results=results,
+        bulgular=bulgular,
     )
 
     claude_out, claude_meta = run_claude_review(

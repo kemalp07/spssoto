@@ -78,10 +78,13 @@ class BulguRequest(BaseModel):
     scale_info: Optional[dict] = None
     pdf_context: Optional[str] = None
     force_llm: Optional[bool] = False
+    all_results: Optional[List[Any]] = None
 
 
 class BulguSummaryRequest(BaseModel):
-    summaries: List[dict]
+    summaries: Optional[List[dict]] = None
+    results: Optional[List[Any]] = None
+    bulgular: Optional[Dict[str, str]] = None
     research_topic: Optional[str] = None
     hypotheses: Optional[List[dict]] = None
 
