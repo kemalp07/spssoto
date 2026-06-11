@@ -31,9 +31,12 @@ from schemas import (
     ScaleMatchRequest,
     SpssTableRequest,
     Variable,
+    LayoutResultsRequest,
     WordExportRequest,
 )
 from utils import sanitize
+from layout_config import LayoutConfig
+from table_layout import normalize_table_layout
 from data_cleaning import (
     normalize_variable_labels,
     apply_scale_info_to_variables,
@@ -122,7 +125,7 @@ async def plan_tests_endpoint(request: Request, req: PlanTestsRequest):
     df = pd.DataFrame(rows)
     variables = normalize_variable_labels(req.variables)
     df = prepare_analysis_df(df, variables, req.missing_codes)
-    recommended, excluded, meta = await plan_tests(
+    recommended, excluded, catalog, meta = await plan_tests(
         df,
         variables,
         req.research_aim,
@@ -131,6 +134,7 @@ async def plan_tests_endpoint(request: Request, req: PlanTestsRequest):
     return sanitize({
         "recommended": recommended,
         "excluded": excluded,
+        "catalog": catalog,
         "meta": meta,
     })
 
@@ -152,6 +156,14 @@ async def analyze(req: AnalysisRequest):
         req.missing_codes,
     )
     return sanitize({"results": results, "missing_data": missing_data, "meta": meta})
+
+
+@app.post("/layout-results")
+async def layout_results(req: LayoutResultsRequest):
+    cfg = LayoutConfig.from_optional(
+        req.layout_config.model_dump() if req.layout_config else None,
+    )
+    return sanitize({"results": normalize_table_layout(req.results, cfg)})
 
 
 @app.post("/analyze/cronbach")
@@ -338,7 +350,7 @@ async def analyze_cronbach_batch(req: CronbachBatchRequest):
         except Exception:
             continue
 
-    return sanitize({"results": results})
+    return sanitize({"results": normalize_table_layout(results)})
 
 
 @app.post("/analyze/paired")
@@ -422,7 +434,7 @@ async def ai_bulgu_summary(request: Request, req: BulguSummaryRequest):
 async def export_word(req: WordExportRequest):
     try:
         doc_bytes = build_word_document(
-            req.results,
+            normalize_table_layout(req.results),
             req.bulgular,
             req.intro or "",
             req.label_map,

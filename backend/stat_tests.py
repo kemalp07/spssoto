@@ -37,7 +37,9 @@ def cohens_d_interpretation(d: float) -> str:
 def _comparison_labels(cv: Variable, sv: Variable) -> Dict[str, str]:
     return {
         "grouping_label": academic_short_label(cv),
+        "grouping_name": cv.name,
         "outcome_label": academic_short_label(sv),
+        "outcome_name": sv.name,
     }
 
 
@@ -244,6 +246,7 @@ def table_frequency(
     series: pd.Series,
     label: str,
     value_labels: Optional[Dict[str, str]] = None,
+    is_demographic: bool = False,
 ) -> dict:
     total_n = int(len(series))
     valid = series.dropna()
@@ -289,6 +292,8 @@ def table_frequency(
         ["Değişken", "Kategori", "n", "%"],
         rows, note,
         variable=label, n=valid_n,
+        is_demographic=is_demographic,
+        frequency_role="grouping" if is_demographic else "outcome",
     )
 
 def table_chi_square(
@@ -726,13 +731,17 @@ def cronbach_analysis(df: pd.DataFrame, columns: List[str], table_no: Optional[i
     else:
         title = f"Tablo {table_no}. Ölçek Güvenilirlik Analizi (Cronbach α)"
 
+    from table_layout import scale_label_from_items
+
+    scale_label = scale_label_from_items(columns)
     return make_result(
         "cronbach", table_no, title,
-        ["Madde Sayısı", "Geçerli n", "Cronbach α", "Değerlendirme"],
-        [[k, len(items_df), f"{alpha:.3f}", interp]],
+        ["Ölçek", "Madde Sayısı", "Geçerli n", "Cronbach α", "Değerlendirme"],
+        [[scale_label, k, len(items_df), f"{alpha:.3f}", interp]],
         "Not. α = Cronbach alfa iç tutarlılık katsayısı. Kabul edilebilir sınır: α ≥ .70.",
         items=columns, n_items=k, n=int(len(items_df)),
         alpha=round(alpha, 3), interpretation=interp,
+        scale_label=scale_label,
     )
 
 def paired_ttest(df: pd.DataFrame, col1: str, col2: str, label1: Optional[str] = None, label2: Optional[str] = None) -> dict:
@@ -1154,7 +1163,10 @@ def run_analyze(
             continue
         if v.name in df.columns:
             try:
-                results.append(table_frequency(tc, df[v.name], v.label, v.value_labels))
+                results.append(table_frequency(
+                    tc, df[v.name], v.label, v.value_labels,
+                    is_demographic=(v in grouping_cat),
+                ))
             except Exception as e:
                 record_error("Frekans tablosu", v.label or v.name, e)
 
@@ -1276,5 +1288,8 @@ def run_analyze(
         "errors": errors,
     }
 
+    from table_layout import normalize_table_layout
+
+    results = normalize_table_layout(results)
     return results, meta
 

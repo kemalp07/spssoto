@@ -11,11 +11,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from schemas import Variable
 from test_planner import (
+    TIER_KESIN,
+    TIER_ONERILEN,
+    TIER_ONERILMEYEN,
     apply_deterministic_flags,
     build_candidate_tests,
     build_norm_map,
+    build_test_catalog,
     format_reason,
     make_candidate_id,
+    pick_kesin_core_ids,
+    pick_thesis_core_ids,
     plan_tests,
 )
 
@@ -98,11 +104,17 @@ def test_make_candidate_id():
 
 @pytest.mark.asyncio
 async def test_plan_tests_without_llm(planner_df, planner_vars):
-    recommended, excluded, meta = await plan_tests(
+    recommended, excluded, catalog, meta = await plan_tests(
         planner_df, planner_vars, "NEQ ve cinsiyet ilişkisi", use_ai=False,
     )
     assert recommended
     assert meta["llm_calls"] == 0
+    assert len(catalog) == meta["uygun_count"]
+    assert meta.get("kesin_count", 0) >= 1
+    assert len(recommended) <= meta.get("uygun_count", 999)
+    assert meta["total_candidates"] >= len(catalog)
+    assert meta["rule_excluded_count"] >= 1
+    assert not any(t["test"] == "normality" for t in recommended)
     assert any(c["auto_flag"] != "uygun" for c in excluded) or excluded
 
 
@@ -116,8 +128,48 @@ async def test_plan_tests_llm_mocked(planner_df, planner_vars):
         "test_planner.select_tests_with_llm",
         new=AsyncMock(return_value=(mock_selection, {"llm_calls": 1, "approx_input_tokens": 120, "approx_output_tokens": 40})),
     ):
-        recommended, excluded, meta = await plan_tests(
+        recommended, excluded, catalog, meta = await plan_tests(
             planner_df, planner_vars, "Tanımlayıcı analiz", use_ai=True,
         )
     assert meta["llm_calls"] == 1
     assert any(t["id"] == "descriptive" for t in recommended)
+    assert any(c["tier"] in (TIER_KESIN, TIER_ONERILEN) for c in catalog)
+
+
+def test_no_grouping_by_grouping_chi_square(planner_df, planner_vars):
+    norm_map = build_norm_map(planner_df, planner_vars)
+    candidates = build_candidate_tests(planner_df, planner_vars, norm_map)
+    chi = [c for c in candidates if c["test"] == "chi_square"]
+    assert not any(
+        c["vars"][0] == "cinsiyet" and c["vars"][1] == "bolum"
+        for c in chi
+    )
+
+
+def test_pick_thesis_core_smaller_than_all(planner_df, planner_vars):
+    norm_map = build_norm_map(planner_df, planner_vars)
+    candidates = build_candidate_tests(planner_df, planner_vars, norm_map)
+    flagged = apply_deterministic_flags(planner_df, planner_vars, candidates)
+    uygun = [c for c in flagged if c["auto_flag"] == "uygun"]
+    core = pick_thesis_core_ids(uygun, planner_vars)
+    assert core
+    assert len(core) <= len(uygun)
+
+
+def test_build_test_catalog_tiers(planner_df, planner_vars):
+    norm_map = build_norm_map(planner_df, planner_vars)
+    uygun = [
+        c for c in apply_deterministic_flags(
+            planner_df, planner_vars,
+            build_candidate_tests(planner_df, planner_vars, norm_map),
+        )
+        if c["auto_flag"] == "uygun"
+    ]
+    kesin = set(pick_kesin_core_ids(uygun, planner_vars))
+    selected = {uygun[0]["id"]} | kesin
+    exc = [{"id": uygun[-1]["id"], "reason_code": "amac_disi", "reason": "test"}]
+    catalog = build_test_catalog(uygun, selected, exc, planner_vars)
+    tiers = {c["tier"] for c in catalog}
+    assert TIER_KESIN in tiers
+    assert TIER_ONERILMEYEN in tiers or TIER_ONERILEN in tiers
+    assert len(catalog) == len(uygun)

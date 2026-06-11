@@ -27,7 +27,7 @@ ANTHROPOMETRIC_META: Dict[str, Dict[str, str]] = {
     },
 }
 
-PRIMARY_GROUPING_KEYS = ("bolum", "cinsiyet", "yas")
+PRIMARY_GROUPING_KEYS = ("bolum", "cinsiyet", "yas", "department", "gender", "grup")
 
 DEMO_LABEL_KEYWORDS = re.compile(
     r"\b(yaş|yas|boy|kilo|ağırlık|agirlik|beden|bmi|bki|vki|"
@@ -86,6 +86,9 @@ REASON_CODES = (
     "totoloji",
     "cift_test",
     "dusuk_oncelik",
+    "ikincil_gruplandirma",
+    "turetilmis_tekrar",
+    "tekrarli_demografi",
 )
 
 REASON_TEMPLATES: Dict[str, str] = {
@@ -110,12 +113,29 @@ REASON_TEMPLATES: Dict[str, str] = {
     "dusuk_oncelik": (
         "Araştırma amacına göre düşük öncelikli analiz olarak değerlendirilmiştir."
     ),
+    "ikincil_gruplandirma": (
+        "{var_label} gruplandırıcı olarak tanımlanmış ancak çok sayıda paralel "
+        "karşılaştırma üreteceğinden düşük önceliklidir."
+    ),
+    "turetilmis_tekrar": (
+        "{var_label} sürekli ölçek toplamından türetilmiştir; aynı gruplandırma "
+        "için toplam puan analizi yeterlidir."
+    ),
+    "tekrarli_demografi": (
+        "{var_label} için yaş grubu değişkeni zaten tanımlıdır; ham yaş frekansı "
+        "tekrarlı analiz oluşturur."
+    ),
 }
 
-PLAN_TEST_SYSTEM = """Sen tez istatistik danışmanısın. Araştırma amacına hizmet eden testleri seç, etmeyenleri reason_code ile ele.
+PLAN_TEST_SYSTEM = """Sen tez istatistik danışmanısın. Analiz henüz çalıştırılmadı.
+Sana verilen adayların TÜMÜ önceden kural filtresinden geçmiştir (uygun adaylar). Görevin bunlar arasından araştırma amacına uygun olanları SEÇMEK — hepsini seçme.
+Hedef: uygun adayların yaklaşık yarısını seç (tipik 10–15). Kesin çekirdek backend tarafından ayrı işaretlenir; sen amaçla uygun ek testleri selected'a ekle.
+Tez çekirdeği: tanımlayıcı, cronbach (varsa), demografik frekanslar, ana gruplandırıcı × toplam puanlar, korelasyon, birkaç ki-kare.
+Normallik tablosu listede yoktur (otomatik ayaknot). Türetilmiş grup/risk değişkenleriyle gereksiz çapraz tabloları amac_disi ile ele.
+Listede olmayan test uydurma. Yalnızca verilen id'lerden seç.
 Yalnızca JSON döndür: {"selected":["id",...],"excluded":[{"id":"...","reason_code":"..."},...]}
-reason_code: amac_disi | yetersiz_n | dengesiz_grup | totoloji | cift_test | dusuk_oncelik
-Serbest metin gerekçe yazma. Ham veri veya tablo yok; yalnızca aday listesine bak."""
+reason_code (elenenler için): amac_disi | dusuk_oncelik
+Serbest metin gerekçe yazma."""
 
 BULGU_SUMMARY_SYSTEM = """Sen tez bulgular bölümü editörüsün. Verilen kompakt test özetlerinden 3-5 cümlelik genel değerlendirme paragrafı yaz.
 Geçmiş zaman (-miştir). Madde işareti kullanma. Tartışma yazma. Yalnızca verilen özetlere dayan."""

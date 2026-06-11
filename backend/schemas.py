@@ -59,6 +59,22 @@ class BulguSummaryRequest(BaseModel):
     research_topic: Optional[str] = None
 
 
+class LayoutConfigModel(BaseModel):
+    locale: str = "tr"
+    decimal_separator: str = ","
+    leading_zero: bool = True
+    title_style: str = "tr_classic"
+    merge_demographics: bool = True
+    correlation_lower_triangle: bool = True
+    merge_group_comparisons: bool = True
+    suppress_normality_to_footnote: bool = True
+
+
+class LayoutResultsRequest(BaseModel):
+    results: List[dict]
+    layout_config: Optional[LayoutConfigModel] = None
+
+
 class WordExportRequest(BaseModel):
     results: List[dict]
     bulgular: Optional[Dict[str, str]] = None

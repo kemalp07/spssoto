@@ -10,6 +10,14 @@ from docx import Document
 from fastapi import HTTPException
 from pypdf import PdfReader
 from config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL, BULGU_MODEL
+from data_profile import profile_from_samples, profile_json
+from llm_router import (
+    claude_decide,
+    format_enrichment_block,
+    gemini_enrich_profile,
+    has_claude,
+    merge_meta,
+)
 from schemas import Variable, ColumnLabel
 from formatting import substitute_variable_codes, apply_academic_text_rules
 from constants import (
@@ -835,37 +843,37 @@ Bu değişkenler için istatistiksel analiz planı oluştur."""
 
 
 def run_classify(req: ClassifyRequest) -> dict:
-    if not ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY ortam değişkeni ayarlanmamış")
+    if not has_claude():
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY ayarlanmamış (karar katmanı Claude Haiku)",
+        )
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    col_info = []
-    for col in req.columns:
-        samples = req.samples.get(col, [])
-        label = (req.labels or {}).get(col, "")
-        label_str = f", etiket='{label}'" if label and label != col else ""
-        col_info.append(f"- {col}{label_str}: örnek={samples}")
-
-    topic_part = f"\nAraştırma konusu: {req.research_topic}" if req.research_topic else ""
-    measure_summary = ""
-    if req.variable_measure:
-        measure_lines = []
-        for col in req.columns[:30]:
-            m = req.variable_measure.get(col)
-            if m:
-                measure_lines.append(f"  {col}: SPSS_measure={m}")
-        if measure_lines:
-            measure_summary = "\nSPSS Ölçüm Düzeyleri (öncelikli kullan):\n" + "\n".join(measure_lines)
-
-    user_msg = f"Sütunları sınıflandır:{topic_part}{measure_summary}\n\n" + "\n".join(col_info)
-    msg = client.messages.create(
-        model=ANTHROPIC_MODEL,
-        max_tokens=1500,
-        system=CLASSIFY_SYSTEM,
-        messages=[{"role": "user", "content": user_msg}],
+    profile = profile_from_samples(
+        req.columns,
+        req.samples,
+        req.labels,
+        req.variable_measure,
+    )
+    enrichment, enrich_meta = gemini_enrich_profile(
+        "classify",
+        profile,
+        req.research_topic or "",
     )
 
-    parsed = _parse_llm_json(msg.content[0].text.strip())
+    topic_part = f"\nAraştırma konusu: {req.research_topic}" if req.research_topic else ""
+    user_msg = (
+        f"Sütunları sınıflandır:{topic_part}\n\n"
+        f"Veri profili:\n{profile_json(profile)}"
+        f"{format_enrichment_block(enrichment)}"
+    )
+    try:
+        text, decide_meta = claude_decide(CLASSIFY_SYSTEM, user_msg, max_tokens=1500)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    llm_meta = merge_meta(enrich_meta, decide_meta)
+
+    parsed = _parse_llm_json(text)
     variables = parsed.get("variables", {})
     categorical: List[str] = []
     continuous: List[str] = []
@@ -902,14 +910,19 @@ def run_classify(req: ClassifyRequest) -> dict:
         "continuous": continuous,
         "exclude": exclude,
         "recommendations": recommendations,
+        "llm_meta": llm_meta,
+        "data_profile": profile,
+        "gemini_enrichment": enrichment or None,
     }
 
 
 def run_detect_scales(req: DetectScalesRequest) -> dict:
-    if not ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY ayarlanmamış")
+    if not has_claude():
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY ayarlanmamış (karar katmanı Claude Haiku)",
+        )
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     item_pattern = re.compile(r"^[a-zA-Z]+_\d+(_ters|_T)?$", re.IGNORECASE)
     item_cols = [c for c in req.columns if item_pattern.match(c)]
 
@@ -926,10 +939,12 @@ def run_detect_scales(req: DetectScalesRequest) -> dict:
     if not valid_groups:
         return {"scales": []}
 
-    group_info = "\n".join([
-        f"- {prefix}: {', '.join(sorted(cols))}"
-        for prefix, cols in valid_groups.items()
-    ])
+    profile = profile_from_samples(
+        req.columns,
+        req.samples or {},
+        variable_measure=req.variable_measure,
+    )
+    enrichment, enrich_meta = gemini_enrich_profile("detect_scales", profile)
 
     detect_system = """Sen akademik ölçek analizi uzmanısın. Verilen madde gruplarını ölçeklere dönüştür.
 
@@ -948,22 +963,22 @@ SADECE JSON döndür:
   ]
 }"""
 
-    msg = client.messages.create(
-        model=ANTHROPIC_MODEL,
-        max_tokens=800,
-        system=detect_system,
-        messages=[{
-            "role": "user",
-            "content": f"Şu madde gruplarını ölçeklere dönüştür:\n{group_info}",
-        }],
+    user_msg = (
+        f"Madde prefix grupları:\n{json.dumps(valid_groups, ensure_ascii=False)}\n\n"
+        f"Veri profili:\n{profile_json(profile)}"
+        f"{format_enrichment_block(enrichment)}"
     )
-
-    text = msg.content[0].text.strip()
+    try:
+        text, decide_meta = claude_decide(detect_system, user_msg, max_tokens=800)
+    except RuntimeError:
+        text = ""
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         try:
             result = json.loads(match.group())
             if result.get("scales"):
+                result["llm_meta"] = merge_meta(enrich_meta, decide_meta)
+                result["gemini_enrichment"] = enrichment or None
                 return result
         except Exception:
             pass

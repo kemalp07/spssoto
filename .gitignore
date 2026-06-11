@@ -4,3 +4,10 @@ __pycache__/
 .venv/
 venv/
 *.docx
+testdata/*.sav
+testdata/*.docx
+testdata/*.pdf
+testdata/*.xlsx
+testdata/*.csv
+!testdata/README.md
+!testdata/.gitkeep

@@ -129,6 +129,27 @@ def _bulgu_chi_square(result: dict) -> Optional[str]:
 
 
 def _bulgu_ttest(result: dict) -> Optional[str]:
+    if result.get("combined") and result.get("comparison_summaries"):
+        grouping = result.get("grouping_label") or "gruplandırıcı değişken"
+        parts = []
+        for item in result["comparison_summaries"]:
+            outcome = item.get("outcome_label") or "değişken"
+            t_val, p_val, d_val = item.get("t"), item.get("p"), item.get("cohens_d")
+            df_t = item.get("df")
+            sig = item.get("significant", False)
+            base = _sig_phrase(
+                sig,
+                "anlamlı fark saptanmıştır",
+                "anlamlı fark saptanmamıştır",
+            )
+            df_part = f"({df_t})" if df_t else ""
+            parts.append(
+                f"{outcome} için {base} [t{df_part} = {t_val}, {_p_txt(p_val)}; d = {d_val}]"
+            )
+        return (
+            f"Katılımcıların {grouping} gruplarına göre bağımsız örneklem t-testi "
+            f"sonuçları: " + "; ".join(parts) + "."
+        )
     groups = result.get("groups") or []
     if len(groups) < 2:
         return None
@@ -154,6 +175,26 @@ def _bulgu_ttest(result: dict) -> Optional[str]:
 
 
 def _bulgu_mann_whitney(result: dict) -> Optional[str]:
+    if result.get("combined") and result.get("comparison_summaries"):
+        grouping = result.get("grouping_label") or "gruplandırıcı değişken"
+        parts = []
+        for item in result["comparison_summaries"]:
+            outcome = item.get("outcome_label") or "değişken"
+            u, z, p = item.get("U"), item.get("z"), item.get("p")
+            r_val = item.get("r")
+            sig = item.get("significant", False)
+            base = _sig_phrase(
+                sig,
+                "anlamlı fark saptanmıştır",
+                "anlamlı fark saptanmamıştır",
+            )
+            parts.append(
+                f"{outcome} için {base} (U = {u}, z = {z}, {_p_txt(p)}, r = {r_val})"
+            )
+        return (
+            f"Katılımcıların {grouping} gruplarına göre Mann-Whitney U testi "
+            f"sonuçları: " + "; ".join(parts) + "."
+        )
     groups = result.get("groups") or []
     if len(groups) < 2:
         return None
@@ -177,6 +218,25 @@ def _bulgu_mann_whitney(result: dict) -> Optional[str]:
 
 
 def _bulgu_anova(result: dict) -> Optional[str]:
+    if result.get("combined") and result.get("comparison_summaries"):
+        grouping = result.get("grouping_label") or "gruplandırıcı değişken"
+        parts = []
+        for item in result["comparison_summaries"]:
+            outcome = item.get("outcome_label") or "değişken"
+            f_val, p, eta = item.get("f"), item.get("p"), item.get("eta_squared")
+            sig = item.get("significant", False)
+            base = _sig_phrase(
+                sig,
+                "anlamlı fark saptanmıştır",
+                "anlamlı fark saptanmamıştır",
+            )
+            parts.append(
+                f"{outcome} için {base} (F = {f_val}, {_p_txt(p)}; η² = {fmt_r(eta)})"
+            )
+        return (
+            f"Katılımcıların {grouping} gruplarına göre tek yönlü ANOVA "
+            f"sonuçları: " + "; ".join(parts) + "."
+        )
     f_val, p, eta = result.get("f"), result.get("p"), result.get("eta_squared")
     sig = result.get("significant", False)
     outcome = result.get("outcome_label") or "Bağımlı değişken"
@@ -324,6 +384,24 @@ def _bulgu_paired_wilcoxon(result: dict) -> Optional[str]:
 
 
 def _bulgu_cronbach(result: dict) -> Optional[str]:
+    scales = result.get("merged_scales") or []
+    if len(scales) > 1 or result.get("combined"):
+        parts = []
+        for s in scales:
+            name = s.get("name", "Ölçek")
+            n_items = s.get("n_items", "—")
+            alpha = s.get("alpha")
+            alpha_txt = fmt_r(alpha) if alpha is not None else s.get("alpha_display", "—")
+            interp = s.get("interpretation", "")
+            tail = f" ({interp})" if interp else ""
+            parts.append(
+                f"{name} ölçeğinin {n_items} maddesi için Cronbach α = {alpha_txt}{tail}"
+            )
+        return (
+            "Kullanılan ölçeklerin güvenilirlik analizi sonucunda "
+            + "; ".join(parts)
+            + "."
+        )
     alpha = result.get("alpha")
     n_items = result.get("n_items")
     interp = result.get("interpretation", "")

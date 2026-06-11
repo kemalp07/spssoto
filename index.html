@@ -421,6 +421,27 @@
     color: var(--muted); flex-shrink: 0; white-space: nowrap;
     border: 1px solid var(--border);
   }
+  .plan-badge-kesin {
+    font-size: 11px; font-weight: 600; padding: 3px 8px;
+    border-radius: 20px; background: #fef3c7; color: #b45309;
+    flex-shrink: 0; white-space: nowrap;
+  }
+  .plan-badge-not {
+    font-size: 11px; font-weight: 600; padding: 3px 8px;
+    border-radius: 20px; background: var(--bg);
+    color: var(--muted); flex-shrink: 0; white-space: nowrap;
+    border: 1px dashed var(--border);
+  }
+  .plan-section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-2); margin-top: var(--space-3); flex-wrap: wrap;
+  }
+  .plan-section-actions { display: flex; gap: var(--space-2); }
+  .plan-section-actions button {
+    font-size: 12px; padding: 2px 8px; border: none; background: none;
+    color: var(--accent); cursor: pointer; font-family: inherit;
+  }
+  .plan-section-actions button:hover { text-decoration: underline; }
   .plan-total-bar { margin-bottom: var(--space-2); }
   .plan-note {
     margin-top: var(--space-2); padding: var(--space-2);
@@ -682,6 +703,7 @@ let pendingMissingCodes = {};
 let userLabels = {};
 let valueLabels = {};
 let analysisPlan = [];
+let analysisPlanCatalog = [];
 let analysisPlanExcluded = [];
 let planTestsMeta = {};
 let bulguSummaryText = "";
@@ -1920,6 +1942,8 @@ function resetWizard() {
   valueLabels = {};
   scaleInfo = {};
   analysisPlan = [];
+  analysisPlanCatalog = [];
+  analysisPlanExcluded = [];
   analysisResults = [];
   analysisMeta = {};
   bulgular = {};
@@ -2504,15 +2528,83 @@ function buildData(variables) {
   });
 }
 
+function catalogFromLegacy(json) {
+  const ruleCodes = new Set([
+    "ikincil_gruplandirma", "turetilmis_tekrar", "tekrarli_demografi",
+    "yetersiz_n", "dengesiz_grup", "totoloji", "cift_test",
+  ]);
+  const items = [];
+  (json.recommended || []).forEach(t => {
+    const tier = t.tier || "onerilen";
+    items.push({
+      ...t,
+      tier,
+      enabled_default: tier !== "onerilmeyen",
+    });
+  });
+  (json.excluded || []).forEach(t => {
+    if (ruleCodes.has(t.reason_code)) return;
+    items.push({ ...t, tier: "onerilmeyen", enabled_default: false });
+  });
+  return items;
+}
+
+function normalizeCatalogItem(t) {
+  const tier = t.tier || "onerilen";
+  const enabledDefault = t.enabled_default !== undefined
+    ? t.enabled_default
+    : tier !== "onerilmeyen";
+  return {
+    ...t,
+    tier,
+    enabled: enabledDefault,
+    enabled_default: enabledDefault,
+    recommended: tier === "kesin_onerilen" || tier === "onerilen",
+  };
+}
+
+function syncAnalysisPlanFromCatalog() {
+  analysisPlan = analysisPlanCatalog.filter(t => t.enabled !== false);
+}
+
 function updatePlanTotalBar() {
   const bar = document.getElementById("planTotalBar");
   if (!bar) return;
-  const selected = analysisPlan.filter(t => t.enabled !== false);
+  const selected = analysisPlanCatalog.filter(t => t.enabled !== false);
   const totalTests = selected.reduce((s, t) => s + (t.count || 1), 0);
+  const catalogTotal = planTestsMeta.catalog_count || analysisPlanCatalog.length;
+  const kesinCount = planTestsMeta.kesin_count
+    ?? analysisPlanCatalog.filter(t => t.tier === "kesin_onerilen").length;
+  const onerilenCount = planTestsMeta.onerilen_count
+    ?? analysisPlanCatalog.filter(t => t.tier === "onerilen").length;
+  const defaultSelected = planTestsMeta.recommended_count
+    ?? analysisPlanCatalog.filter(t => t.enabled_default !== false).length;
+  const aiNote = planTestsMeta.ai_used && planTestsMeta.llm_calls > 0
+    ? " · Claude önerisi aktif"
+    : (planTestsMeta.ai_used === false ? "" : "");
   const tok = planTestsMeta.approx_input_tokens
-    ? ` · Planlama LLM: ~${planTestsMeta.approx_input_tokens} token`
+    ? ` · ~${planTestsMeta.approx_input_tokens} token`
     : "";
-  bar.innerHTML = `📋 <strong>${selected.length}</strong> test seçili, ~<strong>${totalTests}</strong> tablo${tok}`;
+  bar.innerHTML = (
+    `📋 <strong>${catalogTotal}</strong> uygun aday · `
+    + `<strong>${kesinCount}</strong> kesin · `
+    + `<strong>${onerilenCount}</strong> önerilen · `
+    + `<strong>${selected.length}</strong> seçili (~${totalTests} tablo)`
+    + `${aiNote}${tok}`
+  );
+}
+
+function togglePlanTier(tier, checked) {
+  analysisPlanCatalog.forEach((t, i) => {
+    if (t.tier !== tier) return;
+    t.enabled = checked;
+    const card = document.getElementById(`plancard_${i}`);
+    if (card) card.classList.toggle("disabled", !checked);
+    const cb = card?.querySelector('input[type="checkbox"]');
+    if (cb) cb.checked = checked;
+  });
+  syncAnalysisPlanFromCatalog();
+  updatePlanTotalBar();
 }
 
 function normalizeScaleKey(s) {
@@ -2567,60 +2659,83 @@ async function loadAnalysisPlan() {
         use_ai: true,
       }),
     });
-    if (!res.ok) throw new Error("Plan hatası");
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Plan hatası");
+    }
     const json = await res.json();
-    analysisPlan = (json.recommended || []).map(t => ({
-      ...t,
-      enabled: t.selected !== false,
-      recommended: true,
-    }));
-    analysisPlanExcluded = json.excluded || [];
     planTestsMeta = json.meta || {};
+    analysisPlanCatalog = (json.catalog && json.catalog.length)
+      ? json.catalog.map(normalizeCatalogItem)
+      : catalogFromLegacy(json).map(normalizeCatalogItem);
+    analysisPlanExcluded = json.excluded || [];
+    syncAnalysisPlanFromCatalog();
     renderAnalysisPlan();
   } catch (e) {
-    await runAnalysis(null);
+    planEl.innerHTML = `
+      <div class="alert alert-warn text-sm">
+        Test planı oluşturulamadı. Araştırma amacını kontrol edin ve backend/Claude ayarlarını doğrulayın.
+        <div class="text-xs mt-1">${escHtml(e.message || "Bilinmeyen hata")}</div>
+      </div>`;
   }
+}
+
+function renderCatalogSection(tier, title, badgeText, badgeClass, hint = "") {
+  const items = analysisPlanCatalog
+    .map((t, i) => ({ ...t, catalogIndex: i }))
+    .filter(t => t.tier === tier);
+  if (!items.length) return "";
+  const dimmed = tier === "onerilmeyen";
+  const cards = items.map(t => `
+    <div class="plan-card ${t.enabled !== false ? "" : "disabled"} ${dimmed ? "plan-card-excluded" : ""}"
+      id="plancard_${t.catalogIndex}">
+      <input type="checkbox" ${t.enabled !== false ? "checked" : ""}
+        onchange="togglePlanCatalog(${t.catalogIndex}, this.checked)" />
+      <div class="flex-1">
+        <div class="plan-label">${escHtml(t.label || t.id)}</div>
+        <div class="plan-detail">${escHtml((t.test || "") + (t.vars ? " · " + t.vars.join(", ") : ""))}</div>
+        ${t.reason ? `<div class="plan-detail plan-detail-warn">${escHtml(t.reason)}</div>` : ""}
+      </div>
+      <span class="${badgeClass}">${badgeText}</span>
+      <span class="plan-count">${t.count || 1} tablo</span>
+    </div>
+  `).join("");
+  const header = `
+    <div class="plan-section-header">
+      <div class="plan-section-label">${title} (${items.length})</div>
+      <div class="plan-section-actions">
+        <button type="button" onclick="togglePlanTier('${tier}', true)">Tümünü seç</button>
+        <button type="button" onclick="togglePlanTier('${tier}', false)">Temizle</button>
+      </div>
+    </div>`;
+  const hintHtml = hint ? `<p class="text-xs text-muted mb-1">${hint}</p>` : "";
+  return `${header}${hintHtml}${cards}`;
 }
 
 function renderAnalysisPlan() {
   const el = document.getElementById("planContainer");
-  if (!analysisPlan.length && !analysisPlanExcluded.length) {
+  if (!analysisPlanCatalog.length) {
     el.innerHTML = '<p class="text-sm text-muted">Analiz planı oluşturulamadı.</p>';
     return;
   }
 
-  const recommendedHtml = analysisPlan.map((t, i) => `
-    <div class="plan-card ${t.enabled !== false ? "" : "disabled"}" id="plancard_${i}">
-      <input type="checkbox" ${t.enabled !== false ? "checked" : ""}
-        onchange="togglePlan(${i}, this.checked)" />
-      <div class="flex-1">
-        <div class="plan-label">${escHtml(t.label || t.id)}</div>
-        <div class="plan-detail">${escHtml((t.test || "") + (t.vars ? " · " + t.vars.join(", ") : ""))}</div>
-      </div>
-      <span class="plan-badge-rec">✅ Önerilen</span>
-      <span class="plan-count">${t.count || 1} tablo</span>
-    </div>
-  `).join("");
+  const ruleHidden = planTestsMeta.rule_excluded_count
+    ? `<span class="text-muted"> · ${planTestsMeta.rule_excluded_count} kural dışı aday gizlendi</span>`
+    : "";
 
-  const excludedHtml = analysisPlanExcluded.length ? `
-    <div class="plan-section-label">Elenen testler</div>
-    ${analysisPlanExcluded.map((t, i) => `
-      <div class="plan-card plan-card-excluded disabled" id="excludedcard_${i}">
-        <input type="checkbox"
-          onchange="toggleExcludedPlan(${i}, this.checked)" />
-        <div class="flex-1">
-          <div class="plan-label">${escHtml(t.label || t.id)}</div>
-          <div class="plan-detail plan-detail-warn">${escHtml(t.reason || "")}</div>
-        </div>
-        <span class="plan-badge-opt">⛔ ${escHtml(t.reason_code || "elendi")}</span>
-      </div>
-    `).join("")}
-  ` : "";
+  const intro = `
+    <p class="text-sm text-muted mb-2">
+      Tüm uygun adaylar listelenir; kutucuklarla açıp kapatabilirsiniz.
+      <strong>Kesin önerilen</strong> tez çekirdeğidir; <strong>Önerilen</strong> amaca uygun ekler;
+      <strong>Önerilmeyen</strong> bölümden istediğinizi yine de ekleyebilirsiniz.${ruleHidden}
+    </p>`;
 
   el.innerHTML = `
     <div id="planTotalBar" class="alert alert-info text-sm plan-total-bar"></div>
-    ${recommendedHtml}
-    ${excludedHtml}
+    ${intro}
+    ${renderCatalogSection("kesin_onerilen", "Kesin önerilen", "⭐ Kesin", "plan-badge-kesin", "Varsayılan seçili — tez için temel paket")}
+    ${renderCatalogSection("onerilen", "Önerilen", "✅ Önerilen", "plan-badge-rec", "Araştırma amacına uygun ek testler")}
+    ${renderCatalogSection("onerilmeyen", "Önerilmeyen", "○ Düşük öncelik", "plan-badge-not", "İsterseniz işaretleyip analize dahil edin")}
     <div class="plan-note">
       📈 <strong>Regresyon:</strong> Sonuçlar adımında yordayıcı ve sonuç seçerek çoklu doğrusal regresyon çalıştırabilirsiniz.
     </div>
@@ -2628,35 +2743,38 @@ function renderAnalysisPlan() {
   updatePlanTotalBar();
 }
 
-function toggleExcludedPlan(i, checked) {
-  const item = analysisPlanExcluded[i];
+function togglePlanCatalog(i, checked) {
+  const item = analysisPlanCatalog[i];
   if (!item) return;
-  if (checked) {
-    analysisPlan.push({ ...item, enabled: true, recommended: true, count: 1 });
-    analysisPlanExcluded.splice(i, 1);
-  }
-  renderAnalysisPlan();
-}
-
-function togglePlan(i, checked) {
-  analysisPlan[i].recommended = checked;
-  analysisPlan[i].enabled = checked;
+  item.enabled = checked;
+  syncAnalysisPlanFromCatalog();
   const card = document.getElementById(`plancard_${i}`);
   if (card) card.classList.toggle("disabled", !checked);
-  const badge = card?.querySelector(".plan-badge-rec, .plan-badge-opt");
-  if (badge) {
-    badge.className = checked ? "plan-badge-rec" : "plan-badge-opt";
-    badge.textContent = checked ? "✅ Önerilen" : "⚠️ Opsiyonel";
-  }
   updatePlanTotalBar();
 }
 
 async function runAnalysisFromPlan() {
-  const enabledTests = analysisPlan
+  const enabledTests = analysisPlanCatalog
     .filter(t => t.enabled !== false)
     .map(t => t.id);
   if (!enabledTests.length) return alert("En az bir test seçmelisiniz.");
   await runAnalysis(null, enabledTests);
+}
+
+async function applyTableLayout(results) {
+  if (!results?.length) return results || [];
+  try {
+    const res = await fetch(`${API}/layout-results`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ results }),
+    });
+    if (!res.ok) return results;
+    const json = await res.json();
+    return json.results || results;
+  } catch {
+    return results;
+  }
 }
 
 async function runAnalysis(activeTypes = null, enabledTests = null) {
@@ -2729,6 +2847,8 @@ async function runAnalysis(activeTypes = null, enabledTests = null) {
         console.error("Cronbach batch hatası:", e);
       }
     }
+
+    analysisResults = await applyTableLayout(analysisResults);
 
     goToStep(6, "forward");
     renderResults();
