@@ -472,6 +472,7 @@ def bulgu_paired_wilcoxon(result: dict, all_results: Optional[List[dict]] = None
 
 
 def bulgu_cronbach(result: dict, all_results: Optional[List[dict]] = None) -> Optional[str]:
+    from karar_verici import enrich_cronbach_bulgu
     scales = result.get("merged_scales") or []
     if len(scales) > 1 or result.get("combined"):
         parts, warnings = [], []
@@ -493,7 +494,7 @@ def bulgu_cronbach(result: dict, all_results: Optional[List[dict]] = None) -> Op
         )
         if warnings:
             text += " " + warnings[0]
-        return text
+        return enrich_cronbach_bulgu(result, text, all_results)
 
     alpha = result.get("alpha")
     n_items = result.get("n_items")
@@ -505,7 +506,7 @@ def bulgu_cronbach(result: dict, all_results: Optional[List[dict]] = None) -> Op
     )
     if warn:
         text += f" {warn}"
-    return text
+    return enrich_cronbach_bulgu(result, text, all_results)
 
 
 BULGU_BUILDERS = {

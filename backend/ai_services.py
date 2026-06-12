@@ -935,12 +935,55 @@ def run_classify(req: ClassifyRequest) -> dict:
     }
 
 
+def _build_detect_scales_response(
+    scales: List[dict],
+    registry_matches: List[dict],
+) -> dict:
+    from scale_registry import get_cutoff, resolve_scale_id, validate_turkish
+
+    registry_ids = {m["scale"]["id"] for m in registry_matches}
+    registry_matched = []
+    for m in registry_matches:
+        if m.get("confidence") != "high":
+            continue
+        sc = m["scale"]
+        registry_matched.append({
+            "id": sc.get("id"),
+            "name": (sc.get("names") or [sc.get("id", "")])[0],
+            "confidence": m.get("confidence", "high"),
+            "cols": m.get("matched_cols") or [],
+        })
+
+    registry_unmatched = []
+    cutoffs: Dict[str, dict] = {}
+    for scale in scales:
+        sid = scale.get("id") or scale.get("registry_id") or resolve_scale_id(scale.get("name", ""))
+        if sid:
+            scale.setdefault("id", sid)
+            scale["turkish_valid"] = validate_turkish(sid)
+            cutoff = get_cutoff(sid)
+            if cutoff:
+                cutoffs[sid] = cutoff
+        in_registry = sid and sid in registry_ids
+        source = scale.get("source", "")
+        if not in_registry or source == "gemini":
+            registry_unmatched.append({
+                "name": scale.get("name"),
+                "items": scale.get("items") or [],
+                "id": sid,
+            })
+
+    return {
+        "scales": scales,
+        "registry_matched": registry_matched,
+        "registry_unmatched": registry_unmatched,
+        "cutoffs": cutoffs,
+    }
+
+
 def run_detect_scales(req: DetectScalesRequest) -> dict:
-    if not has_claude():
-        raise HTTPException(
-            status_code=500,
-            detail="ANTHROPIC_API_KEY ayarlanmamış (karar katmanı Claude Haiku)",
-        )
+    from karar_verici import apply_reverse_item_decisions
+    from veri_analisti import run_scale_detection, scales_from_registry_matches
 
     item_pattern = re.compile(
         r"^(?:recoded_|rev_|inv_)?[a-zA-Z]+_\d+"
@@ -950,7 +993,12 @@ def run_detect_scales(req: DetectScalesRequest) -> dict:
     item_cols = [c for c in req.columns if item_pattern.match(c)]
 
     if len(item_cols) < 2:
-        return {"scales": []}
+        return {
+            "scales": [],
+            "registry_matched": [],
+            "registry_unmatched": [],
+            "cutoffs": {},
+        }
 
     prefix_groups: Dict[str, list] = defaultdict(list)
     for col in item_cols:
@@ -959,88 +1007,38 @@ def run_detect_scales(req: DetectScalesRequest) -> dict:
             prefix_groups[prefix.group(1)].append(col)
 
     valid_groups = {k: v for k, v in prefix_groups.items() if len(v) >= 3}
-    if not valid_groups:
-        return {"scales": []}
+    col_labels = getattr(req, "labels", None) or {}
 
-    profile = profile_from_samples(
-        req.columns,
-        req.samples or {},
-        variable_measure=req.variable_measure,
+    scales, registry_matches, llm_meta = run_scale_detection(
+        item_cols,
+        col_labels=col_labels,
+        prefix_groups=valid_groups,
+        document_context=getattr(req, "document_context", None),
     )
-    enrichment, enrich_meta = gemini_enrich_profile("detect_scales", profile)
 
-    detect_system = """Sen akademik ölçek analizi uzmanısın. Verilen madde gruplarını ölçeklere dönüştür.
+    if not scales and valid_groups:
+        registry_matches = registry_matches or []
+        from scale_registry import match_scale
+        if not registry_matches:
+            registry_matches = match_scale(item_cols, col_labels)
+        scales = scales_from_registry_matches(registry_matches, min_confidence="medium")
 
-KURALLAR:
-- Her prefix grubu ayrı bir ölçektir
-- _ters veya _T ile biten madde varsa o maddenin ters versiyonunu kullan, orijinalini KULLANMA
-- Orijinal madde ile _ters versiyonu AYNI ANDA listede olmamalı
-- Her ölçeğe Türkçe anlamlı isim ver (oys → OYŞTÖ, neq → GYA veya NEQ, sbito → SBİTO)
-- Tüm gruplar için ölçek oluştur, hiçbirini atlama
+    if not scales and valid_groups:
+        fallback_names = {"oys": "OYŞTÖ", "neq": "GYA", "sbito": "SBİTO"}
+        for prefix, cols in valid_groups.items():
+            resolved = apply_scale_item_resolution(cols)
+            scales.append({
+                "name": fallback_names.get(prefix.lower(), prefix.upper()),
+                "items": resolved["items"],
+                "cronbach_items": resolved["cronbach_items"],
+                "item_count": resolved["item_count"],
+                "source": "prefix_fallback",
+            })
 
-SADECE JSON döndür:
-{
-  "scales": [
-    {"name": "OYŞTÖ", "items": ["oys_1", "oys_2", "oys_3", "oys_4_ters", "oys_5"]},
-    {"name": "GYA", "items": ["neq_1_ters", "neq_2", "neq_3", "neq_4_ters"]}
-  ]
-}"""
-
-    from document_context import anket_section_hints
-
-    hint_block = ""
-    hints = anket_section_hints(getattr(req, "document_context", None))
-    if hints:
-        hint_block = (
-            f"\n\nAnket formu bölüm başlıkları (ölçek adı ipucu):\n"
-            f"{json.dumps(hints, ensure_ascii=False)}"
-        )
-
-    user_msg = (
-        f"Madde prefix grupları:\n{json.dumps(valid_groups, ensure_ascii=False)}\n\n"
-        f"Veri profili:\n{profile_json(profile)}"
-        f"{format_enrichment_block(enrichment)}"
-        f"{hint_block}"
-    )
-    try:
-        text, decide_meta = claude_decide(detect_system, user_msg, max_tokens=800)
-    except RuntimeError:
-        text = ""
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        try:
-            result = json.loads(match.group())
-            if result.get("scales"):
-                normalized_scales = []
-                for scale in result["scales"]:
-                    items = scale.get("items") or []
-                    resolved = apply_scale_item_resolution(items)
-                    normalized_scales.append({
-                        **scale,
-                        "items": resolved["items"],
-                        "cronbach_items": resolved["cronbach_items"],
-                        "item_count": resolved["item_count"],
-                    })
-                result["scales"] = normalized_scales
-                result["llm_meta"] = merge_meta(enrich_meta, decide_meta)
-                result["gemini_enrichment"] = enrichment or None
-                return result
-        except Exception:
-            pass
-
-    scales = []
-    scale_names = {"oys": "OYŞTÖ", "neq": "GYA", "sbito": "SBİTO"}
-    for prefix, cols in valid_groups.items():
-        resolved = apply_scale_item_resolution(cols)
-        name = scale_names.get(prefix.lower(), prefix.upper())
-        scales.append({
-            "name": name,
-            "items": resolved["items"],
-            "cronbach_items": resolved["cronbach_items"],
-            "item_count": resolved["item_count"],
-        })
-
-    return {"scales": scales}
+    scales = apply_reverse_item_decisions(scales)
+    out = _build_detect_scales_response(scales, registry_matches)
+    out["llm_meta"] = llm_meta
+    return out
 
 
 def import_spss_tables_service(req: SpssTableRequest) -> dict:

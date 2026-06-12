@@ -1,0 +1,5585 @@
+[
+  {
+    "id": "sf36",
+    "names": [
+      "Kısa Form-36 Sağlık Anketi",
+      "Short Form-36 Health Survey",
+      "SF-36",
+      "KF-36"
+    ],
+    "domain": [
+      "hemşirelik",
+      "fizyoterapi",
+      "spor bilimleri",
+      "ebelik"
+    ],
+    "item_count": 36,
+    "subscales": [
+      {
+        "name": "Fiziksel Fonksiyon",
+        "items": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ]
+      },
+      {
+        "name": "Fiziksel Rol Güçlüğü",
+        "items": [
+          13,
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "name": "Ağrı",
+        "items": [
+          21,
+          22
+        ]
+      },
+      {
+        "name": "Genel Sağlık Algısı",
+        "items": [
+          1,
+          33,
+          34,
+          35,
+          36
+        ]
+      },
+      {
+        "name": "Enerji/Canlılık",
+        "items": [
+          23,
+          27,
+          29,
+          31
+        ]
+      },
+      {
+        "name": "Sosyal Fonksiyon",
+        "items": [
+          20,
+          32
+        ]
+      },
+      {
+        "name": "Duygusal Rol Güçlüğü",
+        "items": [
+          17,
+          18,
+          19
+        ]
+      },
+      {
+        "name": "Ruh Sağlığı",
+        "items": [
+          24,
+          25,
+          26,
+          28,
+          30
+        ]
+      }
+    ],
+    "reverse_items": [
+      1,
+      21,
+      22,
+      23,
+      27,
+      33,
+      34,
+      36
+    ],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      0,
+      100
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Koçyiğit",
+      "year": 1999,
+      "journal": "İlaç ve Tedavi Dergisi"
+    },
+    "prefix_hints": [
+      "sf_",
+      "sf36_",
+      "kf36_",
+      "sf36q_"
+    ],
+    "item_sample": [
+      "Genel olarak sağlığınızı nasıl değerlendirirsiniz?"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "whoqol_bref",
+    "names": [
+      "WHOQOL-BREF",
+      "Dünya Sağlık Örgütü Yaşam Kalitesi Ölçeği Kısa Formu",
+      "WHOQOL"
+    ],
+    "domain": [
+      "hemşirelik",
+      "ebelik",
+      "psikoloji",
+      "sağlık yönetimi"
+    ],
+    "item_count": 26,
+    "subscales": [
+      {
+        "name": "Fiziksel Alan",
+        "items": [
+          3,
+          4,
+          10,
+          15,
+          16,
+          17,
+          18
+        ]
+      },
+      {
+        "name": "Psikolojik Alan",
+        "items": [
+          5,
+          6,
+          7,
+          11,
+          19,
+          26
+        ]
+      },
+      {
+        "name": "Sosyal İlişkiler",
+        "items": [
+          20,
+          21,
+          22
+        ]
+      },
+      {
+        "name": "Çevre Alanı",
+        "items": [
+          8,
+          9,
+          12,
+          13,
+          14,
+          23,
+          24,
+          25
+        ]
+      }
+    ],
+    "reverse_items": [
+      3,
+      4,
+      26
+    ],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      0,
+      100
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Eser",
+      "year": 1999,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "whoqol_",
+      "yk_",
+      "yk_bref_",
+      "dso_"
+    ],
+    "item_sample": [
+      "Yaşam kalitenizi nasıl değerlendirirsiniz?"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "bai",
+    "names": [
+      "Beck Anksiyete Envanteri",
+      "Beck Anxiety Inventory",
+      "BAI",
+      "BAE"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "ebelik"
+    ],
+    "item_count": 21,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      63
+    ],
+    "cutoff": {
+      "value": 16,
+      "interpretation": "≥16 orta-şiddetli anksiyete"
+    },
+    "turkish_validity": {
+      "author": "Ulusoy",
+      "year": 1998,
+      "journal": "Journal of Cognitive Psychotherapy"
+    },
+    "prefix_hints": [
+      "bai_",
+      "bae_",
+      "beck_a_"
+    ],
+    "item_sample": [
+      "Bedeninizde uyuşma veya karıncalanma"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "bdi",
+    "names": [
+      "Beck Depresyon Envanteri",
+      "Beck Depression Inventory",
+      "BDI",
+      "BDE"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "ebelik"
+    ],
+    "item_count": 21,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      63
+    ],
+    "cutoff": {
+      "value": 17,
+      "interpretation": "≥17 klinik depresyon riski"
+    },
+    "turkish_validity": {
+      "author": "Hisli",
+      "year": 1989,
+      "journal": "Psikoloji Dergisi"
+    },
+    "prefix_hints": [
+      "bdi_",
+      "bde_",
+      "beck_d_"
+    ],
+    "item_sample": [
+      "Kendimi üzgün hissetmiyorum"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "hads",
+    "names": [
+      "Hastane Anksiyete ve Depresyon Ölçeği",
+      "Hospital Anxiety and Depression Scale",
+      "HADS"
+    ],
+    "domain": [
+      "hemşirelik",
+      "ebelik",
+      "psikoloji",
+      "fizyoterapi"
+    ],
+    "item_count": 14,
+    "subscales": [
+      {
+        "name": "Anksiyete",
+        "items": [
+          1,
+          3,
+          5,
+          7,
+          9,
+          11,
+          13
+        ]
+      },
+      {
+        "name": "Depresyon",
+        "items": [
+          2,
+          4,
+          6,
+          8,
+          10,
+          12,
+          14
+        ]
+      }
+    ],
+    "reverse_items": [
+      2,
+      4,
+      6,
+      8,
+      10,
+      12,
+      14
+    ],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      42
+    ],
+    "cutoff": {
+      "value": 10,
+      "interpretation": "Anksiyete ≥11, Depresyon ≥8 riskli"
+    },
+    "turkish_validity": {
+      "author": "Aydemir",
+      "year": 1997,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "hads_",
+      "had_",
+      "had_a_",
+      "had_d_"
+    ],
+    "item_sample": [
+      "Kendimi gergin, adeta patlayacak gibi hissediyorum"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "phq9",
+    "names": [
+      "Hasta Sağlık Anketi-9",
+      "Patient Health Questionnaire-9",
+      "PHQ-9"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "ebelik"
+    ],
+    "item_count": 9,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      27
+    ],
+    "cutoff": {
+      "value": 10,
+      "interpretation": "≥10 orta düzey depresyon"
+    },
+    "turkish_validity": {
+      "author": "Sarı",
+      "year": 2016,
+      "journal": "The Journal of Turkish Family Physician"
+    },
+    "prefix_hints": [
+      "phq_",
+      "phq9_",
+      "phq9q_"
+    ],
+    "item_sample": [
+      "Yapılacak işlere karşı ilgisizlik veya bunlardan zevk alamama"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "gad7",
+    "names": [
+      "Yaygın Anksiyete Bozukluğu-7",
+      "Generalized Anxiety Disorder-7",
+      "GAD-7"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "ebelik"
+    ],
+    "item_count": 7,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      21
+    ],
+    "cutoff": {
+      "value": 10,
+      "interpretation": "≥10 orta düzey anksiyete"
+    },
+    "turkish_validity": {
+      "author": "Konkan",
+      "year": 2013,
+      "journal": "Klinik Psikofarmakoloji Bülteni"
+    },
+    "prefix_hints": [
+      "gad_",
+      "gad7_",
+      "yab_"
+    ],
+    "item_sample": [
+      "Kendini gergin, kaygılı veya sinirli hissetme"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "stai_s",
+    "names": [
+      "Durumluluk Kaygı Envanteri",
+      "State-Trait Anxiety Inventory State",
+      "STAI-I",
+      "DKE"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "ebelik"
+    ],
+    "item_count": 20,
+    "subscales": [],
+    "reverse_items": [
+      1,
+      2,
+      5,
+      8,
+      10,
+      11,
+      15,
+      16,
+      19,
+      20
+    ],
+    "scale_range": [
+      1,
+      4
+    ],
+    "total_range": [
+      20,
+      80
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Öner",
+      "year": 1985,
+      "journal": "Boğaziçi Üniversitesi Yayınları"
+    },
+    "prefix_hints": [
+      "stais_",
+      "dk_",
+      "stai1_"
+    ],
+    "item_sample": [
+      "Şu anda kendimi sakin hissediyorum"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "stai_t",
+    "names": [
+      "Sürekli Kaygı Envanteri",
+      "State-Trait Anxiety Inventory Trait",
+      "STAI-II",
+      "SKE"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 20,
+    "subscales": [],
+    "reverse_items": [
+      21,
+      26,
+      27,
+      30,
+      33,
+      36,
+      39
+    ],
+    "scale_range": [
+      1,
+      4
+    ],
+    "total_range": [
+      20,
+      80
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Öner",
+      "year": 1985,
+      "journal": "Boğaziçi Üniversitesi Yayınları"
+    },
+    "prefix_hints": [
+      "stait_",
+      "sk_",
+      "stai2_"
+    ],
+    "item_sample": [
+      "Genellikle kendimi sakin ve gevşemiş hissederim"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "dass21",
+    "names": [
+      "Depresyon Anksiyete Stres Ölçeği-21",
+      "Depression Anxiety Stress Scales-21",
+      "DASS-21"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "ebelik"
+    ],
+    "item_count": 21,
+    "subscales": [
+      {
+        "name": "Depresyon",
+        "items": [
+          3,
+          5,
+          10,
+          13,
+          16,
+          17,
+          21
+        ]
+      },
+      {
+        "name": "Anksiyete",
+        "items": [
+          2,
+          4,
+          7,
+          9,
+          15,
+          19,
+          20
+        ]
+      },
+      {
+        "name": "Stres",
+        "items": [
+          1,
+          6,
+          8,
+          11,
+          12,
+          14,
+          18
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      63
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Yılmaz",
+      "year": 2017,
+      "journal": "Klinik Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "dass_",
+      "das_",
+      "dass21_"
+    ],
+    "item_sample": [
+      "Sakinleşmekte zorlandım"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "psqi",
+    "names": [
+      "Pittsburgh Uyku Kalitesi İndeksi",
+      "Pittsburgh Sleep Quality Index",
+      "PSQI",
+      "PUKİ"
+    ],
+    "domain": [
+      "hemşirelik",
+      "ebelik",
+      "fizyoterapi",
+      "psikoloji"
+    ],
+    "item_count": 19,
+    "subscales": [
+      {
+        "name": "Subjektif Uyku Kalitesi",
+        "items": [
+          6
+        ]
+      },
+      {
+        "name": "Uyku Latensi",
+        "items": [
+          2,
+          5
+        ]
+      },
+      {
+        "name": "Uyku Süresi",
+        "items": [
+          4
+        ]
+      },
+      {
+        "name": "Alışılmış Uyku Etkinliği",
+        "items": [
+          1,
+          3,
+          4
+        ]
+      },
+      {
+        "name": "Uyku Bozukluğu",
+        "items": [
+          5
+        ]
+      },
+      {
+        "name": "Uyku İlacı Kullanımı",
+        "items": [
+          7
+        ]
+      },
+      {
+        "name": "Gündüz İşlev Bozukluğu",
+        "items": [
+          8,
+          9
+        ]
+      }
+    ],
+    "reverse_items": null,
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      21
+    ],
+    "cutoff": {
+      "value": 5,
+      "interpretation": ">5 kötü uyku kalitesi"
+    },
+    "turkish_validity": {
+      "author": "Ağargün",
+      "year": 1996,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "psqi_",
+      "puki_",
+      "uyku_",
+      "uyk_"
+    ],
+    "item_sample": [
+      "Geçen ay içinde geceleri genellikle saat kaçta yattınız?"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "ess",
+    "names": [
+      "Epworth Uykululuk Ölçeği",
+      "Epworth Sleepiness Scale",
+      "ESS",
+      "EUÖ"
+    ],
+    "domain": [
+      "hemşirelik",
+      "fizyoterapi",
+      "spor bilimleri"
+    ],
+    "item_count": 8,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      24
+    ],
+    "cutoff": {
+      "value": 10,
+      "interpretation": ">10 aşırı gündüz uykululuğu"
+    },
+    "turkish_validity": {
+      "author": "İzci",
+      "year": 2008,
+      "journal": "Tuberkuloz ve Toraks"
+    },
+    "prefix_hints": [
+      "ess_",
+      "epworth_",
+      "euo_"
+    ],
+    "item_sample": [
+      "Oturup kitap okurken"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "isi",
+    "names": [
+      "Uykusuzluk Şiddet İndeksi",
+      "Insomnia Severity Index",
+      "ISI",
+      "UŞİ"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "fizyoterapi"
+    ],
+    "item_count": 7,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      28
+    ],
+    "cutoff": {
+      "value": 15,
+      "interpretation": "≥15 klinik uykusuzluk"
+    },
+    "turkish_validity": {
+      "author": "Boysan",
+      "year": 2010,
+      "journal": "Bilişsel Davranışçı Psikoterapi Araştırmaları"
+    },
+    "prefix_hints": [
+      "isi_",
+      "usi_",
+      "usi7_"
+    ],
+    "item_sample": [
+      "Uykuya dalma güçlüğü"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "neq",
+    "names": [
+      "Gece Yeme Anketi",
+      "Night Eating Questionnaire",
+      "NEQ",
+      "GYA"
+    ],
+    "domain": [
+      "beslenme",
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 14,
+    "subscales": [],
+    "reverse_items": [
+      1,
+      4,
+      14
+    ],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      56
+    ],
+    "cutoff": {
+      "value": 25,
+      "interpretation": "≥25 gece yeme sendromu riski"
+    },
+    "turkish_validity": {
+      "author": "Atasoy",
+      "year": 2013,
+      "journal": "Anadolu Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "neq_",
+      "gya_",
+      "nea_",
+      "gece_"
+    ],
+    "item_sample": [
+      "Akşam yemeğinden sonra ne kadar iştahlısınız?",
+      "Gece uykudan uyanıp bir şeyler yer misiniz?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "debq",
+    "names": [
+      "Hollanda Yeme Davranışı Anketi",
+      "Dutch Eating Behavior Questionnaire",
+      "DEBQ",
+      "HYD"
+    ],
+    "domain": [
+      "beslenme",
+      "hemşirelik",
+      "psikoloji"
+    ],
+    "item_count": 33,
+    "subscales": [
+      {
+        "name": "Duygusal Yeme",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ]
+      },
+      {
+        "name": "Dışsal Yeme",
+        "items": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ]
+      },
+      {
+        "name": "Kısıtlayıcı Yeme",
+        "items": [
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      33,
+      165
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Bozan",
+      "year": 2009,
+      "journal": "Turkish Journal of Clinics and Laboratory"
+    },
+    "prefix_hints": [
+      "debq_",
+      "hyd_",
+      "debq_ke_",
+      "debq_dy_"
+    ],
+    "item_sample": [
+      "Kilonuzun artma eğilimi olduğunda daha az mı yersiniz?"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "eat26",
+    "names": [
+      "Yeme Tutumu Testi-26",
+      "Eating Attitudes Test-26",
+      "EAT-26",
+      "YTT-26"
+    ],
+    "domain": [
+      "beslenme",
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 26,
+    "subscales": [
+      {
+        "name": "Diyet",
+        "items": [
+          1,
+          6,
+          7,
+          10,
+          11,
+          12,
+          14,
+          16,
+          17,
+          22,
+          23,
+          24,
+          25
+        ]
+      },
+      {
+        "name": "Bulimiya ve Yemekle İlgili Meşguliyet",
+        "items": [
+          3,
+          4,
+          9,
+          18,
+          21,
+          26
+        ]
+      },
+      {
+        "name": "Oral Kontrol",
+        "items": [
+          2,
+          5,
+          8,
+          13,
+          15,
+          19,
+          20
+        ]
+      }
+    ],
+    "reverse_items": [
+      25
+    ],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      78
+    ],
+    "cutoff": {
+      "value": 20,
+      "interpretation": "≥20 yeme davranışı bozukluğu riski"
+    },
+    "turkish_validity": {
+      "author": "Savaşır",
+      "year": 1989,
+      "journal": "Psikoloji Dergisi"
+    },
+    "prefix_hints": [
+      "eat26_",
+      "ytt26_",
+      "eat_"
+    ],
+    "item_sample": [
+      "Şişman olmaktan aşırı derecede korkarım"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "eat40",
+    "names": [
+      "Yeme Tutumu Testi-40",
+      "Eating Attitudes Test-40",
+      "EAT-40",
+      "YTT-40"
+    ],
+    "domain": [
+      "beslenme",
+      "psikoloji",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 40,
+    "subscales": [],
+    "reverse_items": [
+      1,
+      18,
+      19,
+      23,
+      27,
+      39
+    ],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      120
+    ],
+    "cutoff": {
+      "value": 30,
+      "interpretation": "≥30 yeme bozukluğu riski"
+    },
+    "turkish_validity": {
+      "author": "Savaşır",
+      "year": 1989,
+      "journal": "Psikoloji Dergisi"
+    },
+    "prefix_hints": [
+      "eat40_",
+      "ytt40_"
+    ],
+    "item_sample": [
+      "Yemek yemeyi çok severim"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "bes",
+    "names": [
+      "Tıkınırcasına Yeme Ölçeği",
+      "Binge Eating Scale",
+      "BES",
+      "TYÖ"
+    ],
+    "domain": [
+      "beslenme",
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 16,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      46
+    ],
+    "cutoff": {
+      "value": 17,
+      "interpretation": "17-26 orta, ≥27 şiddetli tıkınırcasına yeme"
+    },
+    "turkish_validity": {
+      "author": "Şafak",
+      "year": 2014,
+      "journal": "Bilişsel Davranışçı Psikoterapi Araştırmaları"
+    },
+    "prefix_hints": [
+      "bes_",
+      "tyo_",
+      "binge_"
+    ],
+    "item_sample": [
+      "Yeme alışkanlıklarım üzerinde kontrolüm var"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "tfeq_r21",
+    "names": [
+      "Üç Faktörlü Yeme Ölçeği-R21",
+      "Three-Factor Eating Questionnaire-R21",
+      "TFEQ-R21",
+      "UFY"
+    ],
+    "domain": [
+      "beslenme",
+      "psikoloji",
+      "spor bilimleri"
+    ],
+    "item_count": 21,
+    "subscales": [
+      {
+        "name": "Kontrolsüz Yeme",
+        "items": [
+          1,
+          3,
+          6,
+          8,
+          9,
+          10,
+          13,
+          15,
+          17
+        ]
+      },
+      {
+        "name": "Bilişsel Kısıtlama",
+        "items": [
+          2,
+          5,
+          11,
+          12,
+          14,
+          16
+        ]
+      },
+      {
+        "name": "Duygusal Yeme",
+        "items": [
+          4,
+          7,
+          18,
+          19,
+          20,
+          21
+        ]
+      }
+    ],
+    "reverse_items": [
+      21
+    ],
+    "scale_range": [
+      1,
+      4
+    ],
+    "total_range": [
+      21,
+      84
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Karahan",
+      "year": 2016,
+      "journal": "Trakya Üniversitesi Sosyal Bilimler Dergisi"
+    },
+    "prefix_hints": [
+      "tfeq_",
+      "ufy_",
+      "tfeq21_"
+    ],
+    "item_sample": [
+      "Yemek tabağımda yiyecek kaldığında kendimi durduramam"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "orto15",
+    "names": [
+      "Orto-15 Ölçeği",
+      "Orthorexia-15",
+      "ORTO-15"
+    ],
+    "domain": [
+      "beslenme",
+      "psikoloji",
+      "spor bilimleri"
+    ],
+    "item_count": 15,
+    "subscales": [],
+    "reverse_items": [
+      2,
+      5,
+      8,
+      9,
+      15
+    ],
+    "scale_range": [
+      1,
+      4
+    ],
+    "total_range": [
+      15,
+      60
+    ],
+    "cutoff": {
+      "value": 40,
+      "interpretation": "<40 ortorektik eğilim"
+    },
+    "turkish_validity": {
+      "author": "Arusoğlu",
+      "year": 2008,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "orto15_",
+      "orto_",
+      "ort_"
+    ],
+    "item_sample": [
+      "Yemek yerken yiyeceğin kalorisinden çok sağlıklı olup olmadığını düşünürüm"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "ipaq_sf",
+    "names": [
+      "Uluslararası Fiziksel Aktivite Anketi Kısa Form",
+      "International Physical Activity Questionnaire Short Form",
+      "IPAQ-SF",
+      "UFAA"
+    ],
+    "domain": [
+      "spor bilimleri",
+      "fizyoterapi",
+      "hemşirelik"
+    ],
+    "item_count": 7,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": null,
+    "total_range": null,
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Öztürk",
+      "year": 2005,
+      "journal": "Doktora Tezi (Hacettepe)"
+    },
+    "prefix_hints": [
+      "ipaq_",
+      "faa_",
+      "ufaa_",
+      "ipaqsf_"
+    ],
+    "item_sample": [
+      "Geçen son 7 günde kaç gün en az 10 dakika süren şiddetli fiziksel aktiviteler yaptınız?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "vas",
+    "names": [
+      "Vizüel Analog Skalası",
+      "Visual Analog Scale",
+      "VAS"
+    ],
+    "domain": [
+      "fizyoterapi",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 1,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      10
+    ],
+    "total_range": [
+      0,
+      10
+    ],
+    "cutoff": null,
+    "turkish_validity": null,
+    "prefix_hints": [
+      "vas_",
+      "agri_",
+      "agri_vas_"
+    ],
+    "item_sample": [
+      "Şu andaki ağrı seviyenizi 0-10 arasında işaretleyin"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "bpi",
+    "names": [
+      "Kısa Ağrı Envanteri",
+      "Brief Pain Inventory",
+      "BPI",
+      "KAE"
+    ],
+    "domain": [
+      "fizyoterapi",
+      "hemşirelik"
+    ],
+    "item_count": 17,
+    "subscales": [
+      {
+        "name": "Ağrı Şiddeti",
+        "items": [
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      {
+        "name": "Ağrının Etkisi",
+        "items": [
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      10
+    ],
+    "total_range": [
+      0,
+      110
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Dicle",
+      "year": 2005,
+      "journal": "Ağrı Dergisi"
+    },
+    "prefix_hints": [
+      "bpi_",
+      "kae_"
+    ],
+    "item_sample": [
+      "Ağrınızın son 24 saat içindeki en şiddetli hali nasıldı?"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "fas",
+    "names": [
+      "Yorgunluk Değerlendirme Ölçeği",
+      "Fatigue Assessment Scale",
+      "FAS",
+      "YDÖ"
+    ],
+    "domain": [
+      "fizyoterapi",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 10,
+    "subscales": [
+      {
+        "name": "Fiziksel Yorgunluk",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "name": "Zihinsel Yorgunluk",
+        "items": [
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      }
+    ],
+    "reverse_items": [
+      4,
+      10
+    ],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      10,
+      50
+    ],
+    "cutoff": {
+      "value": 22,
+      "interpretation": "≥22 belirgin yorgunluk"
+    },
+    "turkish_validity": {
+      "author": "Koçak",
+      "year": 2013,
+      "journal": "Romatizma"
+    },
+    "prefix_hints": [
+      "fas_",
+      "ydo_"
+    ],
+    "item_sample": [
+      "Herhangi bir işe başlamakta güçlük çekiyorum"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "fss",
+    "names": [
+      "Yorgunluk Şiddet Ölçeği",
+      "Fatigue Severity Scale",
+      "FSS",
+      "YŞÖ"
+    ],
+    "domain": [
+      "fizyoterapi",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 9,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      7
+    ],
+    "total_range": [
+      9,
+      63
+    ],
+    "cutoff": {
+      "value": 36,
+      "interpretation": "≥36 şiddetli yorgunluk"
+    },
+    "turkish_validity": {
+      "author": "Armutlu",
+      "year": 2007,
+      "journal": "International Journal of Rehabilitation Research"
+    },
+    "prefix_hints": [
+      "fss_",
+      "yso_"
+    ],
+    "item_sample": [
+      "Egzersiz yaptığımda yorgunluğum daha da artar"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "gses",
+    "names": [
+      "Genel Öz Yeterlilik Ölçeği",
+      "General Self-Efficacy Scale",
+      "GSES",
+      "GÖY"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 10,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      4
+    ],
+    "total_range": [
+      10,
+      40
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Aypay",
+      "year": 2010,
+      "journal": "Inonu Universitesi Egitim Fakultesi Dergisi"
+    },
+    "prefix_hints": [
+      "gses_",
+      "goye_",
+      "oyz_"
+    ],
+    "item_sample": [
+      "Karşılaştığım zorlukları her zaman bir şekilde çözebilirim"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "pss10",
+    "names": [
+      "Algılanan Stres Ölçeği-10",
+      "Perceived Stress Scale-10",
+      "PSS-10",
+      "AYÖ"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "ebelik",
+      "spor bilimleri"
+    ],
+    "item_count": 10,
+    "subscales": [],
+    "reverse_items": [
+      4,
+      5,
+      7,
+      8
+    ],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      40
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Yerlikaya",
+      "year": 2006,
+      "journal": "Doktora Tezi (Çukurova)"
+    },
+    "prefix_hints": [
+      "pss_",
+      "aso_",
+      "pss10_"
+    ],
+    "item_sample": [
+      "Beklenmedik bir şeylerin olması nedeniyle rahatsızlık duydunuz mu?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "mspss",
+    "names": [
+      "Çok Boyutlu Algılanan Sosyal Destek Ölçeği",
+      "Multidimensional Scale of Perceived Social Support",
+      "MSPSS",
+      "ÇBASD"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "ebelik"
+    ],
+    "item_count": 12,
+    "subscales": [
+      {
+        "name": "Aile",
+        "items": [
+          3,
+          4,
+          8,
+          11
+        ]
+      },
+      {
+        "name": "Arkadaşlar",
+        "items": [
+          6,
+          7,
+          9,
+          12
+        ]
+      },
+      {
+        "name": "Özel Bir İnsan",
+        "items": [
+          1,
+          2,
+          5,
+          10
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      7
+    ],
+    "total_range": [
+      12,
+      84
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Eker",
+      "year": 1995,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "mspss_",
+      "cbasd_",
+      "sds_"
+    ],
+    "item_sample": [
+      "İhtiyacım olduğunda yanımda olan özel bir insan var"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "rse",
+    "names": [
+      "Rosenberg Benlik Saygısı Ölçeği",
+      "Rosenberg Self-Esteem Scale",
+      "RSE",
+      "RSBSÖ"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 10,
+    "subscales": [],
+    "reverse_items": [
+      2,
+      5,
+      6,
+      8,
+      9
+    ],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      30
+    ],
+    "cutoff": {
+      "value": 15,
+      "interpretation": "<15 düşük benlik saygısı"
+    },
+    "turkish_validity": {
+      "author": "Çuhadaroğlu",
+      "year": 1986,
+      "journal": "Doktora Tezi (Hacettepe)"
+    },
+    "prefix_hints": [
+      "rse_",
+      "rbs_",
+      "bso_"
+    ],
+    "item_sample": [
+      "Kendimi en az diğer insanlar kadar değerli buluyorum"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "mbi",
+    "names": [
+      "Maslach Tükenmişlik Envanteri",
+      "Maslach Burnout Inventory",
+      "MBI",
+      "MTE"
+    ],
+    "domain": [
+      "hemşirelik",
+      "sağlık yönetimi",
+      "psikoloji"
+    ],
+    "item_count": 22,
+    "subscales": [
+      {
+        "name": "Duygusal Tükenme",
+        "items": [
+          1,
+          2,
+          3,
+          6,
+          8,
+          13,
+          14,
+          16,
+          20
+        ]
+      },
+      {
+        "name": "Duyarsızlaşma",
+        "items": [
+          5,
+          10,
+          11,
+          15,
+          22
+        ]
+      },
+      {
+        "name": "Kişisel Başarı",
+        "items": [
+          4,
+          7,
+          9,
+          12,
+          17,
+          18,
+          19,
+          21
+        ]
+      }
+    ],
+    "reverse_items": [
+      4,
+      7,
+      9,
+      12,
+      17,
+      18,
+      19,
+      21
+    ],
+    "scale_range": [
+      0,
+      6
+    ],
+    "total_range": [
+      0,
+      132
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Ergin",
+      "year": 1992,
+      "journal": "Sağlık Bilimleri Kongresi Bildirileri"
+    },
+    "prefix_hints": [
+      "mbi_",
+      "mte_",
+      "tukenme_"
+    ],
+    "item_sample": [
+      "İşimden soğuduğumu hissediyorum"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "zbi",
+    "names": [
+      "Zarit Bakıcı Yükü Ölçeği",
+      "Zarit Burden Interview",
+      "ZBI",
+      "ZBY"
+    ],
+    "domain": [
+      "hemşirelik",
+      "fizyoterapi"
+    ],
+    "item_count": 22,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      88
+    ],
+    "cutoff": {
+      "value": 21,
+      "interpretation": "21-40 hafif-orta yük, ≥41 şiddetli yük"
+    },
+    "turkish_validity": {
+      "author": "İnci",
+      "year": 2006,
+      "journal": "Atatürk Üniversitesi Hemşirelik Yüksekokulu Dergisi"
+    },
+    "prefix_hints": [
+      "zbi_",
+      "zby_",
+      "zarit_"
+    ],
+    "item_sample": [
+      "Yakınınızın sizden ihtiyacından fazla yardım talep ettiğini hissediyor musunuz?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "epds",
+    "names": [
+      "Edinburgh Postnatal Depresyon Ölçeği",
+      "Edinburgh Postnatal Depression Scale",
+      "EPDS",
+      "DPDO"
+    ],
+    "domain": [
+      "ebelik",
+      "hemşirelik",
+      "psikoloji"
+    ],
+    "item_count": 10,
+    "subscales": [],
+    "reverse_items": [
+      1,
+      2,
+      4
+    ],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      30
+    ],
+    "cutoff": {
+      "value": 13,
+      "interpretation": "≥13 doğum sonrası depresyon riski"
+    },
+    "turkish_validity": {
+      "author": "Engindeniz",
+      "year": 1996,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "epds_",
+      "dpdo_",
+      "epds10_"
+    ],
+    "item_sample": [
+      "Gülebildim ve olayların komik tarafını görebildim"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "barthel",
+    "names": [
+      "Barthel Günlük Yaşam Aktiviteleri İndeksi",
+      "Barthel Index",
+      "BI",
+      "BYAI"
+    ],
+    "domain": [
+      "fizyoterapi",
+      "hemşirelik"
+    ],
+    "item_count": 10,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      15
+    ],
+    "total_range": [
+      0,
+      100
+    ],
+    "cutoff": {
+      "value": 60,
+      "interpretation": "<60 bağımlı, ≥60 yarı bağımsız"
+    },
+    "turkish_validity": {
+      "author": "Küçükdeveci",
+      "year": 1998,
+      "journal": "Nöroloji Bilimleri Dergisi"
+    },
+    "prefix_hints": [
+      "barthel_",
+      "byai_",
+      "bi_"
+    ],
+    "item_sample": [
+      "Yemek yeme (yardımsız / yardım ile / tamamen bağımlı)"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "bbs",
+    "names": [
+      "Berg Denge Ölçeği",
+      "Berg Balance Scale",
+      "BBS",
+      "BDÖ"
+    ],
+    "domain": [
+      "fizyoterapi"
+    ],
+    "item_count": 14,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      56
+    ],
+    "cutoff": {
+      "value": 45,
+      "interpretation": "<45 düşme riski yüksek"
+    },
+    "turkish_validity": {
+      "author": "Şahin",
+      "year": 2008,
+      "journal": "Doktora Tezi (Hacettepe)"
+    },
+    "prefix_hints": [
+      "bbs_",
+      "bdo_",
+      "berg_"
+    ],
+    "item_sample": [
+      "Desteksiz oturma",
+      "Ayakta durma"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "tug",
+    "names": [
+      "Zamanlı Kalk ve Git Testi",
+      "Timed Up and Go Test",
+      "TUG",
+      "ZKGT"
+    ],
+    "domain": [
+      "fizyoterapi",
+      "spor bilimleri"
+    ],
+    "item_count": 1,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": null,
+    "total_range": null,
+    "cutoff": {
+      "value": 12,
+      "interpretation": "≥12 saniye düşme riski"
+    },
+    "turkish_validity": null,
+    "prefix_hints": [
+      "tug_",
+      "zkgt_"
+    ],
+    "item_sample": [
+      "Sandalyeden kalkıp 3 metre yürüyüp dönüp tekrar oturma süresi"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "dash",
+    "names": [
+      "Kol Omuz ve El Sorunları Anketi",
+      "Disabilities of the Arm Shoulder and Hand",
+      "DASH"
+    ],
+    "domain": [
+      "fizyoterapi"
+    ],
+    "item_count": 30,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      0,
+      100
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Düger",
+      "year": 2006,
+      "journal": "Fizyoterapi Rehabilitasyon"
+    },
+    "prefix_hints": [
+      "dash_",
+      "koes_",
+      "koel_"
+    ],
+    "item_sample": [
+      "Sıkı kapaklı bir kavanozu açmak"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "womac",
+    "names": [
+      "WOMAC Osteoartrit İndeksi",
+      "Western Ontario and McMaster Universities Osteoarthritis Index",
+      "WOMAC"
+    ],
+    "domain": [
+      "fizyoterapi"
+    ],
+    "item_count": 24,
+    "subscales": [
+      {
+        "name": "Ağrı",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "name": "Sertlik",
+        "items": [
+          6,
+          7
+        ]
+      },
+      {
+        "name": "Fiziksel Fonksiyon",
+        "items": [
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      96
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Tüzün",
+      "year": 2005,
+      "journal": "Clinical Rheumatology"
+    },
+    "prefix_hints": [
+      "womac_",
+      "wmc_"
+    ],
+    "item_sample": [
+      "Düz zeminde yürürken dizinizdeki ağrı seviyesi"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "odi",
+    "names": [
+      "Oswestry Bel Ağrısı Yeti Yitimi Ölçeği",
+      "Oswestry Disability Index",
+      "ODI"
+    ],
+    "domain": [
+      "fizyoterapi"
+    ],
+    "item_count": 10,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      5
+    ],
+    "total_range": [
+      0,
+      50
+    ],
+    "cutoff": {
+      "value": 20,
+      "interpretation": "≥20 orta düzey yeti yitimi"
+    },
+    "turkish_validity": {
+      "author": "Yakut",
+      "year": 2004,
+      "journal": "Spine"
+    },
+    "prefix_hints": [
+      "odi_",
+      "oswestry_",
+      "bel_"
+    ],
+    "item_sample": [
+      "Ağrının şiddeti",
+      "Kişisel bakım"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "ndi",
+    "names": [
+      "Boyun Özürlülük İndeksi",
+      "Neck Disability Index",
+      "NDI",
+      "BOİ"
+    ],
+    "domain": [
+      "fizyoterapi"
+    ],
+    "item_count": 10,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      5
+    ],
+    "total_range": [
+      0,
+      50
+    ],
+    "cutoff": {
+      "value": 15,
+      "interpretation": "≥15 orta düzey özürlülük"
+    },
+    "turkish_validity": {
+      "author": "Aslan",
+      "year": 2008,
+      "journal": "Spine"
+    },
+    "prefix_hints": [
+      "ndi_",
+      "boi_",
+      "boyun_"
+    ],
+    "item_sample": [
+      "Ağrının şiddeti",
+      "Kişisel bakım"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "fim",
+    "names": [
+      "Fonksiyonel Bağımsızlık Ölçümü",
+      "Functional Independence Measure",
+      "FIM",
+      "FBÖ"
+    ],
+    "domain": [
+      "fizyoterapi",
+      "hemşirelik"
+    ],
+    "item_count": 18,
+    "subscales": [
+      {
+        "name": "Motor",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ]
+      },
+      {
+        "name": "Bilişsel",
+        "items": [
+          14,
+          15,
+          16,
+          17,
+          18
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      7
+    ],
+    "total_range": [
+      18,
+      126
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Ardıç",
+      "year": 2001,
+      "journal": "Romatizma Dergisi"
+    },
+    "prefix_hints": [
+      "fim_",
+      "fbo_"
+    ],
+    "item_sample": [
+      "Yemek yeme bağımsızlığı",
+      "Kişisel bakım"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "msq",
+    "names": [
+      "Minnesota İş Doyumu Ölçeği",
+      "Minnesota Satisfaction Questionnaire",
+      "MSQ",
+      "MİDÖ"
+    ],
+    "domain": [
+      "sağlık yönetimi",
+      "hemşirelik"
+    ],
+    "item_count": 20,
+    "subscales": [
+      {
+        "name": "İçsel Doyum",
+        "items": [
+          1,
+          2,
+          5,
+          7,
+          8,
+          9,
+          10,
+          11,
+          15,
+          16,
+          20
+        ]
+      },
+      {
+        "name": "Dışsal Doyum",
+        "items": [
+          3,
+          4,
+          6,
+          12,
+          13,
+          14,
+          17,
+          18,
+          19
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      20,
+      100
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Baycan",
+      "year": 1985,
+      "journal": "Yüksek Lisans Tezi (Boğaziçi)"
+    },
+    "prefix_hints": [
+      "msq_",
+      "mid_",
+      "ido_"
+    ],
+    "item_sample": [
+      "İşimde sürekli olarak meşgul olabilme fırsatı"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "mbi_burnout",
+    "names": [
+      "Maslach Tükenmişlik Envanteri Sağlık Çalışanları Formu",
+      "Maslach Burnout Inventory Human Services Survey",
+      "MBI-HSS"
+    ],
+    "domain": [
+      "hemşirelik",
+      "sağlık yönetimi"
+    ],
+    "item_count": 22,
+    "subscales": [
+      {
+        "name": "Duygusal Tükenme",
+        "items": [
+          1,
+          2,
+          3,
+          6,
+          8,
+          13,
+          14,
+          16,
+          20
+        ]
+      },
+      {
+        "name": "Duyarsızlaşma",
+        "items": [
+          5,
+          10,
+          11,
+          15,
+          22
+        ]
+      },
+      {
+        "name": "Kişisel Başarı",
+        "items": [
+          4,
+          7,
+          9,
+          12,
+          17,
+          18,
+          19,
+          21
+        ]
+      }
+    ],
+    "reverse_items": [
+      4,
+      7,
+      9,
+      12,
+      17,
+      18,
+      19,
+      21
+    ],
+    "scale_range": [
+      0,
+      6
+    ],
+    "total_range": [
+      0,
+      132
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Ergin",
+      "year": 1992,
+      "journal": "Sağlık Bilimleri Kongresi Bildirileri"
+    },
+    "prefix_hints": [
+      "mbihss_",
+      "mbi_hss_"
+    ],
+    "item_sample": [
+      "Hastamla ilgilenirken kendimi duygusal açıdan tükenmiş hissediyorum"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "cbi",
+    "names": [
+      "Kopenhag Tükenmişlik Envanteri",
+      "Copenhagen Burnout Inventory",
+      "CBI",
+      "KTE"
+    ],
+    "domain": [
+      "sağlık yönetimi",
+      "hemşirelik"
+    ],
+    "item_count": 19,
+    "subscales": [
+      {
+        "name": "Kişisel Tükenmişlik",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      {
+        "name": "İşle İlgili Tükenmişlik",
+        "items": [
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ]
+      },
+      {
+        "name": "Müşteriyle İlgili Tükenmişlik",
+        "items": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      19,
+      95
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Bakoğlu",
+      "year": 2008,
+      "journal": "16. Ulusal Yönetim Organizasyon Kongresi"
+    },
+    "prefix_hints": [
+      "cbi_",
+      "kte_"
+    ],
+    "item_sample": [
+      "Ne kadar sıklıkla kendinizi yorgun hissedersiniz?"
+    ],
+    "scoring": "alt_bowut"
+  },
+  {
+    "id": "hsopsc",
+    "names": [
+      "Hasta Güvenliği Kültürü Hastane Anketi",
+      "Hospital Survey on Patient Safety Culture",
+      "HSOPSC",
+      "HGKÖ"
+    ],
+    "domain": [
+      "hemşirelik",
+      "sağlık yönetimi"
+    ],
+    "item_count": 44,
+    "subscales": [],
+    "reverse_items": [
+      1,
+      3,
+      5,
+      7,
+      9
+    ],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      44,
+      220
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Filiz",
+      "year": 2022,
+      "journal": "BMC Nursing"
+    },
+    "prefix_hints": [
+      "pasc_",
+      "hgko_",
+      "hsopsc_"
+    ],
+    "item_sample": [
+      "Bu hastanede hasta güvenliğine çok önem verilir"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "bsq",
+    "names": [
+      "Vücut Algısı Ölçeği",
+      "Body Shape Questionnaire",
+      "BSQ",
+      "VAÖ"
+    ],
+    "domain": [
+      "psikoloji",
+      "beslenme",
+      "spor bilimleri"
+    ],
+    "item_count": 34,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      6
+    ],
+    "total_range": [
+      34,
+      204
+    ],
+    "cutoff": {
+      "value": 110,
+      "interpretation": "≥110 ciddi beden memnuniyetsizliği"
+    },
+    "turkish_validity": {
+      "author": "Kılıç",
+      "year": 2004,
+      "journal": "Düşünen Adam"
+    },
+    "prefix_hints": [
+      "bsq_",
+      "vio_",
+      "vao_"
+    ],
+    "item_sample": [
+      "Kendinizi şişman hissettiğiniz için diyet yapmayı düşündünüz mü?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "gds15",
+    "names": [
+      "Geriatrik Depresyon Ölçeği-15",
+      "Geriatric Depression Scale-15",
+      "GDS-15",
+      "GDÖ-15"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "fizyoterapi"
+    ],
+    "item_count": 15,
+    "subscales": [],
+    "reverse_items": [
+      1,
+      5,
+      7,
+      11,
+      13
+    ],
+    "scale_range": [
+      0,
+      1
+    ],
+    "total_range": [
+      0,
+      15
+    ],
+    "cutoff": {
+      "value": 5,
+      "interpretation": "≥5 olası depresyon"
+    },
+    "turkish_validity": {
+      "author": "Ertan",
+      "year": 1997,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "gds15_",
+      "gdo15_",
+      "gds_"
+    ],
+    "item_sample": [
+      "Hayatınızdan memnun musunuz?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "ghq12",
+    "names": [
+      "Genel Sağlık Anketi-12",
+      "General Health Questionnaire-12",
+      "GHQ-12",
+      "GSA-12"
+    ],
+    "domain": [
+      "hemşirelik",
+      "psikoloji",
+      "sağlık yönetimi"
+    ],
+    "item_count": 12,
+    "subscales": [],
+    "reverse_items": [
+      1,
+      3,
+      4,
+      7,
+      8,
+      12
+    ],
+    "scale_range": [
+      0,
+      1
+    ],
+    "total_range": [
+      0,
+      12
+    ],
+    "cutoff": {
+      "value": 2,
+      "interpretation": "≥2 psikolojik sıkıntı riski"
+    },
+    "turkish_validity": {
+      "author": "Kılıç",
+      "year": 1996,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "ghq_",
+      "gsa_",
+      "ghq12_"
+    ],
+    "item_sample": [
+      "Kendinizi yaptığınız işe verebiliyor musunuz?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "staxi",
+    "names": [
+      "Sürekli Öfke ve Öfke İfade Tarzı Ölçeği",
+      "State-Trait Anger Expression Inventory",
+      "STAXI",
+      "SOOÖ"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 34,
+    "subscales": [
+      {
+        "name": "Sürekli Öfke",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "name": "Öfke Kontrolü",
+        "items": [
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18
+        ]
+      },
+      {
+        "name": "Dışa Vurulan Öfke",
+        "items": [
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26
+        ]
+      },
+      {
+        "name": "İçe Atılan Öfke",
+        "items": [
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      4
+    ],
+    "total_range": [
+      34,
+      136
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Özer",
+      "year": 1994,
+      "journal": "Türk Psikoloji Dergisi"
+    },
+    "prefix_hints": [
+      "staxi_",
+      "so_",
+      "oife_"
+    ],
+    "item_sample": [
+      "Öfkelendiğimde kendimi kontrol edebilirim"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "audit",
+    "names": [
+      "Alkol Kullanım Bozuklukları Tanımlama Testi",
+      "Alcohol Use Disorders Identification Test",
+      "AUDIT"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 10,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      40
+    ],
+    "cutoff": {
+      "value": 8,
+      "interpretation": "≥8 riskli alkol kullanımı"
+    },
+    "turkish_validity": {
+      "author": "Yazıcı",
+      "year": 2002,
+      "journal": "Düşünen Adam"
+    },
+    "prefix_hints": [
+      "audit_",
+      "alko_"
+    ],
+    "item_sample": [
+      "Ne sıklıkla alkol içeren içkiler içersiniz?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "ftnd",
+    "names": [
+      "Fagerström Nikotin Bağımlılık Testi",
+      "Fagerström Test for Nicotine Dependence",
+      "FTND"
+    ],
+    "domain": [
+      "hemşirelik",
+      "psikoloji"
+    ],
+    "item_count": 6,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      10
+    ],
+    "cutoff": {
+      "value": 5,
+      "interpretation": "≥5 orta ve yüksek nikotin bağımlılığı"
+    },
+    "turkish_validity": {
+      "author": "Uysal",
+      "year": 2004,
+      "journal": "Tüberküloz ve Toraks"
+    },
+    "prefix_hints": [
+      "ftnd_",
+      "fagerstrom_",
+      "nbag_"
+    ],
+    "item_sample": [
+      "Günün ilk sigarasını uyandıktan ne kadar sonra içersiniz?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "swls",
+    "names": [
+      "Yaşam Doyumu Ölçeği",
+      "Satisfaction with Life Scale",
+      "SWLS",
+      "YDÖ"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "spor bilimleri",
+      "ebelik"
+    ],
+    "item_count": 5,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      7
+    ],
+    "total_range": [
+      5,
+      35
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Yetim",
+      "year": 1993,
+      "journal": "Psikoloji Dergisi"
+    },
+    "prefix_hints": [
+      "swls_",
+      "yd_",
+      "ydo_"
+    ],
+    "item_sample": [
+      "Yaşamım pek çok yönüyle idealime yakın"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "panas",
+    "names": [
+      "Pozitif ve Negatif Etki Ölçeği",
+      "Positive and Negative Affect Schedule",
+      "PANAS"
+    ],
+    "domain": [
+      "psikoloji",
+      "spor bilimleri",
+      "hemşirelik"
+    ],
+    "item_count": 20,
+    "subscales": [
+      {
+        "name": "Pozitif Etki",
+        "items": [
+          1,
+          3,
+          5,
+          9,
+          10,
+          12,
+          14,
+          16,
+          17,
+          19
+        ]
+      },
+      {
+        "name": "Negatif Etki",
+        "items": [
+          2,
+          4,
+          6,
+          7,
+          8,
+          11,
+          13,
+          15,
+          18,
+          20
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      10,
+      50
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Gençöz",
+      "year": 2000,
+      "journal": "Türk Psikoloji Dergisi"
+    },
+    "prefix_hints": [
+      "panas_",
+      "pe_",
+      "ne_"
+    ],
+    "item_sample": [
+      "İlgili",
+      "Heyecanlı",
+      "Sıkıntılı"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "cd_risc",
+    "names": [
+      "Connor-Davidson Psikolojik Sağlamlık Ölçeği",
+      "Connor-Davidson Resilience Scale",
+      "CD-RISC",
+      "PSÖ"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 25,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      100
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Karaırmak",
+      "year": 2010,
+      "journal": "Türk Psikolojik Danışma ve Rehberlik Dergisi"
+    },
+    "prefix_hints": [
+      "risc_",
+      "pso_",
+      "cdrisc_",
+      "saglamlik_"
+    ],
+    "item_sample": [
+      "Değişikliklere uyum sağlayabilirim"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "lot_r",
+    "names": [
+      "Yaşama Yönelim Testi",
+      "Life Orientation Test Revised",
+      "LOT-R",
+      "YYT"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 10,
+    "subscales": [],
+    "reverse_items": [
+      3,
+      7,
+      9
+    ],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      24
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Aydın",
+      "year": 2002,
+      "journal": "Türk Psikoloji Dergisi"
+    },
+    "prefix_hints": [
+      "lotr_",
+      "yyt_",
+      "iyimser_"
+    ],
+    "item_sample": [
+      "Geleceğin benim için ne getireceğini bilmediğim zamanlarda en iyisini umarım"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "ders",
+    "names": [
+      "Duygu Düzenleme Güçlüğü Ölçeği",
+      "Difficulties in Emotion Regulation Scale",
+      "DERS",
+      "DDGÖ"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 36,
+    "subscales": [
+      {
+        "name": "Açıklık",
+        "items": [
+          1,
+          4,
+          5,
+          7,
+          9
+        ]
+      },
+      {
+        "name": "Farkındalık",
+        "items": [
+          2,
+          6,
+          8,
+          10,
+          17,
+          34
+        ]
+      },
+      {
+        "name": "Stratejiler",
+        "items": [
+          15,
+          16,
+          21,
+          22,
+          28,
+          30,
+          31,
+          35,
+          36
+        ]
+      },
+      {
+        "name": "Dürtüsellik",
+        "items": [
+          3,
+          14,
+          19,
+          24,
+          27,
+          32
+        ]
+      },
+      {
+        "name": "Amaçlar",
+        "items": [
+          13,
+          18,
+          20,
+          26,
+          33
+        ]
+      },
+      {
+        "name": "Kabul Etmeme",
+        "items": [
+          11,
+          12,
+          21,
+          23,
+          25,
+          29
+        ]
+      }
+    ],
+    "reverse_items": [
+      1,
+      2,
+      6,
+      7,
+      8,
+      10,
+      17,
+      20,
+      22,
+      24,
+      34,
+      35
+    ],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      36,
+      180
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Yiğit",
+      "year": 2011,
+      "journal": "Türk Psikoloji Yazıları"
+    },
+    "prefix_hints": [
+      "ders_",
+      "ddgo_",
+      "duygu_duz_"
+    ],
+    "item_sample": [
+      "Ne hissettiğimin farkındayım"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "who5",
+    "names": [
+      "WHO-5 İyilik Hali İndeksi",
+      "WHO Five Well-Being Index",
+      "WHO-5"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 5,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      5
+    ],
+    "total_range": [
+      0,
+      25
+    ],
+    "cutoff": {
+      "value": 13,
+      "interpretation": "<13 depresyon taraması önerilir"
+    },
+    "turkish_validity": {
+      "author": "Eser",
+      "year": 2011,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "who5_",
+      "iyilik_",
+      "wb_"
+    ],
+    "item_sample": [
+      "Kendimi neşeli ve iyi hissettim"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "moca",
+    "names": [
+      "Montreal Bilişsel Değerlendirme Ölçeği",
+      "Montreal Cognitive Assessment",
+      "MoCA",
+      "MBDÖ"
+    ],
+    "domain": [
+      "psikoloji",
+      "fizyoterapi",
+      "hemşirelik"
+    ],
+    "item_count": 30,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      1
+    ],
+    "total_range": [
+      0,
+      30
+    ],
+    "cutoff": {
+      "value": 21,
+      "interpretation": "<21 bilişsel bozukluk şüphesi"
+    },
+    "turkish_validity": {
+      "author": "Selekler",
+      "year": 2010,
+      "journal": "Türk Nöroloji Dergisi"
+    },
+    "prefix_hints": [
+      "moca_",
+      "mbdo_"
+    ],
+    "item_sample": [
+      "Görsel-Uzamsal beceriler",
+      "İsimlendirme",
+      "Bellek"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "mmse",
+    "names": [
+      "Mini Mental Durum Testi",
+      "Mini-Mental State Examination",
+      "MMSE",
+      "MMDT"
+    ],
+    "domain": [
+      "psikoloji",
+      "fizyoterapi",
+      "hemşirelik"
+    ],
+    "item_count": 11,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      5
+    ],
+    "total_range": [
+      0,
+      30
+    ],
+    "cutoff": {
+      "value": 24,
+      "interpretation": "<24 bilişsel gerileme riski"
+    },
+    "turkish_validity": {
+      "author": "Güngen",
+      "year": 2002,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "mmse_",
+      "mmdm_"
+    ],
+    "item_sample": [
+      "Hangi yıldayız?",
+      "Yönelim soruları"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "asa",
+    "names": [
+      "Öz Bakım Gücü Ölçeği",
+      "Exercise of Self-Care Agency Scale",
+      "ASA",
+      "ÖBGÖ"
+    ],
+    "domain": [
+      "hemşirelik",
+      "ebelik"
+    ],
+    "item_count": 35,
+    "subscales": [],
+    "reverse_items": [
+      3,
+      5,
+      6,
+      9,
+      11,
+      13,
+      15,
+      18,
+      19,
+      21,
+      23,
+      24,
+      28,
+      31,
+      33,
+      34,
+      35
+    ],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      140
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Nahcıvan",
+      "year": 1993,
+      "journal": "Hemşirelik Bülteni"
+    },
+    "prefix_hints": [
+      "asa_",
+      "obgo_"
+    ],
+    "item_sample": [
+      "Bedenimi sağlıklı tutacak her şeyi yaparım"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "sdsca",
+    "names": [
+      "Diyabet Öz Bakım Aktiviteleri Anketi",
+      "Summary of Diabetes Self-Care Activities",
+      "SDSCA"
+    ],
+    "domain": [
+      "hemşirelik",
+      "beslenme"
+    ],
+    "item_count": 10,
+    "subscales": [
+      {
+        "name": "Diyet",
+        "items": [
+          1,
+          2
+        ]
+      },
+      {
+        "name": "Egzersiz",
+        "items": [
+          3,
+          4
+        ]
+      },
+      {
+        "name": "Kan Şekeri Kontrolü",
+        "items": [
+          5,
+          6
+        ]
+      },
+      {
+        "name": "Ayak Bakımı",
+        "items": [
+          7,
+          8
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      7
+    ],
+    "total_range": [
+      0,
+      70
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Akgün Şahin",
+      "year": 2025,
+      "journal": "Türkiye Diyabet ve Obezite Dergisi"
+    },
+    "prefix_hints": [
+      "sdsca_",
+      "dobo_"
+    ],
+    "item_sample": [
+      "Geçen son 7 günde kaç gün önerilen diyete uydunuz?"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "ashn",
+    "names": [
+      "Sağlıklı Beslenmeye İlişkin Tutum Ölçeği",
+      "Attitude Scale for Healthy Nutrition",
+      "SBİTÖ",
+      "ASHN"
+    ],
+    "domain": [
+      "beslenme",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 21,
+    "subscales": [
+      {
+        "name": "Bilgi",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      {
+        "name": "Duygu",
+        "items": [
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ]
+      },
+      {
+        "name": "Davranış",
+        "items": [
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ]
+      }
+    ],
+    "reverse_items": [
+      1,
+      5,
+      12,
+      17
+    ],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      21,
+      105
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Tekgül",
+      "year": 2019,
+      "journal": "Gaziantep Üniversitesi Spor Bilimleri Dergisi"
+    },
+    "prefix_hints": [
+      "ashn_",
+      "sbit_",
+      "sbito_",
+      "sbn_"
+    ],
+    "item_sample": [
+      "Sağlıklı beslenmek benim için bir zorunluluktur"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "oysto",
+    "names": [
+      "Online Yemek Siparişlerine Yönelik Tutum Ölçeği",
+      "Online Food Ordering Attitude Scale",
+      "OYŞTÖ",
+      "OYS"
+    ],
+    "domain": [
+      "beslenme"
+    ],
+    "item_count": 15,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      15,
+      75
+    ],
+    "cutoff": null,
+    "turkish_validity": null,
+    "prefix_hints": [
+      "oys_",
+      "oysto_",
+      "oystutu_",
+      "oyss_"
+    ],
+    "item_sample": [
+      "Online yemek sipariş sitesinin kullanım kolaylığı benim için önemlidir"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "nhp",
+    "names": [
+      "Nottingham Sağlık Profili",
+      "Nottingham Health Profile",
+      "NHP"
+    ],
+    "domain": [
+      "fizyoterapi",
+      "hemşirelik",
+      "spor bilimleri"
+    ],
+    "item_count": 38,
+    "subscales": [
+      {
+        "name": "Ağrı",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ]
+      },
+      {
+        "name": "Fiziksel Aktivite",
+        "items": [
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "name": "Enerji",
+        "items": [
+          17,
+          18,
+          19
+        ]
+      },
+      {
+        "name": "Uyku",
+        "items": [
+          20,
+          21,
+          22,
+          23,
+          24
+        ]
+      },
+      {
+        "name": "Sosyal İzolasyon",
+        "items": [
+          25,
+          26,
+          27,
+          28,
+          29
+        ]
+      },
+      {
+        "name": "Duygusal Reaksiyonlar",
+        "items": [
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38
+        ]
+      }
+    ],
+    "reverse_items": null,
+    "scale_range": [
+      0,
+      1
+    ],
+    "total_range": [
+      0,
+      100
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Küçükdeveci",
+      "year": 2000,
+      "journal": "Clinical Rehabilitation"
+    },
+    "prefix_hints": [
+      "nhp_",
+      "nsp_"
+    ],
+    "item_sample": [
+      "Adım atarken ağrım var"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "eq5d",
+    "names": [
+      "EQ-5D Yaşam Kalitesi Ölçeği",
+      "EuroQol 5-Dimension",
+      "EQ-5D"
+    ],
+    "domain": [
+      "hemşirelik",
+      "fizyoterapi",
+      "sağlık yönetimi"
+    ],
+    "item_count": 5,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      3
+    ],
+    "total_range": [
+      5,
+      15
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Eser",
+      "year": 2007,
+      "journal": "Gazi Tıp Dergisi"
+    },
+    "prefix_hints": [
+      "eq5d_",
+      "eq_"
+    ],
+    "item_sample": [
+      "Yürüme",
+      "Kişisel bakım",
+      "Olağan aktiviteler"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "scl90r",
+    "names": [
+      "Semptom Tarama Listesi-90-R",
+      "Symptom Checklist-90-Revised",
+      "SCL-90-R"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 90,
+    "subscales": [
+      {
+        "name": "Somatizasyon",
+        "items": [
+          1,
+          4,
+          12,
+          27,
+          40,
+          42,
+          48,
+          49,
+          52,
+          53,
+          56,
+          58
+        ]
+      },
+      {
+        "name": "Obsesif-Kompulsif",
+        "items": [
+          3,
+          9,
+          10,
+          28,
+          38,
+          45,
+          46,
+          51,
+          55,
+          65
+        ]
+      },
+      {
+        "name": "Kişilerarası Duyarlılık",
+        "items": [
+          6,
+          21,
+          34,
+          36,
+          37,
+          41,
+          61,
+          69,
+          73
+        ]
+      },
+      {
+        "name": "Depresyon",
+        "items": [
+          5,
+          14,
+          15,
+          20,
+          22,
+          26,
+          29,
+          30,
+          31,
+          32,
+          54,
+          71,
+          79
+        ]
+      },
+      {
+        "name": "Anksiyete",
+        "items": [
+          2,
+          17,
+          23,
+          33,
+          39,
+          57,
+          72,
+          78,
+          80,
+          86
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      360
+    ],
+    "cutoff": {
+      "value": 1,
+      "interpretation": "GSI ≥1.00 patoloji şüphesi"
+    },
+    "turkish_validity": {
+      "author": "Dağ",
+      "year": 1991,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "scl90_",
+      "stl_",
+      "scl_"
+    ],
+    "item_sample": [
+      "Baş ağrıları",
+      "Sinirlilik veya titreme hissi"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "fsfi",
+    "names": [
+      "Kadın Cinsel Fonksiyon Ölçeği",
+      "Female Sexual Function Inventory",
+      "FSFI",
+      "KCİÖ"
+    ],
+    "domain": [
+      "hemşirelik",
+      "ebelik"
+    ],
+    "item_count": 19,
+    "subscales": [
+      {
+        "name": "İstek",
+        "items": [
+          1,
+          2
+        ]
+      },
+      {
+        "name": "Uyarılma",
+        "items": [
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      {
+        "name": "Lubrikasyon",
+        "items": [
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "name": "Orgazm",
+        "items": [
+          11,
+          12,
+          13
+        ]
+      },
+      {
+        "name": "Memnuniyet",
+        "items": [
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "name": "Ağrı",
+        "items": [
+          17,
+          18,
+          19
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      5
+    ],
+    "total_range": [
+      2,
+      36
+    ],
+    "cutoff": {
+      "value": 26,
+      "interpretation": "<26.5 cinsel işlev bozukluğu riski"
+    },
+    "turkish_validity": {
+      "author": "Aygin",
+      "year": 2005,
+      "journal": "Doktora Tezi (Ege)"
+    },
+    "prefix_hints": [
+      "fsfi_",
+      "kcio_"
+    ],
+    "item_sample": [
+      "Cinsel istek veya arzu duyma sıklığınız ne kadardı?"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "hls",
+    "names": [
+      "Sağlık Okuryazarlığı Ölçeği",
+      "Health Literacy Survey",
+      "HLS-TR",
+      "SÖÖ"
+    ],
+    "domain": [
+      "hemşirelik",
+      "ebelik",
+      "sağlık yönetimi"
+    ],
+    "item_count": 47,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      4
+    ],
+    "total_range": [
+      0,
+      50
+    ],
+    "cutoff": {
+      "value": 33,
+      "interpretation": "<25 yetersiz, 25-33 sorunlu, 33-42 yeterli SÖ"
+    },
+    "turkish_validity": {
+      "author": "Toçi",
+      "year": 2016,
+      "journal": "Doktora Tezi (Gazi)"
+    },
+    "prefix_hints": [
+      "hls_",
+      "aso_",
+      "soo_"
+    ],
+    "item_sample": [
+      "Hastalıklarınızla ilgili tıbbi bilgileri anlamak sizin için ne kadar kolay?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "ocq",
+    "names": [
+      "Örgütsel Bağlılık Ölçeği",
+      "Organizational Commitment Questionnaire",
+      "OCQ",
+      "OBÖ"
+    ],
+    "domain": [
+      "sağlık yönetimi",
+      "hemşirelik"
+    ],
+    "item_count": 18,
+    "subscales": [
+      {
+        "name": "Duygusal Bağlılık",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      {
+        "name": "Devam Bağlılığı",
+        "items": [
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ]
+      },
+      {
+        "name": "Normatif Bağlılık",
+        "items": [
+          13,
+          14,
+          15,
+          16,
+          17,
+          18
+        ]
+      }
+    ],
+    "reverse_items": [
+      3,
+      4,
+      5
+    ],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      18,
+      90
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Boylu",
+      "year": 2007,
+      "journal": "Yönetim ve Ekonomi"
+    },
+    "prefix_hints": [
+      "ocq_",
+      "obo_",
+      "orgutsel_bag_"
+    ],
+    "item_sample": [
+      "Bu hastanede çalışmaktan gurur duyuyorum"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "wfc",
+    "names": [
+      "İş-Aile Çatışması Ölçeği",
+      "Work-Family Conflict Scale",
+      "WFC",
+      "İAÇ"
+    ],
+    "domain": [
+      "sağlık yönetimi",
+      "hemşirelik",
+      "ebelik"
+    ],
+    "item_count": 5,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      5,
+      25
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Efeoğlu",
+      "year": 2006,
+      "journal": "Yüksek Lisans Tezi (Çukurova)"
+    },
+    "prefix_hints": [
+      "wfc_",
+      "iac_"
+    ],
+    "item_sample": [
+      "İşimdeki sorumluluklarım aile hayatımı olumsuz etkiliyor"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "npi_narcissism",
+    "names": [
+      "Narsisizm Kişilik Envanteri",
+      "Narcissistic Personality Inventory",
+      "NPI",
+      "NKE"
+    ],
+    "domain": [
+      "psikoloji"
+    ],
+    "item_count": 40,
+    "subscales": [
+      {
+        "name": "Otorite",
+        "items": [
+          1,
+          8,
+          10,
+          11,
+          12,
+          32,
+          33,
+          36
+        ]
+      },
+      {
+        "name": "Sergileme",
+        "items": [
+          2,
+          3,
+          7,
+          20,
+          28,
+          30,
+          38
+        ]
+      },
+      {
+        "name": "Üstünlük",
+        "items": [
+          4,
+          9,
+          26,
+          37,
+          40
+        ]
+      }
+    ],
+    "reverse_items": null,
+    "scale_range": [
+      0,
+      1
+    ],
+    "total_range": [
+      0,
+      40
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Atay",
+      "year": 2009,
+      "journal": "Akademik Bakış Dergisi"
+    },
+    "prefix_hints": [
+      "npi_",
+      "nke_"
+    ],
+    "item_sample": [
+      "Ben doğal bir liderim",
+      "Başkalarına kıyasla yetenekli biri olduğumu düşünüyorum"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "aiq_attachment",
+    "names": [
+      "İlişki Ölçekleri Anketi",
+      "Relationship Scales Questionnaire",
+      "RSQ",
+      "İÖA"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 30,
+    "subscales": [
+      {
+        "name": "Güvenli Bağlanma",
+        "items": [
+          2,
+          7,
+          8,
+          13,
+          16,
+          22,
+          26,
+          27,
+          28
+        ]
+      },
+      {
+        "name": "Korkulu Bağlanma",
+        "items": [
+          1,
+          5,
+          12,
+          18,
+          23,
+          25
+        ]
+      },
+      {
+        "name": "Saplantılı Bağlanma",
+        "items": [
+          6,
+          14,
+          16,
+          20,
+          21,
+          29
+        ]
+      },
+      {
+        "name": "Kayıtsız Bağlanma",
+        "items": [
+          3,
+          9,
+          10,
+          11,
+          15,
+          19,
+          22,
+          24,
+          25
+        ]
+      }
+    ],
+    "reverse_items": null,
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      30,
+      150
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Sümer",
+      "year": 2000,
+      "journal": "Türk Psikoloji Dergisi"
+    },
+    "prefix_hints": [
+      "rsq_",
+      "bag_",
+      "baglanma_"
+    ],
+    "item_sample": [
+      "İnsanların beni terk etmesinden rahatsız olurum"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "pcl5_ptsd",
+    "names": [
+      "TSSB Belirti Ölçeği-DSM-5",
+      "PTSD Checklist for DSM-5",
+      "PCL-5",
+      "TSSB"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 20,
+    "subscales": [
+      {
+        "name": "Yeniden Yaşantılama",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "name": "Kaçınma",
+        "items": [
+          6,
+          7
+        ]
+      },
+      {
+        "name": "Olumsuz Biliş ve Duygu",
+        "items": [
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ]
+      },
+      {
+        "name": "Uyarılma ve Reaktivite",
+        "items": [
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      80
+    ],
+    "cutoff": {
+      "value": 33,
+      "interpretation": "≥33 TSSB şüphesi"
+    },
+    "turkish_validity": {
+      "author": "Boysan",
+      "year": 2017,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "pcl5_",
+      "pcl_",
+      "tssb_"
+    ],
+    "item_sample": [
+      "Travmayla ilgili anılar, düşünceler veya görüntüler zihninize geldi mi?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "yboyda_nl",
+    "names": [
+      "Yetişkin Beslenme Okuryazarlığı Ölçeği",
+      "Nutrition Literacy Assessment Instrument",
+      "YBOYDA",
+      "NLit"
+    ],
+    "domain": [
+      "beslenme",
+      "hemşirelik"
+    ],
+    "item_count": 35,
+    "subscales": [
+      {
+        "name": "Genel Beslenme Bilgisi",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ]
+      },
+      {
+        "name": "Gıda Etiketi Okuma",
+        "items": [
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      {
+        "name": "Porsiyon Ölçüleri",
+        "items": [
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      1
+    ],
+    "total_range": [
+      0,
+      35
+    ],
+    "cutoff": {
+      "value": 25,
+      "interpretation": "≥25 yeterli beslenme okuryazarlığı"
+    },
+    "turkish_validity": {
+      "author": "Sivas",
+      "year": 2019,
+      "journal": "Yüksek Lisans Tezi (Sivas Cumhuriyet)"
+    },
+    "prefix_hints": [
+      "yboyda_",
+      "boyda_",
+      "nlit_"
+    ],
+    "item_sample": [
+      "Lif yönünden en zengin besin hangisidir?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "oci_r",
+    "names": [
+      "Obsesif Kompulsif Bozukluk Envanteri - Revize",
+      "Obsessive Compulsive Inventory - Revised",
+      "OCI-R"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 18,
+    "subscales": [
+      {
+        "name": "Yıkama",
+        "items": [
+          5,
+          11,
+          17
+        ]
+      },
+      {
+        "name": "Obsesyon",
+        "items": [
+          6,
+          12,
+          18
+        ]
+      },
+      {
+        "name": "Biriktirme",
+        "items": [
+          1,
+          7,
+          13
+        ]
+      },
+      {
+        "name": "Düzenleme",
+        "items": [
+          3,
+          9,
+          15
+        ]
+      },
+      {
+        "name": "Kontrol Etme",
+        "items": [
+          4,
+          10,
+          16
+        ]
+      },
+      {
+        "name": "Nötralize Etme",
+        "items": [
+          2,
+          8,
+          14
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      72
+    ],
+    "cutoff": {
+      "value": 21,
+      "interpretation": "≥21 OKB şüphesi"
+    },
+    "turkish_validity": {
+      "author": "Gönner",
+      "year": 2008,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "ocir_",
+      "okb_"
+    ],
+    "item_sample": [
+      "Ellerimi ya da vücudumu kirlenmiş gibi hissedene kadar yıkarım"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "pedsql_parent",
+    "names": [
+      "Pediatrik Yaşam Kalitesi Ebeveyn Formu",
+      "PedsQL Parent Report",
+      "PedsQL-Ebeveyn"
+    ],
+    "domain": [
+      "hemşirelik",
+      "ebelik"
+    ],
+    "item_count": 23,
+    "subscales": [
+      {
+        "name": "Fiziksel İşlevsellik",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ]
+      },
+      {
+        "name": "Duygusal İşlevsellik",
+        "items": [
+          9,
+          10,
+          11,
+          12,
+          13
+        ]
+      },
+      {
+        "name": "Sosyal İşlevsellik",
+        "items": [
+          14,
+          15,
+          16,
+          17,
+          18
+        ]
+      },
+      {
+        "name": "Okul İşlevselliği",
+        "items": [
+          19,
+          20,
+          21,
+          22,
+          23
+        ]
+      }
+    ],
+    "reverse_items": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23
+    ],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      100
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Memik",
+      "year": 2007,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "pedsql_eb_",
+      "pedsql_par_"
+    ],
+    "item_sample": [
+      "Çocuğumun birkaç yüz metre yürümesi zor"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "hfias",
+    "names": [
+      "Hanehalkı Gıda Güvencesizliği Erişim Ölçeği",
+      "Household Food Insecurity Access Scale",
+      "HFIAS"
+    ],
+    "domain": [
+      "beslenme",
+      "sağlık yönetimi"
+    ],
+    "item_count": 9,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      3
+    ],
+    "total_range": [
+      0,
+      27
+    ],
+    "cutoff": {
+      "value": 10,
+      "interpretation": "≥10 gıda güvencesizliği riski"
+    },
+    "turkish_validity": {
+      "author": "Nacak",
+      "year": 2016,
+      "journal": "Beslenme ve Diyet Dergisi"
+    },
+    "prefix_hints": [
+      "hfias_",
+      "hgg_"
+    ],
+    "item_sample": [
+      "Evde yeterli yiyecek bulunmayacağından endişe ettiniz mi?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "nrs",
+    "names": [
+      "Nümerik Ağrı Derecelendirme Skalası",
+      "Numeric Rating Scale",
+      "NRS",
+      "NADS"
+    ],
+    "domain": [
+      "fizyoterapi",
+      "hemşirelik"
+    ],
+    "item_count": 1,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      10
+    ],
+    "total_range": [
+      0,
+      10
+    ],
+    "cutoff": null,
+    "turkish_validity": null,
+    "prefix_hints": [
+      "nrs_",
+      "agri_nrs_"
+    ],
+    "item_sample": [
+      "Şu andaki ağrınızı 0-10 arası sayıyla ifade edin"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "ees",
+    "names": [
+      "Duygusal Yeme Ölçeği",
+      "Emotional Eating Scale",
+      "EES",
+      "DYÖ"
+    ],
+    "domain": [
+      "beslenme",
+      "psikoloji"
+    ],
+    "item_count": 25,
+    "subscales": [
+      {
+        "name": "Öfke/Hüsran",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ]
+      },
+      {
+        "name": "Kaygı/Stres",
+        "items": [
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17
+        ]
+      },
+      {
+        "name": "Depresyon/Yalnızlık",
+        "items": [
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      25,
+      125
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Garipağaoğlu",
+      "year": 2012,
+      "journal": "Anadolu Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "ees_",
+      "dyo_"
+    ],
+    "item_sample": [
+      "Öfkeli olduğumda bir şeyler yeme isteği duyarım"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "gpaq",
+    "names": [
+      "Küresel Fiziksel Aktivite Anketi",
+      "Global Physical Activity Questionnaire",
+      "GPAQ"
+    ],
+    "domain": [
+      "spor bilimleri",
+      "fizyoterapi"
+    ],
+    "item_count": 16,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": null,
+    "total_range": null,
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Karakaya",
+      "year": 2011,
+      "journal": "Doktora Tezi (Gazi)"
+    },
+    "prefix_hints": [
+      "gpaq_",
+      "kfaa_"
+    ],
+    "item_sample": [
+      "İşiniz çok miktarda fiziksel güç gerektiriyor mu?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "nps_nursing",
+    "names": [
+      "Newcastle Hemşirelik Bakımından Memnuniyet Ölçeği",
+      "Newcastle Satisfaction with Nursing Scale",
+      "NSNS"
+    ],
+    "domain": [
+      "hemşirelik"
+    ],
+    "item_count": 19,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      19,
+      95
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Akin",
+      "year": 2007,
+      "journal": "Journal of Clinical Nursing"
+    },
+    "prefix_hints": [
+      "nps_",
+      "hbm_",
+      "nsns_"
+    ],
+    "item_sample": [
+      "Hemşirelerin sizinle ilgilenme sıklığı ne kadar uygundu?"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "bai_child",
+    "names": [
+      "Çocuklar için Anksiyete Ölçeği",
+      "Children's Anxiety Scale",
+      "SCARED",
+      "ÇAAS"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 41,
+    "subscales": [
+      {
+        "name": "Panik Bozukluğu",
+        "items": [
+          13,
+          17,
+          20,
+          22,
+          24,
+          28,
+          30,
+          34,
+          36,
+          40
+        ]
+      },
+      {
+        "name": "Generalize Anksiyete",
+        "items": [
+          5,
+          7,
+          14,
+          21,
+          23,
+          27,
+          33,
+          35,
+          37
+        ]
+      },
+      {
+        "name": "Ayrılık Anksiyetesi",
+        "items": [
+          4,
+          8,
+          12,
+          16,
+          29,
+          31
+        ]
+      },
+      {
+        "name": "Sosyal Anksiyete",
+        "items": [
+          3,
+          10,
+          26,
+          32,
+          39,
+          41
+        ]
+      },
+      {
+        "name": "Okul Reddi",
+        "items": [
+          2,
+          6,
+          11,
+          25,
+          38
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      2
+    ],
+    "total_range": [
+      0,
+      82
+    ],
+    "cutoff": {
+      "value": 25,
+      "interpretation": "≥25 anksiyete bozukluğu riski"
+    },
+    "turkish_validity": {
+      "author": "Çakmakçı Çelik",
+      "year": 2012,
+      "journal": "Doktora Tezi (Hacettepe)"
+    },
+    "prefix_hints": [
+      "scared_",
+      "cas_",
+      "cocuk_ank_"
+    ],
+    "item_sample": [
+      "Korktuğumda nefes almakta zorlanırım"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "cdi",
+    "names": [
+      "Çocuklar için Depresyon Ölçeği",
+      "Children's Depression Inventory",
+      "CDI",
+      "ÇDÖ"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 27,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      2
+    ],
+    "total_range": [
+      0,
+      54
+    ],
+    "cutoff": {
+      "value": 19,
+      "interpretation": "≥19 depresyon riski"
+    },
+    "turkish_validity": {
+      "author": "Öy",
+      "year": 1991,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "cdi_",
+      "cdo_"
+    ],
+    "item_sample": [
+      "Arada sırada üzgün olurum"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "whodas",
+    "names": [
+      "WHO Engellilik Değerlendirme Ölçeği",
+      "WHO Disability Assessment Schedule",
+      "WHODAS 2.0"
+    ],
+    "domain": [
+      "hemşirelik",
+      "fizyoterapi",
+      "sağlık yönetimi"
+    ],
+    "item_count": 36,
+    "subscales": [
+      {
+        "name": "Biliş",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      {
+        "name": "Hareketlilik",
+        "items": [
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ]
+      },
+      {
+        "name": "Öz Bakım",
+        "items": [
+          13,
+          14,
+          15,
+          16,
+          17,
+          18
+        ]
+      },
+      {
+        "name": "İlişkiler",
+        "items": [
+          19,
+          20,
+          21,
+          22,
+          23,
+          24
+        ]
+      },
+      {
+        "name": "Yaşam Aktiviteleri",
+        "items": [
+          25,
+          26,
+          27,
+          28,
+          29,
+          30
+        ]
+      },
+      {
+        "name": "Topluma Katılım",
+        "items": [
+          31,
+          32,
+          33,
+          34,
+          35,
+          36
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      36,
+      180
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Üstün",
+      "year": 2010,
+      "journal": "WHO Yayını"
+    },
+    "prefix_hints": [
+      "whodas_",
+      "edon_"
+    ],
+    "item_sample": [
+      "Son 30 günde belirli bir süre odaklanmakta ne kadar zorlandınız?"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "edeq",
+    "names": [
+      "Yeme Bozukluğu Muayene Anketi",
+      "Eating Disorder Examination Questionnaire",
+      "EDE-Q"
+    ],
+    "domain": [
+      "beslenme",
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 41,
+    "subscales": [
+      {
+        "name": "Yeme Kısıtlaması",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "name": "Yemekle İlgili Endişe",
+        "items": [
+          7,
+          9,
+          19,
+          20,
+          21
+        ]
+      },
+      {
+        "name": "Vücut Ağırlığı Endişe",
+        "items": [
+          8,
+          12,
+          15,
+          16,
+          25
+        ]
+      },
+      {
+        "name": "Beden Şekli Endişe",
+        "items": [
+          10,
+          11,
+          22,
+          23,
+          24
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      6
+    ],
+    "total_range": [
+      0,
+      246
+    ],
+    "cutoff": {
+      "value": 4,
+      "interpretation": "≥4 yeme patolojisi riski"
+    },
+    "turkish_validity": {
+      "author": "Yücel",
+      "year": 2011,
+      "journal": "Türk Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "edeq_",
+      "ybe_"
+    ],
+    "item_sample": [
+      "Yemek yemeden kendinizi alıkoymaya çalıştınız mı?"
+    ],
+    "scoring": "ortalama"
+  },
+  {
+    "id": "mfi20",
+    "names": [
+      "Çok Boyutlu Yorgunluk Envanteri-20",
+      "Multidimensional Fatigue Inventory",
+      "MFI-20"
+    ],
+    "domain": [
+      "fizyoterapi",
+      "hemşirelik"
+    ],
+    "item_count": 20,
+    "subscales": [
+      {
+        "name": "Genel Yorgunluk",
+        "items": [
+          1,
+          5,
+          12,
+          16
+        ]
+      },
+      {
+        "name": "Fiziksel Yorgunluk",
+        "items": [
+          2,
+          8,
+          14,
+          20
+        ]
+      },
+      {
+        "name": "Zihinsel Yorgunluk",
+        "items": [
+          9,
+          11,
+          15,
+          18
+        ]
+      },
+      {
+        "name": "Aktivite Azalması",
+        "items": [
+          3,
+          6,
+          10,
+          17
+        ]
+      },
+      {
+        "name": "Motivasyon Azalması",
+        "items": [
+          4,
+          7,
+          13,
+          19
+        ]
+      }
+    ],
+    "reverse_items": [
+      2,
+      5,
+      9,
+      10,
+      13,
+      14,
+      16,
+      17,
+      18,
+      19
+    ],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      20,
+      100
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Kocaman Yıldırım",
+      "year": 2010,
+      "journal": "Onkoloji Bakım Kitabı"
+    },
+    "prefix_hints": [
+      "mfi_",
+      "mfi20_",
+      "cbye_"
+    ],
+    "item_sample": [
+      "Kendimi zinde hissediyorum"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "cbi24",
+    "names": [
+      "Bakım Davranışları Ölçeği-24",
+      "Caring Behaviors Inventory-24",
+      "CBI-24"
+    ],
+    "domain": [
+      "hemşirelik"
+    ],
+    "item_count": 24,
+    "subscales": [
+      {
+        "name": "Güvence Verme",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ]
+      },
+      {
+        "name": "Bilgi ve Beceri",
+        "items": [
+          9,
+          10,
+          11,
+          12,
+          13
+        ]
+      },
+      {
+        "name": "Saygılı Olma",
+        "items": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19
+        ]
+      },
+      {
+        "name": "Bağlılık",
+        "items": [
+          20,
+          21,
+          22,
+          23,
+          24
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      6
+    ],
+    "total_range": [
+      24,
+      144
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Kurşun",
+      "year": 2012,
+      "journal": "Hemşirelikte Araştırma Geliştirme Dergisi"
+    },
+    "prefix_hints": [
+      "cbi24_",
+      "bdo_"
+    ],
+    "item_sample": [
+      "Hastanın ihtiyaçlarına duyarlı olmak"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "phq15",
+    "names": [
+      "Somatik Semptom Ölçeği-15",
+      "Patient Health Questionnaire-15",
+      "PHQ-15"
+    ],
+    "domain": [
+      "hemşirelik",
+      "psikoloji"
+    ],
+    "item_count": 15,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      2
+    ],
+    "total_range": [
+      0,
+      30
+    ],
+    "cutoff": {
+      "value": 10,
+      "interpretation": "≥10 orta düzey somatik semptom"
+    },
+    "turkish_validity": {
+      "author": "Güneş",
+      "year": 2019,
+      "journal": "Türkiye Psikiyatri Dergisi"
+    },
+    "prefix_hints": [
+      "phq15_",
+      "sss_"
+    ],
+    "item_sample": [
+      "Mide ağrısı",
+      "Sırt ağrısı",
+      "Baş ağrısı"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "koos",
+    "names": [
+      "Diz Yaralanması ve Osteoartrit Sonuç Skalası",
+      "Knee Injury and Osteoarthritis Outcome Score",
+      "KOOS"
+    ],
+    "domain": [
+      "fizyoterapi",
+      "spor bilimleri"
+    ],
+    "item_count": 42,
+    "subscales": [
+      {
+        "name": "Semptomlar",
+        "items": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      },
+      {
+        "name": "Ağrı",
+        "items": [
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16
+        ]
+      },
+      {
+        "name": "Günlük Yaşam",
+        "items": [
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28
+        ]
+      },
+      {
+        "name": "Spor/Rekreasyon",
+        "items": [
+          29,
+          30,
+          31,
+          32,
+          33
+        ]
+      },
+      {
+        "name": "Yaşam Kalitesi",
+        "items": [
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42
+        ]
+      }
+    ],
+    "reverse_items": [],
+    "scale_range": [
+      0,
+      4
+    ],
+    "total_range": [
+      0,
+      100
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Karahan",
+      "year": 2014,
+      "journal": "Disability and Rehabilitation"
+    },
+    "prefix_hints": [
+      "koos_"
+    ],
+    "item_sample": [
+      "Dizinizde ne sıklıkla şişlik hissettiniz?"
+    ],
+    "scoring": "alt_boyut"
+  },
+  {
+    "id": "bas2",
+    "names": [
+      "Beden Beğenisi Ölçeği-2",
+      "Body Appreciation Scale-2",
+      "BAS-2"
+    ],
+    "domain": [
+      "psikoloji",
+      "beslenme",
+      "spor bilimleri"
+    ],
+    "item_count": 10,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": [
+      1,
+      5
+    ],
+    "total_range": [
+      10,
+      50
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Anar",
+      "year": 2016,
+      "journal": "Düşünen Adam"
+    },
+    "prefix_hints": [
+      "bas2_",
+      "bbo_",
+      "beden_beg_"
+    ],
+    "item_sample": [
+      "Bedenime saygı duyuyorum"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "coopersmith",
+    "names": [
+      "Coopersmith Benlik Saygısı Envanteri",
+      "Coopersmith Self-Esteem Inventory",
+      "CSEI"
+    ],
+    "domain": [
+      "psikoloji",
+      "hemşirelik"
+    ],
+    "item_count": 25,
+    "subscales": [],
+    "reverse_items": [
+      1,
+      4,
+      5,
+      8,
+      9,
+      14,
+      19,
+      20
+    ],
+    "scale_range": [
+      0,
+      1
+    ],
+    "total_range": [
+      0,
+      100
+    ],
+    "cutoff": null,
+    "turkish_validity": {
+      "author": "Pişkin",
+      "year": 1997,
+      "journal": "Yüksek Lisans Tezi (Selçuk)"
+    },
+    "prefix_hints": [
+      "cooper_",
+      "bse_",
+      "csei_"
+    ],
+    "item_sample": [
+      "Keşke kendimi başkalarının yerine koyabilsem"
+    ],
+    "scoring": "toplam"
+  },
+  {
+    "id": "glteq",
+    "names": [
+      "Godin Serbest Zaman Egzersiz Ölçeği",
+      "Godin Leisure-Time Exercise Questionnaire",
+      "GLTEQ"
+    ],
+    "domain": [
+      "spor bilimleri",
+      "fizyoterapi"
+    ],
+    "item_count": 3,
+    "subscales": [],
+    "reverse_items": [],
+    "scale_range": null,
+    "total_range": null,
+    "cutoff": {
+      "value": 24,
+      "interpretation": "≥24 aktif birey"
+    },
+    "turkish_validity": {
+      "author": "Karakaya",
+      "year": 2016,
+      "journal": "Gazi Beden Eğitimi Bilimleri Dergisi"
+    },
+    "prefix_hints": [
+      "glteq_",
+      "gbzea_"
+    ],
+    "item_sample": [
+      "Normal bir haftada kaç kez en az 15 dakika ağır egzersiz yaparsınız?"
+    ],
+    "scoring": "toplam"
+  }
+]

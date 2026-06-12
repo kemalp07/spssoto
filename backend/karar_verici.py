@@ -14,6 +14,7 @@ from llm_router import (
     has_gemini_enrich,
     merge_meta,
 )
+from scale_registry import get_cutoff, get_reverse_items, resolve_scale_id, validate_turkish
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +189,153 @@ def run_hypothesis_matching(
         "hypotheses": list(parsed.get("hypotheses") or []),
         "unmatched": list(parsed.get("unmatched") or []),
     }, meta
+
+
+_REVERSE_SUFFIX = re.compile(r"(?:_reversed|_recoded|_inverted|_ters|_rev|_rc|_inv|_t|_r)$", re.I)
+_ITEM_NUM = re.compile(r"_(\d+)(?:_|$)")
+
+
+def extract_item_number(col: str) -> Optional[int]:
+    m = _ITEM_NUM.search((col or "").lower())
+    return int(m.group(1)) if m else None
+
+
+def infer_reverse_from_items(items: List[str]) -> List[int]:
+    """Sütun adlarından ters madde numaralarını çıkar."""
+    nums: List[int] = []
+    for col in items or []:
+        if _REVERSE_SUFFIX.search(col):
+            n = extract_item_number(col)
+            if n is not None:
+                nums.append(n)
+    return sorted(set(nums))
+
+
+def evaluate_reverse_items(scale: dict) -> dict:
+    """
+    Gemini ters madde önerisini registry ile karşılaştır.
+    Uyuşursa reverse_confidence=confirmed; uyuşmazsa conflict.
+    """
+    out = dict(scale)
+    sid = out.get("id") or out.get("registry_id") or resolve_scale_id(out.get("name", ""))
+    if not sid:
+        return out
+
+    registry_rev = get_reverse_items(sid)
+    gemini_rev = out.get("gemini_reverse_items") or out.get("reverse_items")
+    if isinstance(gemini_rev, list) and not gemini_rev:
+        gemini_rev = infer_reverse_from_items(out.get("items") or [])
+
+    if registry_rev is None:
+        out["reverse_confidence"] = "unknown"
+        return out
+
+    if gemini_rev is None:
+        out["reverse_items"] = registry_rev
+        out["reverse_confidence"] = "registry"
+        return out
+
+    reg_set = set(registry_rev)
+    gem_set = set(int(x) for x in gemini_rev if x is not None)
+
+    if reg_set == gem_set:
+        out["reverse_items"] = list(reg_set)
+        out["reverse_confidence"] = "confirmed"
+    else:
+        out["reverse_conflict"] = {
+            "registry": sorted(reg_set),
+            "gemini": sorted(gem_set),
+            "requires_user": True,
+        }
+        out["reverse_confidence"] = "conflict"
+    return out
+
+
+def apply_reverse_item_decisions(scales: List[dict]) -> List[dict]:
+    return [evaluate_reverse_items(s) for s in scales]
+
+
+def build_cutoff_sentence(scale_name: str, score: float, cutoff: dict) -> str:
+    """Kesim noktası yorum cümlesi."""
+    value = cutoff.get("value")
+    interp = cutoff.get("interpretation") or ""
+    if value is None:
+        return ""
+    name = scale_name or "Ölçek"
+    try:
+        val_f = float(value)
+        if score >= val_f:
+            relation = "üzerinde" if "≥" in interp or ">=" in interp else "üzerinde veya eşit"
+        else:
+            relation = "altında"
+        return (
+            f"{name} toplam puanı {score:.1f} olup kesim noktası olan "
+            f"{val_f:g}'in {relation}dir."
+        )
+    except (TypeError, ValueError):
+        return ""
+
+
+def enrich_cronbach_bulgu(
+    result: dict,
+    text: str,
+    all_results: Optional[List[dict]] = None,
+) -> str:
+    """Cronbach bulgusuna kesim noktası ve Türkçe geçerlilik notu ekle."""
+    if not text:
+        return text
+
+    scale_name = result.get("scale_name") or result.get("name")
+    sid = result.get("scale_id") or resolve_scale_id(scale_name or "")
+
+    scales = result.get("merged_scales") or []
+    if not sid and len(scales) == 1:
+        scale_name = scales[0].get("name", scale_name)
+        sid = resolve_scale_id(scale_name or "")
+
+    if sid:
+        cutoff = get_cutoff(sid)
+        if cutoff:
+            mean_score = result.get("mean_score") or result.get("total_mean")
+            if mean_score is None and all_results:
+                mean_score = _find_descriptive_mean(scale_name, all_results)
+            if mean_score is not None:
+                sentence = build_cutoff_sentence(scale_name or sid, float(mean_score), cutoff)
+                if sentence and sentence not in text:
+                    text = text.rstrip(".") + ". " + sentence
+        if not validate_turkish(sid):
+            note = "Bu ölçeğin Türkçe geçerlilik çalışması bulunamamıştır."
+            if note not in text:
+                text = text.rstrip(".") + ". " + note
+
+    for sub in scales:
+        sub_sid = resolve_scale_id(sub.get("name", ""))
+        if sub_sid and not validate_turkish(sub_sid):
+            note = "Bu ölçeğin Türkçe geçerlilik çalışması bulunamamıştır."
+            if note not in text:
+                text = text.rstrip(".") + ". " + note
+                break
+
+    return text
+
+
+def _find_descriptive_mean(scale_name: str, all_results: List[dict]) -> Optional[float]:
+    if not scale_name:
+        return None
+    key = scale_name.lower()
+    for r in all_results:
+        if r.get("type") != "descriptive":
+            continue
+        for row in r.get("rows") or []:
+            label = str(row.get("label") or row.get("variable") or "").lower()
+            if key in label or label in key:
+                for field in ("mean", "Mean", "ortalama"):
+                    if row.get(field) is not None:
+                        try:
+                            return float(row[field])
+                        except (TypeError, ValueError):
+                            pass
+    return None
 
 
 def run_plan_evaluation(

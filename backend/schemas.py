@@ -162,6 +162,7 @@ class ClassifyRequest(BaseModel):
 class DetectScalesRequest(BaseModel):
     columns: List[str]
     samples: Optional[Dict[str, List[Any]]] = None
+    labels: Optional[Dict[str, str]] = None
     variable_measure: Optional[Dict[str, str]] = None
     document_context: Optional[Dict[str, Any]] = None
     session_id: Optional[str] = None

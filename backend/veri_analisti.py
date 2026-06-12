@@ -12,11 +12,18 @@ from data_profile import (
     profile_from_dataframe,
     profile_from_samples,
 )
+from data_cleaning import apply_scale_item_resolution
 from llm_router import (
     _parse_json_object,
     gemini_json_task,
     has_gemini_enrich,
     merge_meta,
+)
+from scale_registry import (
+    compact_registry_hints,
+    get_reverse_items,
+    match_scale,
+    resolve_scale_id,
 )
 from schemas import Variable
 
@@ -171,6 +178,160 @@ def run_veri_analisti(
     except Exception as exc:
         logger.warning("Veri analisti (Gemini) failed: %s", exc)
         return _empty_analysis(), meta
+
+
+DETECT_SCALES_SYSTEM = """Sen akademik ölçek analizi uzmanısın. Verilen madde gruplarını ölçeklere dönüştür.
+
+Registry eşleşmeleri önceden hesaplandı — bunları doğrula veya reddet; registry'de olmayan ölçekleri ekle.
+_ters veya _T ile biten madde varsa ters versiyonu kullan, orijinalini listeye ekleme.
+
+SADECE JSON döndür:
+{
+  "scales": [
+    {
+      "name": "OYŞTÖ",
+      "id": "oysto",
+      "items": ["oys_1", "oys_2"],
+      "reverse_items": [4],
+      "registry_confirmed": true
+    }
+  ]
+}
+
+registry_confirmed: registry ipucuyla uyumluysa true, değilse false veya alanı atla."""
+
+
+def _registry_match_to_scale(match: dict, min_confidence: str = "high") -> Optional[dict]:
+    if _CONF_RANK.get(match.get("confidence"), 0) < _CONF_RANK.get(min_confidence, 2):
+        return None
+    scale = match["scale"]
+    cols = match.get("matched_cols") or []
+    if len(cols) < 2:
+        return None
+    resolved = apply_scale_item_resolution(cols)
+    sid = scale.get("id", "")
+    return {
+        "name": (scale.get("names") or [sid])[0],
+        "id": sid,
+        "items": resolved["items"],
+        "cronbach_items": resolved["cronbach_items"],
+        "item_count": resolved["item_count"],
+        "registry_id": sid,
+        "registry_confidence": match.get("confidence", "high"),
+        "source": "registry",
+        "reverse_items": get_reverse_items(sid),
+    }
+
+
+_CONF_RANK = {"high": 2, "medium": 1, "low": 0}
+
+
+def scales_from_registry_matches(
+    registry_matches: List[dict],
+    min_confidence: str = "high",
+) -> List[dict]:
+    """Registry eşleşmelerini detect-scales çıktı formatına çevir."""
+    scales: List[dict] = []
+    seen_ids: set = set()
+    for m in registry_matches:
+        sid = m["scale"].get("id")
+        if sid in seen_ids:
+            continue
+        built = _registry_match_to_scale(m, min_confidence=min_confidence)
+        if built:
+            scales.append(built)
+            seen_ids.add(sid)
+    return scales
+
+
+def _normalize_gemini_scales(parsed: dict, registry_matches: List[dict]) -> List[dict]:
+    """Gemini ölçek listesini standart formata getir."""
+    registry_ids = {m["scale"]["id"] for m in registry_matches}
+    scales: List[dict] = []
+    for raw in parsed.get("scales") or []:
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()
+        items = list(raw.get("items") or [])
+        if len(items) < 2 and not name:
+            continue
+        sid = str(raw.get("id") or resolve_scale_id(name) or "").strip() or None
+        resolved = apply_scale_item_resolution(items)
+        source = "registry" if sid and sid in registry_ids and raw.get("registry_confirmed") else "gemini"
+        if sid and sid in registry_ids:
+            source = "registry+gemini" if raw.get("registry_confirmed") else "gemini"
+        entry = {
+            "name": name or sid or "Ölçek",
+            "id": sid,
+            "items": resolved["items"],
+            "cronbach_items": resolved["cronbach_items"],
+            "item_count": resolved["item_count"],
+            "registry_id": sid if sid in registry_ids else None,
+            "registry_confidence": next(
+                (m["confidence"] for m in registry_matches if m["scale"]["id"] == sid),
+                None,
+            ) if sid else None,
+            "source": source,
+            "reverse_items": raw.get("reverse_items"),
+            "gemini_reverse_items": raw.get("reverse_items"),
+        }
+        scales.append(entry)
+    return scales
+
+
+def run_scale_detection(
+    col_names: List[str],
+    col_labels: Optional[Dict[str, str]] = None,
+    prefix_groups: Optional[Dict[str, List[str]]] = None,
+    document_context: Optional[dict] = None,
+) -> Tuple[List[dict], List[dict], dict]:
+    """
+    Registry eşleştirme + (varsa) Gemini ölçek tespiti.
+    Döndürür: (scales, registry_matches, meta)
+    """
+    meta = {"llm_calls": 0, "approx_input_tokens": 0, "approx_output_tokens": 0}
+    registry_matches = match_scale(col_names, col_labels)
+    high_confidence = [m for m in registry_matches if m.get("confidence") == "high"]
+    compact_hints = compact_registry_hints(high_confidence)
+
+    if not has_gemini_enrich():
+        return scales_from_registry_matches(registry_matches), registry_matches, meta
+
+    hint_block = ""
+    if compact_hints:
+        hint_block = (
+            "\n\nRegistry eşleşmeleri (doğrula): "
+            + json.dumps(compact_hints, ensure_ascii=False)
+        )
+
+    from document_context import anket_section_hints
+
+    anket_block = ""
+    hints = anket_section_hints(document_context)
+    if hints:
+        anket_block = (
+            "\n\nAnket formu bölüm başlıkları:\n"
+            + json.dumps(hints, ensure_ascii=False)
+        )
+
+    user = (
+        "Madde prefix grupları:\n"
+        + json.dumps(prefix_groups or {}, ensure_ascii=False)
+        + "\n\nSütun adları:\n"
+        + json.dumps(col_names[:200], ensure_ascii=False)
+        + hint_block
+        + anket_block
+    )
+    try:
+        raw, gem_meta = gemini_json_task(DETECT_SCALES_SYSTEM, user, MAX_OUTPUT_TOKENS)
+        meta = merge_meta(meta, gem_meta)
+        parsed = _parse_json_object(raw)
+        if parsed and parsed.get("scales"):
+            return _normalize_gemini_scales(parsed, registry_matches), registry_matches, meta
+    except Exception as exc:
+        logger.warning("Ölçek tespiti (Gemini) failed: %s", exc)
+
+    return scales_from_registry_matches(registry_matches), registry_matches, meta
 
 
 def gemini_turev_to_derived_entries(gemini: dict) -> List[dict]:
