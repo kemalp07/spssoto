@@ -58,6 +58,12 @@ from stat_tests import (
 )
 from word_export import build_word_document
 from file_io import read_uploaded_file
+from document_parser import parse_anket_docx, parse_etik_kurul_docx
+from document_context import (
+    resolve_document_context,
+    save_document_context,
+    effective_research_text,
+)
 from ai_services import (
     generate_bulgu,
     generate_bulgu_summary,
@@ -165,11 +171,14 @@ async def parse_hypotheses_endpoint(request: Request, req: ParseHypothesesReques
     candidates = build_candidate_tests(df, variables, norm_map)
     candidates = apply_deterministic_flags(df, variables, candidates)
     uygun = [c for c in candidates if c.get("auto_flag") == "uygun"]
+    doc_ctx = resolve_document_context(req.document_context, req.session_id)
+    research_text = effective_research_text(doc_ctx, req.research_aim)
     parsed, meta = await parse_research_questions(
-        req.research_aim,
+        research_text,
         variables,
         uygun,
         df=df,
+        document_context=doc_ctx,
     )
     candidates = compact_candidate_preview(uygun, variables)
     hypotheses = enrich_hypotheses_for_display(
@@ -192,10 +201,12 @@ async def plan_tests_endpoint(request: Request, req: PlanTestsRequest):
     df = pd.DataFrame(rows)
     variables = normalize_variable_labels(req.variables)
     df = prepare_analysis_df(df, variables, req.missing_codes)
+    doc_ctx = resolve_document_context(req.document_context, req.session_id)
+    research_text = effective_research_text(doc_ctx, req.research_aim)
     recommended, excluded, catalog, meta = await plan_tests(
         df,
         variables,
-        req.research_aim,
+        research_text,
         use_ai=req.use_ai if req.use_ai is not None else True,
         profile=req.profile or "standart",
         hypotheses=[h.model_dump() for h in req.hypotheses] if req.hypotheses else None,
@@ -377,6 +388,9 @@ def detect_item_columns(req: DetectScalesRequest):
 @app.post("/detect-scales")
 @limiter.limit("10/minute")
 async def detect_scales(request: Request, req: DetectScalesRequest):
+    ctx = resolve_document_context(req.document_context, req.session_id)
+    if ctx:
+        req = req.model_copy(update={"document_context": ctx})
     return run_detect_scales(req)
 
 
@@ -487,9 +501,59 @@ async def analyze_regression(req: RegressionRequest):
     return {"result": result}
 
 
+@app.post("/upload-documents")
+@limiter.limit("20/minute")
+async def upload_documents(
+    request: Request,
+    anket: Optional[UploadFile] = File(None),
+    etik_kurul: Optional[UploadFile] = File(None),
+    session_id: Optional[str] = Form(None),
+):
+    anket_result = None
+    etik_result = None
+
+    if anket and anket.filename:
+        name = (anket.filename or "").lower()
+        if not name.endswith(".docx"):
+            raise HTTPException(status_code=400, detail="Anket dosyası .docx olmalı")
+        try:
+            anket_bytes = await anket.read()
+            anket_result = parse_anket_docx(anket_bytes)
+        except Exception as e:
+            anket_result = {"parse_error": True, "detail": str(e)}
+
+    if etik_kurul and etik_kurul.filename:
+        name = (etik_kurul.filename or "").lower()
+        if not name.endswith(".docx"):
+            raise HTTPException(status_code=400, detail="Etik kurul dosyası .docx olmalı")
+        try:
+            etik_bytes = await etik_kurul.read()
+            etik_result = parse_etik_kurul_docx(etik_bytes)
+        except Exception as e:
+            etik_result = {"parse_error": True, "detail": str(e)}
+
+    if anket_result is None and etik_result is None:
+        raise HTTPException(status_code=400, detail="En az bir .docx dosyası yükleyin")
+
+    document_context = {
+        "anket": anket_result,
+        "etik_kurul": etik_result,
+    }
+    sid = save_document_context(document_context, session_id)
+    return sanitize({
+        "session_id": sid,
+        "anket": anket_result,
+        "etik_kurul": etik_result,
+        "document_context": document_context,
+    })
+
+
 @app.post("/classify")
 @limiter.limit("10/minute")
 async def classify_columns(request: Request, req: ClassifyRequest):
+    ctx = resolve_document_context(req.document_context, req.session_id)
+    if ctx:
+        req = req.model_copy(update={"document_context": ctx})
     return run_classify(req)
 
 

@@ -986,10 +986,21 @@ SADECE JSON döndür:
   ]
 }"""
 
+    from document_context import anket_section_hints
+
+    hint_block = ""
+    hints = anket_section_hints(getattr(req, "document_context", None))
+    if hints:
+        hint_block = (
+            f"\n\nAnket formu bölüm başlıkları (ölçek adı ipucu):\n"
+            f"{json.dumps(hints, ensure_ascii=False)}"
+        )
+
     user_msg = (
         f"Madde prefix grupları:\n{json.dumps(valid_groups, ensure_ascii=False)}\n\n"
         f"Veri profili:\n{profile_json(profile)}"
         f"{format_enrichment_block(enrichment)}"
+        f"{hint_block}"
     )
     try:
         text, decide_meta = claude_decide(detect_system, user_msg, max_tokens=800)

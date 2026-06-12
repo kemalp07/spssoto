@@ -15,6 +15,7 @@ from karar_verici import (
 )
 from llm_router import has_claude, has_gemini_enrich, merge_meta
 from schemas import ClassifyRequest, Variable
+from document_context import effective_research_text
 from veri_analisti import gemini_turev_to_derived_entries, run_veri_analisti
 
 logger = logging.getLogger(__name__)
@@ -168,14 +169,18 @@ def run_variable_ai_pipeline(
     if df is not None and variables:
         python_derived = find_derived_variables(df, variables)
 
+    doc_ctx = req.document_context
+    research_text = effective_research_text(doc_ctx, req.research_topic or "")
+
     gemini_out, gem_meta = run_veri_analisti(
         df,
         req.columns,
         req.samples,
         req.labels,
         req.variable_measure,
-        req.research_topic or "",
+        research_text,
         variables,
+        document_context=doc_ctx,
     )
     meta = merge_meta(meta, gem_meta)
     if gem_meta.get("llm_calls"):
@@ -205,7 +210,7 @@ def run_variable_ai_pipeline(
         derivative_decision, decide_meta = run_derivative_decisions(
             review_items,
             gemini_out,
-            req.research_topic or "",
+            research_text,
         )
         meta = merge_meta(meta, decide_meta)
         if decide_meta.get("llm_calls"):
@@ -231,7 +236,7 @@ def run_variable_ai_pipeline(
 
         user_msg = (
             f"Sütunları sınıflandır:\n"
-            f"Araştırma: {(req.research_topic or '')[:600]}\n\n"
+            f"Araştırma: {research_text[:600]}\n\n"
             f"Veri profili:\n{profile_json(profile)}\n\n"
             f"Gemini veri analizi:\n{json.dumps(gemini_out, ensure_ascii=False)[:6000]}\n\n"
             f"Türev kararları: onaylı={len(derived_final)}, inceleme={len(suspicious)}"

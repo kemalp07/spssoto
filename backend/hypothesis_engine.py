@@ -213,6 +213,7 @@ async def parse_research_questions(
     scale_groups: Optional[Dict[str, List[str]]] = None,
     df: Optional[pd.DataFrame] = None,
     gemini_context: Optional[dict] = None,
+    document_context: Optional[dict] = None,
 ) -> Tuple[dict, dict]:
     """Gemini veri analizi → Claude karar verici (hipotez eşleşmesi)."""
     from karar_verici import run_hypothesis_matching
@@ -239,6 +240,7 @@ async def parse_research_questions(
             {v.name: v.label for v in variables},
             research_topic=text,
             variables=variables,
+            document_context=document_context,
         )
         meta = merge_meta(meta, gem_meta)
 

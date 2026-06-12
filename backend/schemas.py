@@ -44,6 +44,8 @@ class PlanRequest(BaseModel):
     missing_codes: Optional[List[str]] = None
     research_topic: Optional[str] = None
     use_ai: Optional[bool] = True
+    document_context: Optional[Dict[str, Any]] = None
+    session_id: Optional[str] = None
 
 
 class DetectDerivedRequest(BaseModel):
@@ -58,6 +60,8 @@ class ParseHypothesesRequest(BaseModel):
     research_aim: str
     missing_codes: Optional[List[str]] = None
     use_ai: Optional[bool] = True
+    document_context: Optional[Dict[str, Any]] = None
+    session_id: Optional[str] = None
 
 
 class PlanTestsRequest(BaseModel):
@@ -68,6 +72,8 @@ class PlanTestsRequest(BaseModel):
     use_ai: Optional[bool] = True
     profile: Optional[str] = "standart"
     hypotheses: Optional[List[HypothesisItem]] = None
+    document_context: Optional[Dict[str, Any]] = None
+    session_id: Optional[str] = None
 
 
 class BulguRequest(BaseModel):
@@ -149,12 +155,16 @@ class ClassifyRequest(BaseModel):
     variable_measure: Optional[Dict[str, str]] = None
     data: Optional[List[DataRow]] = None
     missing_codes: Optional[List[str]] = None
+    document_context: Optional[Dict[str, Any]] = None
+    session_id: Optional[str] = None
 
 
 class DetectScalesRequest(BaseModel):
     columns: List[str]
     samples: Optional[Dict[str, List[Any]]] = None
     variable_measure: Optional[Dict[str, str]] = None
+    document_context: Optional[Dict[str, Any]] = None
+    session_id: Optional[str] = None
 
 
 class CronbachBatchRequest(BaseModel):

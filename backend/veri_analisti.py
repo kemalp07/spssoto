@@ -71,6 +71,7 @@ def build_compact_input(
     variable_measure: Optional[Dict[str, str]] = None,
     research_topic: str = "",
     variables: Optional[List[Variable]] = None,
+    document_context: Optional[dict] = None,
 ) -> dict:
     """Gemini girdisi — ad, tip, unique, örnek değerler, Spearman özeti."""
     labels = labels or {}
@@ -115,6 +116,11 @@ def build_compact_input(
         profile = profile_from_dataframe(df, variables)
         payload["gruplandirma"] = profile.get("grouping_vars", [])[:12]
         payload["sonuc"] = profile.get("outcome_vars", [])[:12]
+    if document_context:
+        from document_context import compact_document_context_for_gemini
+        doc_block = compact_document_context_for_gemini(document_context)
+        if doc_block:
+            payload["belge_baglami"] = doc_block
     return payload
 
 
@@ -135,6 +141,7 @@ def run_veri_analisti(
     variable_measure: Optional[Dict[str, str]] = None,
     research_topic: str = "",
     variables: Optional[List[Variable]] = None,
+    document_context: Optional[dict] = None,
 ) -> Tuple[dict, dict]:
     """Gemini: türev haritası, rol önerileri, ölçek grupları, araştırma bağlamı."""
     meta = {"llm_calls": 0, "approx_input_tokens": 0, "approx_output_tokens": 0}
@@ -143,6 +150,7 @@ def run_veri_analisti(
 
     compact = build_compact_input(
         df, columns, samples, labels, variable_measure, research_topic, variables,
+        document_context=document_context,
     )
     user = (
         "Tüm değişkenleri birlikte analiz et. Ham veri yok — sadece profil.\n\n"

@@ -604,6 +604,48 @@
   .scale-match-detail { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
   .upload-zone.loading { border-color: var(--accent); cursor: default; }
   .upload-zone.loading .icon { animation: pulse 1.2s ease-in-out infinite; }
+  .optional-docs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+    text-align: left;
+  }
+  .optional-doc-zone {
+    min-height: 110px;
+    padding: var(--space-3);
+    cursor: pointer;
+  }
+  .optional-doc-zone h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .optional-doc-zone p { font-size: 12px; margin: 0; }
+  .doc-info-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid var(--muted);
+    font-size: 10px;
+    color: var(--muted);
+    cursor: help;
+    flex-shrink: 0;
+  }
+  .optional-docs-note {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: var(--space-3);
+    line-height: 1.5;
+    text-align: left;
+  }
+  #anketDocInput, #etikDocInput { display: none; }
   @keyframes pulse { 50% { opacity: 0.5; } }
   .wizard-nav-hint { font-size: 12px; color: var(--muted); }
   .wizard-nav-plain { border-top: none; padding-top: var(--space-2); }
@@ -854,6 +896,12 @@ let pdfContextMap = {};
 let ethicsFileBase64 = null;
 let ethicsFileType = null;
 let ethicsFileName = "";
+let anketDocxFile = null;
+let anketDocxName = "";
+let etikKurulDocxFile = null;
+let etikKurulDocxName = "";
+let documentContext = null;
+let documentSessionId = null;
 let aiExcluded = new Set();
 let customTitles = {};
 let customLabels = {};
@@ -1071,6 +1119,7 @@ async function runAIClassify(skipInit = false) {
       payload.data = parsedData.map(row => ({ values: row }));
       payload.missing_codes = getMissingCodes();
     }
+    Object.assign(payload, documentContextPayload());
 
     const res = await fetch(`${API}/classify`, {
       method: "POST",
@@ -1298,7 +1347,7 @@ function updateUserLabel(input) {
 }
 
 function collectUserLabelsFromInputs() {
-  document.querySelectorAll("#labelInputGrid input[data-col]").forEach(input => {
+  document.querySelectorAll("#labelInputGrid input[data-col], #labelPhaseGrid input[data-col]").forEach(input => {
     userLabels[input.dataset.col] = input.value.trim() || input.dataset.col;
   });
 }
@@ -1671,6 +1720,27 @@ function renderUploadStep() {
         <label class="form-label" for="missingValueCodes">Eksik veri kodları:</label>
         <input type="text" id="missingValueCodes" class="form-input form-input-inline" value="99" placeholder="99, 998, 999" />
       </div>
+      <p class="optional-docs-note">
+        Bu belgeler yüklenmeden de devam edebilirsiniz, ancak bazı bilgileri manuel girmeniz gerekebilir.
+      </p>
+      <div class="optional-docs-grid">
+        <div id="anketDocZone" class="upload-zone optional-doc-zone" onclick="document.getElementById('anketDocInput').click()">
+          <h3>📋 Anket formu (.docx)
+            <span class="doc-info-icon" title="Ölçek maddelerini ve Likert ifadelerini otomatik tanımak için yükleyin.">?</span>
+          </h3>
+          <p>Ölçek maddelerini otomatik tanımak için</p>
+          <div class="upload-file-meta" id="anketDocStatus"></div>
+        </div>
+        <div id="etikDocZone" class="upload-zone optional-doc-zone" onclick="document.getElementById('etikDocInput').click()">
+          <h3>📄 Etik kurul raporu (.docx)
+            <span class="doc-info-icon" title="Araştırma amacı ve hipotezleri otomatik çıkarmak için yükleyin.">?</span>
+          </h3>
+          <p>Araştırma sorularını otomatik çıkarmak için</p>
+          <div class="upload-file-meta" id="etikDocStatus"></div>
+        </div>
+      </div>
+      <input type="file" id="anketDocInput" accept=".docx" onchange="handleAnketDocx(this.files[0])" />
+      <input type="file" id="etikDocInput" accept=".docx" onchange="handleEtikKurulDocx(this.files[0])" />
     </div>`;
 }
 
@@ -1900,26 +1970,28 @@ async function fetchAndApplyDerivedVariables() {
 }
 
 async function proceedToPhase2() {
-  collectUserLabelsFromInputs();
-  const allCols = getNonItemColumns().filter(col => !ITEM_COL_PATTERN.test(col));
-  const missing = allCols.filter(col => {
-    const label = (userLabels[col] || "").trim();
-    return !label || label.toLowerCase() === col.toLowerCase();
-  });
-  if (missing.length > 0) {
-    alert(`Devam etmeden önce şu değişkenlere Türkçe isim verin: ${missing.join(", ")}`);
-    return;
-  }
-
   const btn = document.getElementById("btnClassify");
   setButtonLoading(btn, true, "Sınıflandırılıyor...");
 
-  await runAIClassify(true);
+  try {
+    await runAIClassify(true);
 
-  setButtonLoading(btn, false, "", "Sınıflandır →");
+    collectUserLabelsFromInputs();
+    const allCols = getNonItemColumns().filter(col => !ITEM_COL_PATTERN.test(col));
+    const missing = allCols.filter(col => {
+      const label = (userLabels[col] || "").trim();
+      return !label || label.toLowerCase() === col.toLowerCase();
+    });
+    if (missing.length > 0) {
+      alert(`Devam etmeden önce şu değişkenlere Türkçe isim verin: ${missing.join(", ")}`);
+      return;
+    }
 
-  variablesPhase = 2;
-  refreshCurrentStep();
+    variablesPhase = 2;
+    refreshCurrentStep();
+  } finally {
+    setButtonLoading(btn, false, "", "Sınıflandır →");
+  }
 }
 
 function backToPhase1() {
@@ -2055,7 +2127,12 @@ function getWizardNextButton() {
 
 function initStep(step) {
   const name = STEPS[step];
-  if (name === "upload") initUploadZoneDragDrop();
+  if (name === "upload") {
+    initUploadZoneDragDrop();
+    initOptionalDocDropZones();
+    updateOptionalDocZone("anketDocZone", "anketDocStatus", anketDocxName);
+    updateOptionalDocZone("etikDocZone", "etikDocStatus", etikKurulDocxName);
+  }
   if (name === "ethics") initEthicsUploadZoneDragDrop();
 
   if (name === "variables") {
@@ -2310,6 +2387,12 @@ function resetWizard() {
   ethicsFileBase64 = null;
   ethicsFileType = null;
   ethicsFileName = "";
+  anketDocxFile = null;
+  anketDocxName = "";
+  etikKurulDocxFile = null;
+  etikKurulDocxName = "";
+  documentContext = null;
+  documentSessionId = null;
   document.getElementById("labelWarningModal")?.classList.remove("open");
   const container = document.getElementById("slideContainer");
   if (container) container.innerHTML = "";
@@ -2491,7 +2574,102 @@ function resetEthicsUploadZone() {
   if (btnSkip) btnSkip.classList.remove("hidden");
 }
 
-function finishFileUpload(file, json, readResult) {
+function documentContextPayload() {
+  const out = {};
+  if (documentContext) out.document_context = documentContext;
+  if (documentSessionId) out.session_id = documentSessionId;
+  return out;
+}
+
+function updateOptionalDocZone(zoneId, statusId, fileName) {
+  const zone = document.getElementById(zoneId);
+  const status = document.getElementById(statusId);
+  if (!zone) return;
+  if (fileName) {
+    zone.classList.add("uploaded");
+    if (status) {
+      status.textContent = `✅ ${fileName}`;
+      status.style.color = "var(--success)";
+    }
+  } else {
+    zone.classList.remove("uploaded");
+    if (status) status.textContent = "";
+  }
+}
+
+function handleAnketDocx(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".docx")) {
+    alert("Anket dosyası .docx formatında olmalıdır.");
+    return;
+  }
+  anketDocxFile = file;
+  anketDocxName = file.name;
+  updateOptionalDocZone("anketDocZone", "anketDocStatus", file.name);
+}
+
+function handleEtikKurulDocx(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".docx")) {
+    alert("Etik kurul dosyası .docx formatında olmalıdır.");
+    return;
+  }
+  etikKurulDocxFile = file;
+  etikKurulDocxName = file.name;
+  updateOptionalDocZone("etikDocZone", "etikDocStatus", file.name);
+}
+
+function initOptionalDocDropZones() {
+  [
+    { zoneId: "anketDocZone", inputId: "anketDocInput", handler: handleAnketDocx },
+    { zoneId: "etikDocZone", inputId: "etikDocInput", handler: handleEtikKurulDocx },
+  ].forEach(({ zoneId, inputId, handler }) => {
+    const zone = document.getElementById(zoneId);
+    if (!zone || zone.dataset.dragBound) return;
+    zone.dataset.dragBound = "1";
+    zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag"); });
+    zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+    zone.addEventListener("drop", e => {
+      e.preventDefault();
+      zone.classList.remove("drag");
+      const file = e.dataTransfer?.files?.[0];
+      if (file) handler(file);
+    });
+  });
+}
+
+async function uploadOptionalDocuments() {
+  if (!anketDocxFile && !etikKurulDocxFile) return;
+  const form = new FormData();
+  if (anketDocxFile) form.append("anket", anketDocxFile);
+  if (etikKurulDocxFile) form.append("etik_kurul", etikKurulDocxFile);
+  if (documentSessionId) form.append("session_id", documentSessionId);
+  try {
+    const res = await fetch(`${API}/upload-documents`, { method: "POST", body: form });
+    if (!res.ok) {
+      console.warn("Belge yükleme başarısız:", await res.text());
+      return;
+    }
+    const json = await res.json();
+    documentContext = json.document_context || {
+      anket: json.anket,
+      etik_kurul: json.etik_kurul,
+    };
+    documentSessionId = json.session_id || documentSessionId;
+    const etik = documentContext?.etik_kurul;
+    if (etik && !etik.parse_error) {
+      if (etik.aim && !wizardFormState.topic) wizardFormState.topic = etik.aim;
+      if (etik.scale_names?.length && !wizardFormState.scaleNames) {
+        wizardFormState.scaleNames = etik.scale_names.join(", ");
+      }
+    }
+    showToast("📎 Opsiyonel belgeler işlendi");
+  } catch (e) {
+    console.warn("Belge yükleme hatası:", e);
+  }
+}
+
+async function finishFileUpload(file, json, readResult) {
   if (!json?.length) return alert("Dosya boş görünüyor.");
 
   pendingJson = json;
@@ -2533,6 +2711,7 @@ function finishFileUpload(file, json, readResult) {
     uploadZone.onclick = null;
   }
 
+  await uploadOptionalDocuments();
   setTimeout(() => goToStep(1, "forward"), 600);
 }
 
@@ -2654,7 +2833,7 @@ async function loadData(json, fileName, researchTopic) {
     const res = await fetch(`${API}/detect-scales`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ columns }),
+      body: JSON.stringify({ columns, ...documentContextPayload() }),
     });
     if (res.ok) {
       const data = await res.json();
@@ -3119,6 +3298,7 @@ async function loadHypothesisReview() {
         missing_codes: getMissingCodes(),
         research_aim: researchTopicText.trim(),
         use_ai: true,
+        ...documentContextPayload(),
       }),
     });
     if (!res.ok) {
@@ -3292,6 +3472,7 @@ async function loadAnalysisPlan() {
         use_ai: true,
         profile: planProfile,
         hypotheses: approvedHypotheses.length ? approvedHypotheses : undefined,
+        ...documentContextPayload(),
       }),
     });
     if (!res.ok) {
