@@ -1858,6 +1858,10 @@ function applyDerivedPlacements(derivedList) {
   derivedVarMap = {};
   (derivedList || []).forEach(d => {
     derivedVarMap[d.name] = d;
+    if (d.derived_label) {
+      const cur = (userLabels[d.name] || "").trim();
+      if (!cur || cur === d.name) userLabels[d.name] = d.derived_label;
+    }
     if (d.action === "move_to_grouping") {
       contColumns = contColumns.filter(c => c !== d.name);
       selectedCont.delete(d.name);

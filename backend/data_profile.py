@@ -61,6 +61,64 @@ def _is_low_cardinality(series: pd.Series) -> bool:
     return _unique_count(series) <= _LOW_CARDINALITY_MAX
 
 
+def _normalize_name_fragment(text: str) -> str:
+    """Alt çizgi → boşluk; tamamı büyük harfse baş harf büyük; aksi halde kelime başı büyük."""
+    raw = (text or "").replace("_", " ").strip()
+    if not raw:
+        return ""
+    words: List[str] = []
+    for word in raw.split():
+        if word.isupper() and len(word) > 1:
+            words.append(word[0] + word[1:].lower())
+        elif word:
+            words.append(word[0].upper() + word[1:].lower())
+    return " ".join(words)
+
+
+def _variable_label_from_sav(variable: Variable) -> Optional[str]:
+    label = (variable.label or "").strip()
+    name = (variable.name or "").strip()
+    if label and label.lower() != name.lower():
+        return label
+    return None
+
+
+def _source_label_for_derived(source: Optional[Variable]) -> str:
+    if source is None:
+        return ""
+    sav = _variable_label_from_sav(source)
+    if sav:
+        return sav
+    return _normalize_name_fragment(source.name)
+
+
+def _strip_source_root(derived_name: str, source_name: str) -> str:
+    derived = (derived_name or "").strip()
+    source = (source_name or "").strip()
+    if not derived or not source:
+        return derived
+    pattern = re.compile(r"^" + re.escape(source) + r"[_\s-]*", re.IGNORECASE)
+    return pattern.sub("", derived, count=1).lstrip("_- ")
+
+
+def build_derived_label(
+    derived_name: str,
+    source_name: str,
+    source_variable: Optional[Variable],
+    derived_variable: Optional[Variable],
+) -> str:
+    """Kaynak etiketi + normalize edilmiş son ek; .sav etiketi varsa türevde dokunulmaz."""
+    existing = _variable_label_from_sav(derived_variable) if derived_variable else None
+    if existing:
+        return existing
+    source_label = _source_label_for_derived(source_variable)
+    remainder = _strip_source_root(derived_name, source_name)
+    suffix = _normalize_name_fragment(remainder)
+    if suffix:
+        return f"{source_label} {suffix}".strip()
+    return source_label
+
+
 def _spearman_abs(source: pd.Series, derived: pd.Series) -> Optional[float]:
     sub = pd.DataFrame({"s": _numeric_series(source), "d": _numeric_series(derived)}).dropna()
     if len(sub) < 10:
@@ -81,6 +139,7 @@ def find_derived_variables(
     variables: List[Variable],
 ) -> List[dict]:
     """Türev değişkenleri tespit eder — isim benzerliği + Spearman korelasyonu."""
+    var_by_name = {v.name: v for v in variables}
     active = [v.name for v in variables if v.included and v.name in df.columns]
     hits: Dict[str, dict] = {}
 
@@ -144,9 +203,17 @@ def find_derived_variables(
             recommended_role = "grouping"
             kind = "categorical"
 
+        derived_var = var_by_name.get(derived)
+        source_var = var_by_name.get(source)
         results.append({
             "name": derived,
             "source": source,
+            "derived_label": build_derived_label(
+                derived,
+                source,
+                source_var,
+                derived_var,
+            ),
             "confidence": confidence,
             "kind": kind,
             "action": action,
