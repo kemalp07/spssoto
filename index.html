@@ -1874,6 +1874,7 @@ function applyDerivedPlacements(derivedList) {
       selectedCont.delete(d.name);
     }
   });
+  if (document.getElementById("labelPhaseGrid")) renderLabelPhaseGrid();
 }
 
 async function fetchAndApplyDerivedVariables() {
