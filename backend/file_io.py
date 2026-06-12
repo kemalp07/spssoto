@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from fastapi import HTTPException
 from utils import sanitize
+from missing_code_infer import infer_missing_codes_from_dataframe
 
 def _cell_str(val) -> str:
     if val is None or (isinstance(val, float) and math.isnan(val)):
@@ -108,6 +109,15 @@ def read_uploaded_file(filename: str, file_bytes: bytes) -> dict:
             records = df.replace({np.nan: None}).to_dict(orient="records")
             columns = [str(c) for c in df.columns]
             source = "spss"
+
+            inferred, inferred_global = infer_missing_codes_from_dataframe(df)
+            for col, codes in inferred.items():
+                existing = set(missing_codes.get(col, []))
+                merged = sorted(existing | set(codes), key=lambda x: (len(x), x))
+                if merged:
+                    missing_codes[col] = merged
+            if inferred_global and not global_missing_code:
+                global_missing_code = inferred_global
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"SAV okunamadı: {e}")
 
@@ -120,6 +130,12 @@ def read_uploaded_file(filename: str, file_bytes: bytes) -> dict:
             rows = list(ws.iter_rows(values_only=True))
             records, columns, labels = _parse_excel_rows(rows)
             wb.close()
+            if records:
+                df = pd.DataFrame(records)
+                inferred, inferred_global = infer_missing_codes_from_dataframe(df)
+                missing_codes.update(inferred)
+                if inferred_global:
+                    global_missing_code = inferred_global
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Excel okunamadı: {e}")
 
@@ -128,6 +144,12 @@ def read_uploaded_file(filename: str, file_bytes: bytes) -> dict:
             df_raw = pd.read_excel(io.BytesIO(file_bytes), header=None)
             rows = df_raw.values.tolist()
             records, columns, labels = _parse_excel_rows(rows)
+            if records:
+                df = pd.DataFrame(records)
+                inferred, inferred_global = infer_missing_codes_from_dataframe(df)
+                missing_codes.update(inferred)
+                if inferred_global:
+                    global_missing_code = inferred_global
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Excel okunamadı: {e}")
 

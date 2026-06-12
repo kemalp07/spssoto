@@ -128,6 +128,26 @@
   }
   .stepper-item.active .stepper-label { color: var(--accent); font-weight: 600; }
   .stepper-item.done .stepper-label { color: var(--text); }
+  .stepper-item.skipped { opacity: 0.72; cursor: pointer; }
+  .stepper-item.skipped .stepper-node {
+    background: var(--success-muted); border-color: var(--success-border); color: var(--success);
+  }
+  .stepper-item.skipped .stepper-label { color: var(--muted); }
+  .stepper-auto-tag {
+    font-size: 9px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .stepper-item.clickable { cursor: pointer; }
+  .info-bar-missing {
+    display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+    padding: var(--space-2); border-radius: var(--radius-md);
+    background: var(--accent-muted); border: 1px solid var(--accent-border);
+    margin-bottom: var(--space-2); font-size: 13px;
+  }
+  .label-show-all-link {
+    font-size: 13px; color: var(--accent); cursor: pointer; text-decoration: underline;
+    margin-bottom: var(--space-2); display: inline-block;
+  }
   .stepper-line {
     flex: 1; height: 2px; background: var(--border); min-width: 12px; max-width: 48px;
     margin: 0 4px; margin-bottom: 22px;
@@ -928,6 +948,242 @@ const STEPPER_GROUPS = [
   { label: "Gözden Geçir", steps: ["review"] },
 ];
 
+const WORKFLOW_STEPS = ["scales", "topic", "variables", "plan", "results", "review"];
+let autoSkippedSteps = new Set();
+let labelsPhaseAutoSkipped = false;
+let showAllLabelRows = false;
+let missingCodesEditOpen = false;
+let manualMissingCodesText = "99";
+let detectedMissingCodes = { codes: [], columnMap: {}, global: null };
+let detectScalesRan = false;
+
+function hasHighConfidenceScales() {
+  const regHigh = (scaleRegistryMeta.registry_matched || []).some(m => m.confidence === "high");
+  const scaleHigh = (detectedScales || []).some(s =>
+    s.registry_confidence === "high" || s.source === "registry" || s.source === "registry+gemini"
+  );
+  return regHigh || scaleHigh;
+}
+
+function shouldSkipScalesStep() {
+  return hasHighConfidenceScales() && detectedScales.length >= 1;
+}
+
+function applyScalesFromDetection() {
+  const names = detectedScales.map(s => s.name).filter(Boolean);
+  if (names.length) wizardFormState.scaleNames = [...new Set(names)].join(", ");
+}
+
+function getEtikKurulContext() {
+  return documentContext?.etik_kurul || null;
+}
+
+function shouldSkipTopicStep() {
+  const etik = getEtikKurulContext();
+  if (!etik || etik.parse_error) return false;
+  return (etik.hypotheses || []).length >= 1;
+}
+
+function applyTopicFromEtik() {
+  const etik = getEtikKurulContext();
+  if (!etik) return;
+  const hyps = (etik.hypotheses || []).filter(Boolean);
+  const text = hyps.length ? hyps.join("\n") : (etik.aim || "");
+  if (text) {
+    wizardFormState.topic = text;
+    researchTopicText = text;
+  }
+}
+
+function getLabelPhaseColumns() {
+  if (!pendingJson?.length) return [];
+  return Object.keys(pendingJson[0]).filter(col =>
+    !ITEM_COL_PATTERN.test(col) && !EXCLUDE_PATTERNS.some(p => p.test(col))
+  );
+}
+
+function isLabelComplete(col) {
+  const label = (userLabels[col] || pendingLabels[col] || "").trim();
+  if (!label) return false;
+  if (label === col) return false;
+  return true;
+}
+
+function shouldSkipLabelsPhase() {
+  return getLabelPhaseColumns().every(isLabelComplete) && getLabelPhaseColumns().length > 0;
+}
+
+function isTopicStepOptional() {
+  return !etikKurulDoc && !getEtikKurulContext();
+}
+
+function recomputeAutoSkips() {
+  autoSkippedSteps = new Set();
+  labelsPhaseAutoSkipped = false;
+  if (shouldSkipScalesStep()) {
+    autoSkippedSteps.add("scales");
+    applyScalesFromDetection();
+  } else if (detectedScales.length) {
+    applyScalesFromDetection();
+  }
+  if (shouldSkipTopicStep()) {
+    autoSkippedSteps.add("topic");
+    applyTopicFromEtik();
+  }
+}
+
+async function runDetectScalesEarly() {
+  if (detectScalesRan || !pendingJson?.length) return;
+  const columns = Object.keys(pendingJson[0]);
+  try {
+    const res = await fetch(`${API}/detect-scales`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ columns, labels: pendingLabels || {}, ...documentContextPayload() }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      detectedScales = data.scales || [];
+      scaleRegistryMeta = {
+        registry_matched: data.registry_matched || [],
+        registry_unmatched: data.registry_unmatched || [],
+        cutoffs: data.cutoffs || {},
+      };
+    }
+  } catch (_) { /* opsiyonel */ }
+  detectScalesRan = true;
+}
+
+function buildMissingCodesFromRead(readResult) {
+  const perCol = readResult?.missing_codes || {};
+  const codeCols = {};
+  const codeSet = new Set();
+  Object.entries(perCol).forEach(([col, codes]) => {
+    (codes || []).forEach(c => {
+      const key = String(c);
+      codeSet.add(key);
+      if (!codeCols[key]) codeCols[key] = [];
+      codeCols[key].push(col);
+    });
+  });
+  const global = readResult?.global_missing_code;
+  if (global) codeSet.add(String(global));
+  detectedMissingCodes = {
+    codes: [...codeSet],
+    columnMap: codeCols,
+    global: global || null,
+  };
+  manualMissingCodesText = detectedMissingCodes.codes.join(", ") || "99";
+}
+
+function renderMissingCodesBandHtml() {
+  if (missingCodesEditOpen) {
+    return `<div class="info-bar info-bar-missing">
+      <label class="form-label" for="missingCodesEditInput">Eksik veri kodları:</label>
+      <input type="text" id="missingCodesEditInput" class="form-input form-input-inline"
+        value="${escAttr(manualMissingCodesText)}" placeholder="99, 998, 999"
+        onchange="manualMissingCodesText = this.value" />
+      <button type="button" class="btn btn-ghost btn-sm" onclick="closeMissingCodesEdit()">Tamam</button>
+    </div>`;
+  }
+  const codes = detectedMissingCodes.codes;
+  if (!codes.length) return "";
+  const parts = codes.map(code => {
+    const n = (detectedMissingCodes.columnMap[code] || []).length;
+    return n ? `${code} değeri ${n} sütunda` : `${code} değeri`;
+  });
+  return `<div class="info-bar info-bar-missing">
+    <span>${escHtml(parts.join("; "))} kayıp veri olarak işaretlendi</span>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="openMissingCodesEdit()">Düzenle</button>
+  </div>`;
+}
+
+function openMissingCodesEdit() {
+  missingCodesEditOpen = true;
+  refreshMissingCodesBand();
+}
+
+function closeMissingCodesEdit() {
+  const input = document.getElementById("missingCodesEditInput");
+  if (input) manualMissingCodesText = input.value;
+  missingCodesEditOpen = false;
+  refreshMissingCodesBand();
+}
+
+function refreshMissingCodesBand() {
+  const el = document.getElementById("missingCodesBand");
+  if (el) el.innerHTML = renderMissingCodesBandHtml();
+}
+
+async function runAutoSkipSideEffects(stepName) {
+  if (stepName === "scales") await runScaleMatching();
+  if (stepName === "topic") applyTopicFromEtik();
+}
+
+async function resolveForwardStep(fromIdx) {
+  let i = fromIdx + 1;
+  while (i < STEPS.length) {
+    const name = STEPS[i];
+    if (autoSkippedSteps.has(name)) {
+      await runAutoSkipSideEffects(name);
+      i += 1;
+      continue;
+    }
+    return i;
+  }
+  return STEPS.length - 1;
+}
+
+function resolveBackwardStep(fromIdx) {
+  let i = fromIdx - 1;
+  while (i >= 0 && autoSkippedSteps.has(STEPS[i])) i -= 1;
+  return Math.max(0, i);
+}
+
+async function preparePostUploadWizard() {
+  await runDetectScalesEarly();
+  recomputeAutoSkips();
+  let next = await resolveForwardStep(STEPS.indexOf("etikkurul"));
+  if (STEPS[next] === "variables") {
+    await enterVariablesStepForNavigation();
+  }
+  goToStep(next, "forward");
+}
+
+async function enterVariablesStepForNavigation() {
+  if (!variablesDataReady) {
+    await loadData(pendingJson, pendingFileName, researchTopicText || wizardFormState.topic || "");
+    applyScaleMatchToColumns();
+  }
+  if (shouldSkipLabelsPhase()) {
+    labelsPhaseAutoSkipped = true;
+    variablesPhase = 2;
+    await proceedToPhase2(true);
+  } else {
+    variablesPhase = 1;
+  }
+}
+
+function stepperClick(stepIdx) {
+  autoSkippedSteps.delete(STEPS[stepIdx]);
+  if (STEPS[stepIdx] === "variables") {
+    labelsPhaseAutoSkipped = false;
+    if (!variablesDataReady) {
+      enterVariablesStepForNavigation().then(() => {
+        goToStep(stepIdx, stepIdx >= currentStep ? "forward" : "backward");
+      });
+      return;
+    }
+  }
+  goToStep(stepIdx, stepIdx >= currentStep ? "forward" : "backward");
+}
+
+function skipTopicStep() {
+  researchTopicText = document.getElementById("researchTopic")?.value.trim() || "";
+  wizardFormState.topic = researchTopicText;
+  nextStep();
+}
+
 const EXCLUDE_PATTERNS = [
   /^(anket_no|id|no|sira|num|serial)$/i,
   /^[a-z]+_\d+(_ters)?$/i,
@@ -1646,7 +1902,7 @@ function renderScaleMatchPanelHtml() {
       <div class="panel">
         <div class="panel-title">🔗 Ölçek → Kolon Eşleştirmesi</div>
         <p class="panel-desc">
-          Yazdığınız ölçek adlarına göre kolonlar otomatik eşleştirildi.
+          Ölçekler veritabanından otomatik tanındı; kolonlar buna göre eşleştirildi.
           Yanlış eşleşmeleri düzeltebilirsiniz.
         </p>
         ${scaleMatchResults.map(match => `
@@ -1757,10 +2013,6 @@ function renderUploadStep() {
         <div><strong>SPSS:</strong> .sav dosyasını doğrudan yükleyebilirsiniz — değişken etiketleri otomatik okunur.
         CSV export için <em>"Save value labels where defined"</em> seçeneğini işaretleyin.</div>
       </div>
-      <div class="form-row" style="margin-top: var(--space-2); margin-bottom: 0; text-align: left;">
-        <label class="form-label" for="missingValueCodes">Eksik veri kodları:</label>
-        <input type="text" id="missingValueCodes" class="form-input form-input-inline" value="99" placeholder="99, 998, 999" />
-      </div>
       <div class="wizard-nav wizard-nav-plain">
         <button class="btn btn-primary" id="btnUploadNext" disabled onclick="proceedFromUploadStep()">İleri →</button>
       </div>
@@ -1818,7 +2070,7 @@ function skipAnketStep() {
 function skipEtikKurulStep() {
   resetEtikDocZone();
   etikKurulDoc = null;
-  goToStepAfterUploadWizard();
+  preparePostUploadWizard();
 }
 
 function proceedFromAnketStep() {
@@ -1828,23 +2080,23 @@ function proceedFromAnketStep() {
 
 function proceedFromEtikKurulStep() {
   if (!etikKurulDoc || !etikDocState.loaded) return;
-  goToStepAfterUploadWizard();
+  preparePostUploadWizard();
 }
 
 function goToStepAfterUploadWizard() {
-  const hasTotalCols = columns.some(col =>
-    /(_toplam|_total|_score|_sum|^t[a-z]{2,})$/i.test(col) &&
-    !EXCLUDE_PATTERNS.some(p => p.test(col))
-  );
-  goToStep(hasTotalCols ? STEPS.indexOf("topic") : STEPS.indexOf("scales"), "forward");
+  preparePostUploadWizard();
 }
 
 function renderScalesStep() {
   const names = suggestedScaleNames();
+  const skippedNote = autoSkippedSteps.has("scales")
+    ? `<div class="alert alert-success text-sm">Ölçekler otomatik tespit edildi — isterseniz düzenleyip devam edin.</div>`
+    : "";
   return `
     <div class="wizard-card">
       <div class="wizard-title">📋 Kullandığınız ölçekler</div>
       <div class="wizard-subtitle">Araştırmanızda kullandığınız ölçek/anket isimlerini yazın. Her birini virgülle ayırın.</div>
+      ${skippedNote}
       <input type="text" id="scaleNamesInput" class="form-input" value="${escHtml(names)}"
         placeholder="örn: OYŞTÖ, Gece Yeme Anketi, SBİTO" />
       <div class="wizard-nav">
@@ -1857,14 +2109,20 @@ function renderScalesStep() {
 
 function renderTopicStep() {
   const topic = wizardFormState.topic || researchTopicText;
+  const optional = isTopicStepOptional();
+  const skippedNote = autoSkippedSteps.has("topic")
+    ? `<div class="alert alert-success text-sm">Etik kurul raporundan otomatik dolduruldu — isterseniz düzenleyin.</div>`
+    : "";
   return `
     <div class="wizard-card">
       <div class="wizard-title">🎯 Araştırma soruları</div>
-      <div class="wizard-subtitle">Her satıra bir soru yazabilirsiniz; hipotez eşlemesi plan adımında yapılır.</div>
+      <div class="wizard-subtitle">Her satıra bir soru yazabilirsiniz; hipotez eşlemesi plan adımında yapılır.${optional ? " (Opsiyonel)" : ""}</div>
+      ${skippedNote}
       <textarea id="researchTopic" class="form-textarea" rows="5"
         placeholder="Araştırma sorularınızı yazın; her satıra bir soru yazabilirsiniz.">${escHtml(topic)}</textarea>
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
+        ${optional ? `<button class="btn btn-ghost" onclick="skipTopicStep()">Atla →</button>` : ""}
         <button class="btn btn-primary" id="btnTopicNext" onclick="nextStep()">Devam →</button>
       </div>
     </div>`;
@@ -1889,15 +2147,21 @@ function getNonItemColumns() {
 
 function renderLabelPhaseGrid() {
   const grid = document.getElementById("labelPhaseGrid");
+  const toggle = document.getElementById("labelShowAllLink");
   if (!grid) return;
-  const cols = getNonItemColumns().filter(col => !ITEM_COL_PATTERN.test(col));
+  const allCols = getLabelPhaseColumns();
+  const emptyCols = allCols.filter(col => !isLabelComplete(col));
+  const cols = (showAllLabelRows || emptyCols.length === 0) ? allCols : emptyCols;
+  if (toggle) {
+    toggle.classList.toggle("hidden", showAllLabelRows || emptyCols.length === 0 || emptyCols.length === allCols.length);
+  }
   grid.innerHTML = cols.map(col => {
     const samples = [...new Set(
-      parsedData.slice(0, 5).map(r => r[col]).filter(v => v !== "" && v != null)
+      (parsedData.length ? parsedData : pendingJson || []).slice(0, 5).map(r => r[col]).filter(v => v !== "" && v != null)
     )].slice(0, 4);
     const id = labelInputId(col);
     const c = escAttr(col);
-    const val = escAttr(userLabels[col] || col);
+    const val = escAttr(userLabels[col] || pendingLabels[col] || col);
     return `
       <div class="label-row">
         <span class="label-row-code">${col}</span>
@@ -1910,6 +2174,9 @@ function renderLabelPhaseGrid() {
 }
 
 function renderVariablesPhase1() {
+  const skippedNote = labelsPhaseAutoSkipped
+    ? `<div class="alert alert-success text-sm">Tüm değişken etiketleri otomatik okundu.</div>`
+    : "";
   return `
     <div class="wizard-card wizard-card-wide">
       <div class="wizard-title">🏷️ Değişken İsimleri</div>
@@ -1917,6 +2184,9 @@ function renderVariablesPhase1() {
         Her değişkene anlaşılır bir Türkçe isim verin.
         Bu isimler analiz sonuçlarında ve bulgularda kullanılacak.
       </div>
+      ${skippedNote}
+      <a id="labelShowAllLink" class="label-show-all-link hidden" href="#"
+        onclick="showAllLabelRows = true; renderLabelPhaseGrid(); return false;">Tümünü göster</a>
       <div id="labelPhaseGrid" class="mt-2"></div>
       <div class="wizard-nav">
         <button class="btn btn-ghost" onclick="prevStep()">← Geri</button>
@@ -1928,10 +2198,11 @@ function renderVariablesPhase1() {
 function renderVariablesPhase2() {
   return `
     <div class="wizard-card wizard-card-wide">
-      <div class="wizard-title">🔢 Değişkenleri Seçin</div>
+      <div class="wizard-title">🔢 Değişkenleri Onaylayın</div>
       <div class="wizard-subtitle">
         AI değişkenleri sınıflandırdı. Kontrol edin, yanlış olanları düzeltin.
       </div>
+      <div id="missingCodesBand">${renderMissingCodesBandHtml()}</div>
       ${renderScaleMatchPanelHtml()}
       <div id="selectionGridsContainer"></div>
       <div class="wizard-nav">
@@ -2018,20 +2289,17 @@ async function fetchAndApplyDerivedVariables() {
   }
 }
 
-async function proceedToPhase2() {
+async function proceedToPhase2(silent) {
   const btn = document.getElementById("btnClassify");
-  setButtonLoading(btn, true, "Sınıflandırılıyor...");
+  if (btn) setButtonLoading(btn, true, "Sınıflandırılıyor...");
 
   try {
     await runAIClassify(true);
 
     collectUserLabelsFromInputs();
-    const allCols = getNonItemColumns().filter(col => !ITEM_COL_PATTERN.test(col));
-    const missing = allCols.filter(col => {
-      const label = (userLabels[col] || "").trim();
-      return !label || label.toLowerCase() === col.toLowerCase();
-    });
-    if (missing.length > 0) {
+    const allCols = getLabelPhaseColumns();
+    const missing = allCols.filter(col => !isLabelComplete(col));
+    if (missing.length > 0 && !silent) {
       alert(`Devam etmeden önce şu değişkenlere Türkçe isim verin: ${missing.join(", ")}`);
       return;
     }
@@ -2039,7 +2307,7 @@ async function proceedToPhase2() {
     variablesPhase = 2;
     refreshCurrentStep();
   } finally {
-    setButtonLoading(btn, false, "", "Sınıflandır →");
+    if (btn) setButtonLoading(btn, false, "", "Sınıflandır →");
   }
 }
 
@@ -2134,6 +2402,11 @@ function updateProgress() {
   }
   bar.classList.add("is-visible");
 
+  if (currentStep >= STEPS.indexOf("scales")) {
+    renderWorkflowStepper(stepsEl, label);
+    return;
+  }
+
   const currentGroup = getStepperGroupIndex(currentStep);
   const visitedGroups = getVisitedStepperGroups(currentStep);
   const parts = [];
@@ -2152,6 +2425,35 @@ function updateProgress() {
   });
   stepsEl.innerHTML = parts.join("");
   label.textContent = STEPPER_GROUPS[currentGroup]?.label || "";
+}
+
+function renderWorkflowStepper(stepsEl, label) {
+  const parts = [];
+  WORKFLOW_STEPS.forEach((stepName, i) => {
+    const idx = STEPS.indexOf(stepName);
+    let state = "future";
+    if (idx === currentStep) state = "active";
+    else if (idx < currentStep) state = autoSkippedSteps.has(stepName) ? "skipped" : "done";
+    else if (autoSkippedSteps.has(stepName)) state = "skipped";
+
+    const stepLabel = STEP_LABELS[idx] || stepName;
+    const node = (state === "done" || state === "skipped") ? "✓" : (i + 1);
+    const autoTag = (autoSkippedSteps.has(stepName) || (stepName === "variables" && labelsPhaseAutoSkipped))
+      ? `<span class="stepper-auto-tag">otomatik</span>` : "";
+    parts.push(`
+      <div class="stepper-item ${state} clickable" title="${stepLabel}" onclick="stepperClick(${idx})">
+        <div class="stepper-node">${node}</div>
+        <span class="stepper-label">${stepLabel}</span>
+        ${autoTag}
+      </div>`);
+    if (i < WORKFLOW_STEPS.length - 1) {
+      const nextIdx = STEPS.indexOf(WORKFLOW_STEPS[i + 1]);
+      const lineDone = nextIdx <= currentStep || autoSkippedSteps.has(WORKFLOW_STEPS[i + 1]);
+      parts.push(`<div class="stepper-line${lineDone ? " done" : ""}"></div>`);
+    }
+  });
+  stepsEl.innerHTML = parts.join("");
+  label.textContent = STEP_LABELS[currentStep] || "";
 }
 
 function setButtonLoading(btn, loading, loadingText, defaultHtml) {
@@ -2211,6 +2513,7 @@ function initStep(step) {
 
       const container = document.getElementById("selectionGridsContainer");
       if (!container) return;
+      refreshMissingCodesBand();
       container.innerHTML = `
         <div class="info-bar">📁 <span id="fileInfo">${escAttr(fileInfoText)}</span></div>
         <div id="missingWarnBar" class="warn-bar hidden"></div>
@@ -2317,14 +2620,15 @@ function validateStep(step) {
 
   if (name === "topic") {
     const topic = document.getElementById("researchTopic")?.value.trim();
-    if (!topic) {
+    if (topic) {
+      researchTopicText = topic;
+      wizardFormState.topic = topic;
+      hypothesesApproved = false;
+      approvedHypotheses = [];
+    } else if (!isTopicStepOptional()) {
       alert("Lütfen araştırma konusunu yazın.");
       return false;
     }
-    researchTopicText = topic;
-    wizardFormState.topic = topic;
-    hypothesesApproved = false;
-    approvedHypotheses = [];
   }
 
   if (name === "variables") {
@@ -2346,59 +2650,36 @@ function validateStep(step) {
 
 async function nextStep() {
   if (STEPS[currentStep] === "variables" && variablesPhase === 1) {
-    await proceedToPhase2();
+    await proceedToPhase2(false);
     return;
   }
 
   if (!validateStep(currentStep)) return;
 
-  let next = currentStep + 1;
-
-  if (STEPS[currentStep] === "scales") {
-    await runScaleMatching();
-  }
-
-  if (STEPS[currentStep] === "variables") {
-    await fetchPdfContext();
-  }
-
+  if (STEPS[currentStep] === "scales") await runScaleMatching();
+  if (STEPS[currentStep] === "variables") await fetchPdfContext();
   if (STEPS[currentStep] === "topic") {
     ensurePendingUserLabels();
     applyScaleInfoToLabels();
   }
 
+  let next = await resolveForwardStep(currentStep);
   if (STEPS[next] === "variables") {
-    variablesPhase = 1;
-    if (!variablesDataReady) {
-      const btn = getWizardNextButton();
-      setButtonLoading(btn, true, "Veriler hazırlanıyor...");
-      try {
-        await loadData(pendingJson, pendingFileName, researchTopicText);
-        applyScaleMatchToColumns();
-      } finally {
-        setButtonLoading(btn, false, "", "Devam →");
-      }
+    const btn = getWizardNextButton();
+    setButtonLoading(btn, true, "Veriler hazırlanıyor...");
+    try {
+      await enterVariablesStepForNavigation();
+    } finally {
+      setButtonLoading(btn, false, "", "Devam →");
     }
-  }
-
-  // Dosya yüklendi, toplam kolon var mı kontrol et
-  const hasTotalCols = columns.some(col =>
-    /(_toplam|_total|_score|_sum|^t[a-z]{2,})$/i.test(col) &&
-    !EXCLUDE_PATTERNS.some(p => p.test(col))
-  );
-
-  // Toplam kolonlar varsa scales step'i atla
-  if (hasTotalCols && STEPS[currentStep + 1] === "scales") {
-    goToStep(currentStep + 2, "forward");
-    return;
   }
 
   if (next < STEPS.length) goToStep(next, "forward");
 }
 
 function prevStep() {
-  const prev = currentStep - 1;
-  if (prev >= 0) goToStep(prev, "backward");
+  const prev = resolveBackwardStep(currentStep);
+  if (prev < currentStep) goToStep(prev, "backward");
 }
 
 function resetWizard() {
@@ -2455,6 +2736,13 @@ function resetWizard() {
   savFileSizeKb = 0;
   anketDocState = { loading: false, fileName: "", itemCount: 0, partial: false, loaded: false };
   etikDocState = { loading: false, fileName: "", hypothesisCount: 0, partial: false, loaded: false };
+  autoSkippedSteps = new Set();
+  labelsPhaseAutoSkipped = false;
+  showAllLabelRows = false;
+  missingCodesEditOpen = false;
+  manualMissingCodesText = "99";
+  detectedMissingCodes = { codes: [], columnMap: {}, global: null };
+  detectScalesRan = false;
   document.getElementById("labelWarningModal")?.classList.remove("open");
   const container = document.getElementById("slideContainer");
   if (container) container.innerHTML = "";
@@ -2945,15 +3233,7 @@ async function finishFileUpload(file, json, readResult) {
   valueLabels = readResult?.value_labels || {};
   variableMeasure = readResult?.variable_measure || {};
   pendingMissingCodes = readResult?.missing_codes || {};
-
-  const globalCode = readResult?.global_missing_code;
-  if (globalCode) {
-    const input = document.getElementById("missingValueCodes");
-    if (input && !input.value) {
-      input.value = globalCode;
-      showToast(`✅ Missing value kodu otomatik ayarlandı: ${globalCode}`);
-    }
-  }
+  buildMissingCodesFromRead(readResult || { missing_codes: pendingMissingCodes });
 
   const prefixes = Object.keys(json[0])
     .filter(c => /_TOPLAM$/i.test(c))
@@ -2962,6 +3242,11 @@ async function finishFileUpload(file, json, readResult) {
   wizardFormState.topic = "";
   approvedCutoffs = [];
   scaleInfo = {};
+  detectScalesRan = false;
+  detectedScales = [];
+  scaleRegistryMeta = { registry_matched: [], registry_unmatched: [], cutoffs: {} };
+  autoSkippedSteps = new Set();
+  labelsPhaseAutoSkipped = false;
 
   savFileLoaded = true;
   savFileName = file.name;
@@ -3007,6 +3292,7 @@ async function handleFile(file) {
     }
     const ws = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
+    inferMissingCodesClient(json);
     finishFileUpload(file, json, null);
   };
   reader.readAsBinaryString(file);
@@ -3106,7 +3392,7 @@ async function loadData(json, fileName, researchTopic) {
     }
   } catch (e) {
     detectedScales = [];
-  scaleRegistryMeta = { registry_matched: [], registry_unmatched: [], cutoffs: {} };
+    scaleRegistryMeta = { registry_matched: [], registry_unmatched: [], cutoffs: {} };
   }
 
   lastRecommendations = {};
@@ -3312,9 +3598,46 @@ function buildVariables() {
   ];
 }
 
+function inferMissingCodesClient(rows) {
+  if (!rows?.length) return;
+  const codeCols = {};
+  const codeSet = new Set();
+  const cols = Object.keys(rows[0]);
+  cols.forEach(col => {
+    const nums = rows.map(r => parseFloat(normalizeDecimalValue(r[col]))).filter(n => !isNaN(n));
+    if (nums.length < 10) return;
+    const sorted = [...nums].sort((a, b) => a - b);
+    const p95 = sorted[Math.floor(sorted.length * 0.95)] || sorted[sorted.length - 1];
+    const counts = {};
+    nums.forEach(n => { counts[n] = (counts[n] || 0) + 1; });
+    Object.entries(counts).forEach(([val, cnt]) => {
+      if (cnt < 2) return;
+      const f = parseFloat(val);
+      const iv = Number.isInteger(f) ? f : null;
+      const sentinel = [9, 99, 998, 999, -9, -99].includes(iv);
+      const above = f > p95 && f >= Math.max(p95 * 1.2, p95 + 3);
+      if (sentinel || above) {
+        const key = String(iv != null ? iv : val);
+        codeSet.add(key);
+        if (!codeCols[key]) codeCols[key] = [];
+        codeCols[key].push(col);
+      }
+    });
+  });
+  if (codeSet.size) {
+    detectedMissingCodes = { codes: [...codeSet], columnMap: codeCols, global: null };
+    manualMissingCodesText = detectedMissingCodes.codes.join(", ");
+  }
+}
+
 function getMissingCodes() {
-  const raw = document.getElementById("missingValueCodes")?.value || "99";
-  return raw.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+  if (missingCodesEditOpen) {
+    const input = document.getElementById("missingCodesEditInput");
+    const raw = input?.value || manualMissingCodesText;
+    return raw.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+  }
+  if (detectedMissingCodes.codes?.length) return detectedMissingCodes.codes;
+  return manualMissingCodesText.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
 }
 
 function buildData(variables) {
