@@ -604,47 +604,29 @@
   .scale-match-detail { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
   .upload-zone.loading { border-color: var(--accent); cursor: default; }
   .upload-zone.loading .icon { animation: pulse 1.2s ease-in-out infinite; }
-  .optional-docs-grid {
+  .upload-zone.warn-partial {
+    border-style: solid; border-color: var(--warn-border);
+    background: var(--warn-muted);
+  }
+  .upload-panel {
+    border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: var(--space-3); background: var(--card); text-align: left;
+    box-shadow: var(--shadow-card);
+  }
+  .upload-panel .upload-zone { margin-bottom: 0; }
+  .upload-panel-divider {
+    border-top: 1px solid var(--border);
+    margin: var(--space-3) 0;
+  }
+  .upload-docs-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: 1fr 1fr;
     gap: var(--space-3);
-    margin-top: var(--space-3);
-    text-align: left;
   }
-  .optional-doc-zone {
-    min-height: 110px;
-    padding: var(--space-3);
-    cursor: pointer;
+  @media (max-width: 720px) {
+    .upload-docs-row { grid-template-columns: 1fr; }
   }
-  .optional-doc-zone h3 {
-    font-size: 14px;
-    font-weight: 600;
-    margin: 0 0 4px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .optional-doc-zone p { font-size: 12px; margin: 0; }
-  .doc-info-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    border: 1px solid var(--muted);
-    font-size: 10px;
-    color: var(--muted);
-    cursor: help;
-    flex-shrink: 0;
-  }
-  .optional-docs-note {
-    font-size: 13px;
-    color: var(--muted);
-    margin-top: var(--space-3);
-    line-height: 1.5;
-    text-align: left;
-  }
+  .upload-docs-col { display: flex; flex-direction: column; gap: var(--space-2); }
   #anketDocInput, #etikDocInput { display: none; }
   @keyframes pulse { 50% { opacity: 0.5; } }
   .wizard-nav-hint { font-size: 12px; color: var(--muted); }
@@ -902,6 +884,12 @@ let etikKurulDocxFile = null;
 let etikKurulDocxName = "";
 let documentContext = null;
 let documentSessionId = null;
+let savFileLoaded = false;
+let savFileName = "";
+let savFileSizeKb = 0;
+let anketDocState = { loading: false, fileName: "", itemCount: 0, partial: false, loaded: false };
+let etikDocState = { loading: false, fileName: "", hypothesisCount: 0, partial: false, loaded: false };
+const DOC_PARTIAL_WARN = "Dosya okunabildi ama bazı bilgiler çıkarılamadı — devam edebilirsiniz";
 let aiExcluded = new Set();
 let customTitles = {};
 let customLabels = {};
@@ -1671,12 +1659,12 @@ function initUploadZoneDragDrop() {
   const zone = document.getElementById("uploadZone");
   if (!zone || zone.dataset.dragBound) return;
   zone.dataset.dragBound = "1";
-  zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragover", e => { e.preventDefault(); if (!savFileLoaded) zone.classList.add("drag"); });
   zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
   zone.addEventListener("drop", e => {
     e.preventDefault();
     zone.classList.remove("drag");
-    handleFile(e.dataTransfer.files[0]);
+    if (!savFileLoaded) handleFile(e.dataTransfer.files[0]);
   });
 }
 
@@ -1700,47 +1688,41 @@ function renderUploadStep() {
       <div class="upload-hero">📊</div>
       <div class="wizard-title">StatAI'ya Hoş Geldiniz</div>
       <div class="wizard-subtitle">Akademik analiz ve APA formatlı tablolar için verinizi yükleyin</div>
-      <div id="uploadZone" class="upload-zone" onclick="document.getElementById('fileInput').click()">
-        <div class="icon">📁</div>
-        <h2>Veri dosyanızı sürükleyin</h2>
-        <p>SPSS (.sav), Excel veya CSV dosyanızı sürükleyin — veya tıklayarak seçin</p>
-        <div class="formats">
-          <span class="format-badge">.sav</span>
-          <span class="format-badge">.xlsx</span>
-          <span class="format-badge">.xls</span>
-          <span class="format-badge">.csv</span>
+      <div class="upload-panel">
+        <div id="uploadZone" class="upload-zone"></div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.sav" onchange="handleFile(this.files[0])" />
+        <div class="alert alert-info text-sm" style="margin-top: var(--space-2);">
+          <div><strong>SPSS:</strong> .sav dosyasını doğrudan yükleyebilirsiniz — değişken etiketleri otomatik okunur.
+          CSV export için <em>"Save value labels where defined"</em> seçeneğini işaretleyin.</div>
+        </div>
+        <div class="form-row" style="margin-top: var(--space-2); margin-bottom: 0;">
+          <label class="form-label" for="missingValueCodes">Eksik veri kodları:</label>
+          <input type="text" id="missingValueCodes" class="form-input form-input-inline" value="99" placeholder="99, 998, 999" />
+        </div>
+        <div class="upload-panel-divider"></div>
+        <div class="upload-docs-row">
+          <div class="upload-docs-col">
+            <div id="anketDocZone" class="upload-zone"></div>
+            <input type="file" id="anketDocInput" accept=".docx" onchange="handleAnketDocx(this.files[0])" />
+            <div class="alert alert-info text-sm">
+              <strong>Anket:</strong> Madde metinleri yüklenirse ölçekler %95+ doğrulukla tanınır.
+              Yüklenmezse sistem .sav etiketlerinden tahmin eder.
+            </div>
+            <div id="anketDocWarn" class="alert alert-warn text-sm hidden">${DOC_PARTIAL_WARN}</div>
+          </div>
+          <div class="upload-docs-col">
+            <div id="etikDocZone" class="upload-zone"></div>
+            <input type="file" id="etikDocInput" accept=".docx" onchange="handleEtikKurulDocx(this.files[0])" />
+            <div class="alert alert-info text-sm">
+              <strong>Etik kurul:</strong> Araştırma soruları otomatik doldurulur, manuel yazmak gerekmez.
+            </div>
+            <div id="etikDocWarn" class="alert alert-warn text-sm hidden">${DOC_PARTIAL_WARN}</div>
+          </div>
         </div>
       </div>
-      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.sav" onchange="handleFile(this.files[0])" />
-      <div class="alert alert-info text-sm text-left">
-        <div><strong>SPSS:</strong> .sav dosyasını doğrudan yükleyebilirsiniz — değişken etiketleri otomatik okunur.
-        CSV export için <em>"Save value labels where defined"</em> seçeneğini işaretleyin.</div>
+      <div class="wizard-nav wizard-nav-plain">
+        <button class="btn btn-primary" id="btnUploadNext" disabled onclick="proceedFromUploadStep()">Devam →</button>
       </div>
-      <div class="form-row">
-        <label class="form-label" for="missingValueCodes">Eksik veri kodları:</label>
-        <input type="text" id="missingValueCodes" class="form-input form-input-inline" value="99" placeholder="99, 998, 999" />
-      </div>
-      <p class="optional-docs-note">
-        Bu belgeler yüklenmeden de devam edebilirsiniz, ancak bazı bilgileri manuel girmeniz gerekebilir.
-      </p>
-      <div class="optional-docs-grid">
-        <div id="anketDocZone" class="upload-zone optional-doc-zone" onclick="document.getElementById('anketDocInput').click()">
-          <h3>📋 Anket formu (.docx)
-            <span class="doc-info-icon" title="Ölçek maddelerini ve Likert ifadelerini otomatik tanımak için yükleyin.">?</span>
-          </h3>
-          <p>Ölçek maddelerini otomatik tanımak için</p>
-          <div class="upload-file-meta" id="anketDocStatus"></div>
-        </div>
-        <div id="etikDocZone" class="upload-zone optional-doc-zone" onclick="document.getElementById('etikDocInput').click()">
-          <h3>📄 Etik kurul raporu (.docx)
-            <span class="doc-info-icon" title="Araştırma amacı ve hipotezleri otomatik çıkarmak için yükleyin.">?</span>
-          </h3>
-          <p>Araştırma sorularını otomatik çıkarmak için</p>
-          <div class="upload-file-meta" id="etikDocStatus"></div>
-        </div>
-      </div>
-      <input type="file" id="anketDocInput" accept=".docx" onchange="handleAnketDocx(this.files[0])" />
-      <input type="file" id="etikDocInput" accept=".docx" onchange="handleEtikKurulDocx(this.files[0])" />
     </div>`;
 }
 
@@ -2128,10 +2110,12 @@ function getWizardNextButton() {
 function initStep(step) {
   const name = STEPS[step];
   if (name === "upload") {
+    paintDataUploadZone();
+    paintAnketDocZone();
+    paintEtikDocZone();
+    updateUploadNextButton();
     initUploadZoneDragDrop();
     initOptionalDocDropZones();
-    updateOptionalDocZone("anketDocZone", "anketDocStatus", anketDocxName);
-    updateOptionalDocZone("etikDocZone", "etikDocStatus", etikKurulDocxName);
   }
   if (name === "ethics") initEthicsUploadZoneDragDrop();
 
@@ -2393,6 +2377,11 @@ function resetWizard() {
   etikKurulDocxName = "";
   documentContext = null;
   documentSessionId = null;
+  savFileLoaded = false;
+  savFileName = "";
+  savFileSizeKb = 0;
+  anketDocState = { loading: false, fileName: "", itemCount: 0, partial: false, loaded: false };
+  etikDocState = { loading: false, fileName: "", hypothesisCount: 0, partial: false, loaded: false };
   document.getElementById("labelWarningModal")?.classList.remove("open");
   const container = document.getElementById("slideContainer");
   if (container) container.innerHTML = "";
@@ -2581,23 +2570,185 @@ function documentContextPayload() {
   return out;
 }
 
-function updateOptionalDocZone(zoneId, statusId, fileName) {
-  const zone = document.getElementById(zoneId);
-  const status = document.getElementById(statusId);
+function countAnketItems(anket) {
+  if (!anket || anket.parse_error) return 0;
+  return (anket.sections || []).reduce((n, sec) => n + ((sec.items || []).length), 0);
+}
+
+function countEtikHypotheses(etik) {
+  if (!etik || etik.parse_error) return 0;
+  return (etik.hypotheses || []).length;
+}
+
+function updateUploadNextButton() {
+  const btn = document.getElementById("btnUploadNext");
+  if (btn) btn.disabled = !savFileLoaded;
+}
+
+function paintDataUploadZone() {
+  const zone = document.getElementById("uploadZone");
   if (!zone) return;
-  if (fileName) {
-    zone.classList.add("uploaded");
-    if (status) {
-      status.textContent = `✅ ${fileName}`;
-      status.style.color = "var(--success)";
+  if (savFileLoaded && savFileName) {
+    zone.className = "upload-zone uploaded";
+    zone.innerHTML = `
+      <div class="icon">✅</div>
+      <div class="upload-file-name">${escHtml(savFileName)}</div>
+      <div class="upload-file-meta">${savFileSizeKb} KB · Yüklendi</div>
+      <div class="upload-reset-link" onclick="event.stopPropagation(); resetDataUploadZone()">Farklı dosya yükle</div>`;
+    zone.onclick = null;
+    return;
+  }
+  zone.className = "upload-zone";
+  zone.innerHTML = `
+    <div class="icon">📁</div>
+    <h2>Veri dosyanızı sürükleyin</h2>
+    <p>SPSS (.sav), Excel veya CSV dosyanızı sürükleyin — veya tıklayarak seçin</p>
+    <div class="formats">
+      <span class="format-badge">.sav</span>
+      <span class="format-badge">.xlsx</span>
+      <span class="format-badge">.xls</span>
+      <span class="format-badge">.csv</span>
+    </div>`;
+  zone.onclick = () => document.getElementById("fileInput")?.click();
+}
+
+function paintAnketDocZone() {
+  const zone = document.getElementById("anketDocZone");
+  const warn = document.getElementById("anketDocWarn");
+  if (!zone) return;
+  if (anketDocState.loading) {
+    zone.className = "upload-zone loading";
+    zone.innerHTML = `
+      <div class="icon">⏳</div>
+      <h2>Belge işleniyor...</h2>
+      <p>${escHtml(anketDocState.fileName || "Anket formu")}</p>`;
+    zone.onclick = null;
+    if (warn) warn.classList.add("hidden");
+    return;
+  }
+  if (anketDocState.loaded && anketDocState.fileName) {
+    const partialCls = anketDocState.partial ? " warn-partial" : "";
+    zone.className = `upload-zone uploaded${partialCls}`;
+    zone.innerHTML = `
+      <div class="icon">✅</div>
+      <div class="upload-file-name">${escHtml(anketDocState.fileName)}</div>
+      <div class="upload-file-meta">${anketDocState.itemCount} madde bulundu</div>
+      <div class="upload-reset-link" onclick="resetAnketDocZone(event)">Kaldır</div>`;
+    zone.onclick = null;
+    if (warn) warn.classList.toggle("hidden", !anketDocState.partial);
+    return;
+  }
+  zone.className = "upload-zone";
+  zone.innerHTML = `
+    <div class="icon">📋</div>
+    <h2>Anket formunuzu sürükleyin</h2>
+    <p>Ölçek maddeleri, ters puanlama ve alt boyutlar otomatik tanınır</p>
+    <div class="formats"><span class="format-badge">.docx</span></div>`;
+  zone.onclick = () => document.getElementById("anketDocInput")?.click();
+  if (warn) warn.classList.add("hidden");
+}
+
+function paintEtikDocZone() {
+  const zone = document.getElementById("etikDocZone");
+  const warn = document.getElementById("etikDocWarn");
+  if (!zone) return;
+  if (etikDocState.loading) {
+    zone.className = "upload-zone loading";
+    zone.innerHTML = `
+      <div class="icon">⏳</div>
+      <h2>Belge işleniyor...</h2>
+      <p>${escHtml(etikDocState.fileName || "Etik kurul raporu")}</p>`;
+    zone.onclick = null;
+    if (warn) warn.classList.add("hidden");
+    return;
+  }
+  if (etikDocState.loaded && etikDocState.fileName) {
+    const partialCls = etikDocState.partial ? " warn-partial" : "";
+    zone.className = `upload-zone uploaded${partialCls}`;
+    zone.innerHTML = `
+      <div class="icon">✅</div>
+      <div class="upload-file-name">${escHtml(etikDocState.fileName)}</div>
+      <div class="upload-file-meta">${etikDocState.hypothesisCount} hipotez bulundu</div>
+      <div class="upload-reset-link" onclick="resetEtikDocZone(event)">Kaldır</div>`;
+    zone.onclick = null;
+    if (warn) warn.classList.toggle("hidden", !etikDocState.partial);
+    return;
+  }
+  zone.className = "upload-zone";
+  zone.innerHTML = `
+    <div class="icon">📄</div>
+    <h2>Etik kurul raporunuzu sürükleyin</h2>
+    <p>Araştırma soruları ve hipotezler otomatik çıkarılır</p>
+    <div class="formats"><span class="format-badge">.docx</span></div>`;
+  zone.onclick = () => document.getElementById("etikDocInput")?.click();
+  if (warn) warn.classList.add("hidden");
+}
+
+function resetDataUploadZone() {
+  savFileLoaded = false;
+  savFileName = "";
+  savFileSizeKb = 0;
+  pendingJson = null;
+  pendingFileName = "";
+  paintDataUploadZone();
+  updateUploadNextButton();
+  const input = document.getElementById("fileInput");
+  if (input) input.value = "";
+}
+
+function resetAnketDocZone(e) {
+  e?.stopPropagation();
+  anketDocxFile = null;
+  anketDocxName = "";
+  anketDocState = { loading: false, fileName: "", itemCount: 0, partial: false, loaded: false };
+  if (documentContext) documentContext.anket = null;
+  const input = document.getElementById("anketDocInput");
+  if (input) input.value = "";
+  paintAnketDocZone();
+}
+
+function resetEtikDocZone(e) {
+  e?.stopPropagation();
+  etikKurulDocxFile = null;
+  etikKurulDocxName = "";
+  etikDocState = { loading: false, fileName: "", hypothesisCount: 0, partial: false, loaded: false };
+  if (documentContext) documentContext.etik_kurul = null;
+  const input = document.getElementById("etikDocInput");
+  if (input) input.value = "";
+  paintEtikDocZone();
+}
+
+function applyDocumentParseResults(json) {
+  documentContext = json.document_context || {
+    anket: json.anket,
+    etik_kurul: json.etik_kurul,
+  };
+  documentSessionId = json.session_id || documentSessionId;
+  if (anketDocxFile) {
+    const anket = documentContext?.anket;
+    anketDocState.itemCount = countAnketItems(anket);
+    anketDocState.partial = !anket || anket.parse_error || anketDocState.itemCount === 0;
+    anketDocState.loaded = true;
+    anketDocState.loading = false;
+    anketDocState.fileName = anketDocxName;
+  }
+  if (etikKurulDocxFile) {
+    const etik = documentContext?.etik_kurul;
+    etikDocState.hypothesisCount = countEtikHypotheses(etik);
+    etikDocState.partial = !etik || etik.parse_error || etikDocState.hypothesisCount === 0;
+    etikDocState.loaded = true;
+    etikDocState.loading = false;
+    etikDocState.fileName = etikKurulDocxName;
+    if (etik && !etik.parse_error) {
+      if (etik.aim && !wizardFormState.topic) wizardFormState.topic = etik.aim;
+      if (etik.scale_names?.length && !wizardFormState.scaleNames) {
+        wizardFormState.scaleNames = etik.scale_names.join(", ");
+      }
     }
-  } else {
-    zone.classList.remove("uploaded");
-    if (status) status.textContent = "";
   }
 }
 
-function handleAnketDocx(file) {
+async function handleAnketDocx(file) {
   if (!file) return;
   if (!file.name.toLowerCase().endsWith(".docx")) {
     alert("Anket dosyası .docx formatında olmalıdır.");
@@ -2605,10 +2756,13 @@ function handleAnketDocx(file) {
   }
   anketDocxFile = file;
   anketDocxName = file.name;
-  updateOptionalDocZone("anketDocZone", "anketDocStatus", file.name);
+  anketDocState = { loading: true, fileName: file.name, itemCount: 0, partial: false, loaded: false };
+  paintAnketDocZone();
+  await uploadOptionalDocuments();
+  paintAnketDocZone();
 }
 
-function handleEtikKurulDocx(file) {
+async function handleEtikKurulDocx(file) {
   if (!file) return;
   if (!file.name.toLowerCase().endsWith(".docx")) {
     alert("Etik kurul dosyası .docx formatında olmalıdır.");
@@ -2616,7 +2770,10 @@ function handleEtikKurulDocx(file) {
   }
   etikKurulDocxFile = file;
   etikKurulDocxName = file.name;
-  updateOptionalDocZone("etikDocZone", "etikDocStatus", file.name);
+  etikDocState = { loading: true, fileName: file.name, hypothesisCount: 0, partial: false, loaded: false };
+  paintEtikDocZone();
+  await uploadOptionalDocuments();
+  paintEtikDocZone();
 }
 
 function initOptionalDocDropZones() {
@@ -2648,24 +2805,49 @@ async function uploadOptionalDocuments() {
     const res = await fetch(`${API}/upload-documents`, { method: "POST", body: form });
     if (!res.ok) {
       console.warn("Belge yükleme başarısız:", await res.text());
+      if (anketDocState.loading) {
+        anketDocState.loading = false;
+        anketDocState.partial = true;
+        anketDocState.loaded = true;
+      }
+      if (etikDocState.loading) {
+        etikDocState.loading = false;
+        etikDocState.partial = true;
+        etikDocState.loaded = true;
+      }
       return;
     }
     const json = await res.json();
-    documentContext = json.document_context || {
-      anket: json.anket,
-      etik_kurul: json.etik_kurul,
-    };
-    documentSessionId = json.session_id || documentSessionId;
-    const etik = documentContext?.etik_kurul;
-    if (etik && !etik.parse_error) {
-      if (etik.aim && !wizardFormState.topic) wizardFormState.topic = etik.aim;
-      if (etik.scale_names?.length && !wizardFormState.scaleNames) {
-        wizardFormState.scaleNames = etik.scale_names.join(", ");
-      }
-    }
-    showToast("📎 Opsiyonel belgeler işlendi");
+    applyDocumentParseResults(json);
+    showToast("📎 Belge işlendi");
   } catch (e) {
     console.warn("Belge yükleme hatası:", e);
+    if (anketDocState.loading) {
+      anketDocState.loading = false;
+      anketDocState.partial = true;
+      anketDocState.loaded = true;
+    }
+    if (etikDocState.loading) {
+      etikDocState.loading = false;
+      etikDocState.partial = true;
+      etikDocState.loaded = true;
+    }
+  }
+}
+
+async function proceedFromUploadStep() {
+  if (!savFileLoaded || !pendingJson?.length) return;
+  const btn = document.getElementById("btnUploadNext");
+  setButtonLoading(btn, true, "Hazırlanıyor...");
+  try {
+    if ((anketDocxFile && !anketDocState.loaded) || (etikKurulDocxFile && !etikDocState.loaded)) {
+      await uploadOptionalDocuments();
+      paintAnketDocZone();
+      paintEtikDocZone();
+    }
+    goToStep(1, "forward");
+  } finally {
+    setButtonLoading(btn, false, "", "Devam →");
   }
 }
 
@@ -2700,19 +2882,11 @@ async function finishFileUpload(file, json, readResult) {
   approvedCutoffs = [];
   scaleInfo = {};
 
-  const uploadZone = document.getElementById("uploadZone");
-  if (uploadZone) {
-    uploadZone.className = "upload-zone uploaded";
-    uploadZone.innerHTML = `
-      <div class="icon">✅</div>
-      <div class="upload-file-name">${escHtml(file.name)}</div>
-      <div class="upload-file-meta">${(file.size / 1024).toFixed(0)} KB · Yüklendi</div>
-      <div class="upload-reset-link" onclick="event.stopPropagation(); resetWizard()">Farklı dosya yükle</div>`;
-    uploadZone.onclick = null;
-  }
-
-  await uploadOptionalDocuments();
-  setTimeout(() => goToStep(1, "forward"), 600);
+  savFileLoaded = true;
+  savFileName = file.name;
+  savFileSizeKb = Math.max(1, Math.round(file.size / 1024));
+  paintDataUploadZone();
+  updateUploadNextButton();
 }
 
 async function handleFile(file) {
