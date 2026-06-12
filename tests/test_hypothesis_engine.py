@@ -27,6 +27,8 @@ def mock_hypothesis_llm():
     """Claude/Gemini cagrilarini tamamen yerel mock'a al."""
     with patch("hypothesis_engine.has_claude", return_value=True), \
          patch("hypothesis_engine.has_gemini_enrich", return_value=False), \
+         patch("karar_verici.has_claude", return_value=True), \
+         patch("karar_verici.has_gemini_enrich", return_value=False), \
          patch("hypothesis_engine.gemini_enrich_profile", return_value=({}, _EMPTY_LLM_META)), \
          patch("hypothesis_engine._gemini_split_questions", return_value=([], _EMPTY_LLM_META)):
         yield

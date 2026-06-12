@@ -46,28 +46,50 @@ _DATE_RE = re.compile(
     r"\b(\d{1,2}[./]\d{1,2}[./]\d{2,4}|\d{4}-\d{2}-\d{2})\b",
 )
 _INSTITUTION_KW = re.compile(
-    r"(üniversite|fakülte|enstitü|yüksekokul|myo|hastane|kurum)",
+    r"(üniversite|fakülte|enstitü|hastane|etik\s+kurul)",
+    re.IGNORECASE,
+)
+_INSTITUTION_EXCLUDE = re.compile(
+    r"amaç|amacı|hipotez|araştırma\s+sorusu|purpose",
     re.IGNORECASE,
 )
 
 
 def _docx_paragraphs(file_bytes: bytes) -> List[str]:
+    return [text for text, _ in _docx_paragraph_entries(file_bytes)]
+
+
+def _docx_paragraph_entries(file_bytes: bytes) -> List[Tuple[str, Optional[str]]]:
+    """Paragraf metni ve Word stil adı (varsa)."""
     try:
         doc = Document(io.BytesIO(file_bytes))
     except Exception:
         return []
-    lines: List[str] = []
+    entries: List[Tuple[str, Optional[str]]] = []
     for para in doc.paragraphs:
         text = (para.text or "").strip()
-        if text:
-            lines.append(text)
+        if not text:
+            continue
+        style_name = para.style.name if para.style is not None else None
+        entries.append((text, style_name))
     for table in doc.tables:
         for row in table.rows:
             cells = [((c.text or "").strip()) for c in row.cells]
             row_text = " | ".join(c for c in cells if c)
             if row_text:
-                lines.append(row_text)
-    return lines
+                entries.append((row_text, None))
+    return entries
+
+
+def _is_heading_style(style_name: Optional[str]) -> bool:
+    if not style_name:
+        return False
+    name = style_name.strip()
+    if name.startswith("Heading"):
+        return True
+    if name.startswith("Başlık"):
+        return True
+    return False
 
 
 def _parse_item_line(line: str) -> Optional[Tuple[int, str, bool]]:
@@ -99,11 +121,15 @@ def _detect_likert_scale(block_text: str) -> str:
     return "other"
 
 
-def _is_section_header(line: str) -> bool:
+def _is_section_header(line: str, style_name: Optional[str] = None) -> bool:
+    if _is_heading_style(style_name):
+        return True
     s = line.strip()
     if not s or len(s) > 120:
         return False
     if _ITEM_RE.match(s):
+        return False
+    if s.endswith("?"):
         return False
     if s.endswith(":"):
         return True
@@ -117,8 +143,8 @@ def _is_section_header(line: str) -> bool:
 def parse_anket_docx(file_bytes: bytes) -> dict:
     """Anket formu .docx → bölümler, maddeler, ölçek tipi ipuçları."""
     try:
-        lines = _docx_paragraphs(file_bytes)
-        if not lines:
+        entries = _docx_paragraph_entries(file_bytes)
+        if not entries:
             return {"parse_error": True, "sections": []}
 
         sections: List[dict] = []
@@ -134,8 +160,8 @@ def parse_anket_docx(file_bytes: bytes) -> dict:
             current = None
             block_lines = []
 
-        for line in lines:
-            if _is_section_header(line):
+        for line, style_name in entries:
+            if _is_section_header(line, style_name):
                 flush_section()
                 title = line.rstrip(":").strip()
                 m = _SECTION_HEADER.match(title)
@@ -240,11 +266,16 @@ def _extract_scale_names(lines: List[str]) -> List[str]:
     return names[:20]
 
 
-def _extract_institution(lines: List[str]) -> str:
+def _extract_institution(lines: List[str]) -> Optional[str]:
     for line in lines:
-        if _INSTITUTION_KW.search(line):
-            return line.strip()[:300]
-    return ""
+        s = line.strip()
+        if not s or len(s) > 120:
+            continue
+        if _INSTITUTION_EXCLUDE.search(s):
+            continue
+        if _INSTITUTION_KW.search(s):
+            return s[:300]
+    return None
 
 
 def _extract_date(text: str) -> str:

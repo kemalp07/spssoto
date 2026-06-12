@@ -20,6 +20,20 @@ def _docx_bytes(paragraphs: list) -> bytes:
     return buf.getvalue()
 
 
+def _docx_bytes_with_styles(entries: list) -> bytes:
+    """entries: [(text, style_name|None), ...]"""
+    doc = Document()
+    for entry in entries:
+        if isinstance(entry, tuple):
+            text, style = entry
+            doc.add_paragraph(text, style=style) if style else doc.add_paragraph(text)
+        else:
+            doc.add_paragraph(entry)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
 def test_anket_numbered_items_parsed():
     raw = _docx_bytes([
         "Bölüm 1: Yaşam Kalitesi",
@@ -43,6 +57,42 @@ def test_anket_reverse_hint_from_r_marker():
     item = result["sections"][0]["items"][0]
     assert item["reverse_hint"] is True
     assert "(R)" not in item["text"]
+
+
+def test_anket_heading2_section_title():
+    raw = _docx_bytes_with_styles([
+        ("Gece Yeme Anketi", "Heading 2"),
+        "1. Akşam yemeğinden sonra ne kadar iştahlısınız?",
+        "2. Gece uyanıp bir şeyler yer misiniz? (T)",
+    ])
+    result = parse_anket_docx(raw)
+    assert not result.get("parse_error")
+    assert result["sections"][0]["title"] == "Gece Yeme Anketi"
+    assert len(result["sections"][0]["items"]) == 2
+    assert result["sections"][0]["items"][1]["reverse_hint"] is True
+
+
+def test_etik_kurul_institution_not_aim():
+    raw = _docx_bytes([
+        "Araştırmanın amacı: Üniversite öğrencilerinde online yemek sipariş tutumlarını incelemektir.",
+        "Hacettepe Üniversitesi Etik Kurulu",
+        "H1: Cinsiyet ile tutum arasında fark vardır.",
+    ])
+    result = parse_etik_kurul_docx(raw)
+    assert not result.get("parse_error")
+    assert result["institution"] == "Hacettepe Üniversitesi Etik Kurulu"
+    assert result["aim"]
+    assert "online yemek" in result["aim"].lower()
+    assert result["institution"] != result["aim"]
+
+
+def test_etik_kurul_institution_null_when_only_aim():
+    raw = _docx_bytes([
+        "Araştırmanın amacı: Üniversite öğrencilerinde gece yeme davranışını incelemektir.",
+    ])
+    result = parse_etik_kurul_docx(raw)
+    assert not result.get("parse_error")
+    assert result.get("institution") is None
 
 
 def test_etik_kurul_aim_extracted():
