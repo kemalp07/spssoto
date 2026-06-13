@@ -42,17 +42,13 @@ export function AnketStep({ onNext, onBack }: AnketStepProps) {
         <div className="alert alertWarn textSm" role="status">{partialWarn}</div>
       ) : null}
 
-      {hasAnketLoaded ? (
-        <div className="alert alertSuccess textSm" role="status">
-          {anket.itemCount} madde bulundu
-        </div>
-      ) : null}
-
       {error ? <ErrorBanner message={error} /> : null}
 
-      <div className="alert alertInfo textSm">
-        Yüklenirse ölçekler %95+ doğrulukla tanınır, ters maddeler otomatik tespit edilir.
-      </div>
+      {!hasAnketLoaded ? (
+        <div className="alert alertInfo textSm">
+          Yüklenirse ölçekler %95+ doğrulukla tanınır, ters maddeler otomatik tespit edilir.
+        </div>
+      ) : null}
 
       <WizardNav
         onBack={onBack}

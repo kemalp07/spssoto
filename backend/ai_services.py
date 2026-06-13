@@ -583,13 +583,27 @@ def _match_confidence(
         return "low"
     return "low"
 
-def match_scale_to_columns(scale_name: str, all_columns: List[str]) -> dict:
-    """Tek ölçeği kolon listesiyle eşleştir."""
-    keywords = extract_scale_keywords(scale_name)
-    matched_columns: List[str] = []
+def match_scale_to_columns(
+    scale_name: str,
+    all_columns: List[str],
+    aliases: Optional[List[str]] = None,
+) -> dict:
+    """Tek ölçeği kolon listesiyle eşleştir. aliases: registry'den alternatif isimler."""
+    all_names = [scale_name]
+    if aliases:
+        all_names.extend(aliases)
 
+    all_keywords: List[str] = []
+    seen_kw: set = set()
+    for name in all_names:
+        for kw in extract_scale_keywords(name):
+            if kw not in seen_kw:
+                seen_kw.add(kw)
+                all_keywords.append(kw)
+
+    matched_columns: List[str] = []
     for col in all_columns:
-        if _column_matches_keywords(col, keywords):
+        if _column_matches_keywords(col, all_keywords):
             matched_columns.append(col)
 
     item_columns = [c for c in matched_columns if _classify_matched_column(c) == "item"]
@@ -603,7 +617,7 @@ def match_scale_to_columns(scale_name: str, all_columns: List[str]) -> dict:
 
     return {
         "scale_name": scale_name,
-        "keywords_used": keywords,
+        "keywords_used": all_keywords,
         "matched_columns": matched_columns,
         "item_columns": resolved["items"],
         "cronbach_items": resolved["cronbach_items"],
@@ -616,11 +630,22 @@ def match_scale_to_columns(scale_name: str, all_columns: List[str]) -> dict:
 
 def match_all_scales(scale_names: List[str], all_columns: List[str]) -> dict:
     """Tüm ölçekleri eşleştir; her kolon en fazla bir ölçeğe gitsin."""
-    raw_matches = [
-        match_scale_to_columns(name.strip(), all_columns)
-        for name in scale_names
-        if name and name.strip()
-    ]
+    from scale_registry import get_scale_info, resolve_scale_id
+
+    raw_matches: List[dict] = []
+    for name in scale_names:
+        if not name or not name.strip():
+            continue
+        stripped = name.strip()
+        aliases: List[str] = []
+        sid = resolve_scale_id(stripped)
+        if sid:
+            entry = get_scale_info(sid)
+            if entry:
+                reg_names = entry.get("names") or []
+                norm = stripped.lower()
+                aliases = [n for n in reg_names if n.strip().lower() != norm]
+        raw_matches.append(match_scale_to_columns(stripped, all_columns, aliases=aliases or None))
 
     col_owner: Dict[str, Tuple[int, int]] = {}
     for scale_idx, match in enumerate(raw_matches):

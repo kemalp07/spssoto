@@ -23,7 +23,7 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
   } = useDocuments();
 
   const handleProceed = async () => {
-    if (proceeding) return;
+    if (proceeding || etikKurul.loading) return;
     setProceeding(true);
     try {
       await onProceed();
@@ -31,6 +31,10 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
       setProceeding(false);
     }
   };
+
+  const hypothesisMeta = hasEtikLoaded
+    ? `${etikKurul.hypothesisCount} hipotez bulundu`
+    : undefined;
 
   return (
     <>
@@ -47,60 +51,46 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
         loading={etikKurul.loading}
         uploaded={hasEtikLoaded}
         fileName={etikKurul.fileName}
-        fileMeta={hasEtikLoaded ? `${etikKurul.hypothesisCount} hipotez bulundu` : undefined}
+        fileMeta={hypothesisMeta}
         onReset={clearEtik}
-        disabled={proceeding}
+        disabled={proceeding || etikKurul.loading}
       />
 
-      {proceeding ? (
-        <div className="wizardStepBusy" role="status" aria-live="polite">
-          <span className="spinner" aria-hidden />
-          <div>
-            <strong>Lütfen bekleyin</strong>
-            <p className="textSm" style={{ margin: '4px 0 0' }}>
-              Belgeler ve ölçekler işleniyor, bir sonraki adıma geçiliyor…
-            </p>
-          </div>
-        </div>
-      ) : null}
-
-      {etikKurul.partial && hasEtikLoaded ? (
+      {etikKurul.partial && hasEtikLoaded && !proceeding ? (
         <div className="alert alertWarn textSm" role="status">{partialWarn}</div>
-      ) : null}
-
-      {hasEtikLoaded ? (
-        <div className="alert alertSuccess textSm" role="status">
-          {etikKurul.hypothesisCount} hipotez bulundu
-        </div>
       ) : null}
 
       {error ? <ErrorBanner message={error} /> : null}
 
-      <div className="alert alertInfo textSm">
-        Yüklenirse araştırma soruları otomatik doldurulur, manuel yazmak gerekmez.
-      </div>
+      {!hasEtikLoaded && !proceeding ? (
+        <div className="alert alertInfo textSm">
+          Yüklenirse araştırma soruları otomatik doldurulur, manuel yazmak gerekmez.
+        </div>
+      ) : null}
 
       <WizardNav
         onBack={onBack}
         showBack={!proceeding}
         showNext={false}
-        extra={(
+        extra={proceeding ? (
+          <div className="wizardNavProceeding" role="status" aria-live="polite">
+            <span className="spinner" aria-hidden />
+            Belgeler işleniyor, lütfen bekleyin…
+          </div>
+        ) : (
           <div className="wizardNavActions">
-            <LoadingButton
-              variant="ghost"
-              loading={proceeding}
-              loadingText="Bekleyin…"
-              disabled={proceeding || etikKurul.loading}
+            <button
+              type="button"
+              className="btn btnGhost"
+              disabled={etikKurul.loading}
               onClick={() => void handleProceed()}
             >
               Atla →
-            </LoadingButton>
+            </button>
             {hasEtikLoaded ? (
               <LoadingButton
                 variant="primary"
-                loading={proceeding}
-                loadingText="Bekleyin…"
-                disabled={proceeding || etikKurul.loading}
+                disabled={etikKurul.loading}
                 onClick={() => void handleProceed()}
               >
                 İleri →
