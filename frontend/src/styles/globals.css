@@ -559,6 +559,10 @@ code, .mono {
   opacity: 0.85;
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .spinner {
   width: 14px;
   height: 14px;

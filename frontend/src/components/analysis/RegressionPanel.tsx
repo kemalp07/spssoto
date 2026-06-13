@@ -4,7 +4,9 @@ import { useAppStore } from '../../stores/useAppStore';
 import { LoadingButton } from '../shared/LoadingButton';
 
 export function RegressionPanel() {
-  const columns = useAppStore((s) => [...s.variables.selectedCont].filter((c) => s.columns.includes(c)));
+  const selectedCont = useAppStore((s) => s.variables.selectedCont);
+  const allColumns = useAppStore((s) => s.columns);
+  const columns = [...selectedCont].filter((c) => allColumns.includes(c));
   const userLabels = useAppStore((s) => s.variables.userLabels);
   const [predictors, setPredictors] = useState<string[]>([]);
   const [outcome, setOutcome] = useState('');
