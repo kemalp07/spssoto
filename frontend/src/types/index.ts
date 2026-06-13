@@ -106,6 +106,9 @@ export interface DetectedScale {
   source?: string;
   turkish_valid?: boolean;
   items?: unknown[];
+  reverse_items?: number[];
+  scale_range?: number[];
+  cronbach_items?: string[];
 }
 
 export interface RegistryMatch {
@@ -113,6 +116,8 @@ export interface RegistryMatch {
   name?: string;
   confidence?: string;
   cols?: string[];
+  reverse_items?: number[];
+  scale_range?: number[];
 }
 
 export interface ScaleCutoff {

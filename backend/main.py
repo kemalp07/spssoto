@@ -405,6 +405,11 @@ async def analyze_cronbach_batch(req: CronbachBatchRequest):
     for scale in req.scales:
         name = scale.get("name", "Ölçek")
         items = scale.get("cronbach_items") or scale.get("items", [])
+        reverse_items = scale.get("reverse_items") or []
+        scale_range = scale.get("scale_range") or [0, 4]
+        scale_max = scale_range[1] if len(scale_range) > 1 else 4
+        reverse_set = {int(x) for x in reverse_items if x is not None}
+
         valid_items = []
         for col in items:
             if col in df.columns:
@@ -418,10 +423,16 @@ async def analyze_cronbach_batch(req: CronbachBatchRequest):
             continue
 
         try:
-            items_df = df[valid_items].dropna()
+            items_df = df[valid_items].copy().dropna()
             k = len(valid_items)
             if len(items_df) < 3:
                 continue
+
+            if reverse_set:
+                for col in valid_items:
+                    match = re.search(r"_(\d+)", col)
+                    if match and int(match.group(1)) in reverse_set:
+                        items_df[col] = scale_max - items_df[col]
 
             item_vars = items_df.var(axis=0, ddof=1).sum()
             total_var = items_df.sum(axis=1).var(ddof=1)

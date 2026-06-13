@@ -962,6 +962,27 @@ def run_classify(req: ClassifyRequest) -> dict:
     }
 
 
+def _enrich_scale_with_registry(scale: dict) -> dict:
+    """Registry'den reverse_items ve scale_range ekle."""
+    from scale_registry import load_registry
+
+    sid = scale.get("registry_id") or scale.get("id")
+    if not sid:
+        return scale
+
+    entry = next((s for s in load_registry() if s.get("id") == sid), None)
+    if not entry:
+        return scale
+
+    result = dict(scale)
+    if "reverse_items" not in result or not result["reverse_items"]:
+        result["reverse_items"] = entry.get("reverse_items") or []
+    if "scale_range" not in result or not result.get("scale_range"):
+        sr = entry.get("scale_range")
+        result["scale_range"] = list(sr) if sr else [0, 4]
+    return result
+
+
 def _build_detect_scales_response(
     scales: List[dict],
     registry_matches: List[dict],
@@ -979,11 +1000,14 @@ def _build_detect_scales_response(
             "name": (sc.get("names") or [sc.get("id", "")])[0],
             "confidence": m.get("confidence", "high"),
             "cols": m.get("matched_cols") or [],
+            "reverse_items": sc.get("reverse_items") or [],
+            "scale_range": sc.get("scale_range") or [0, 4],
         })
 
     registry_unmatched = []
     cutoffs: Dict[str, dict] = {}
-    for scale in scales:
+    enriched_scales = [_enrich_scale_with_registry(s) for s in scales]
+    for scale in enriched_scales:
         sid = scale.get("id") or scale.get("registry_id") or resolve_scale_id(scale.get("name", ""))
         if sid:
             scale.setdefault("id", sid)
@@ -1001,7 +1025,7 @@ def _build_detect_scales_response(
             })
 
     return {
-        "scales": scales,
+        "scales": enriched_scales,
         "registry_matched": registry_matched,
         "registry_unmatched": registry_unmatched,
         "cutoffs": cutoffs,

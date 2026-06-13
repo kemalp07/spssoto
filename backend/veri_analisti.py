@@ -22,6 +22,7 @@ from llm_router import (
 from scale_registry import (
     compact_registry_hints,
     get_reverse_items,
+    get_scale_info,
     match_scale,
     resolve_scale_id,
 )
@@ -220,6 +221,7 @@ def _registry_match_to_scale(match: dict, min_confidence: str = "high") -> Optio
         "registry_confidence": match.get("confidence", "high"),
         "source": "registry",
         "reverse_items": get_reverse_items(sid),
+        "scale_range": (get_scale_info(sid) or {}).get("scale_range") or [0, 4],
     }
 
 

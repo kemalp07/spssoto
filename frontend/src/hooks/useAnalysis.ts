@@ -60,12 +60,26 @@ export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
           const matchingCol = Object.keys(fresh.variables.userLabels).find(
             (col) => col.toUpperCase().startsWith(prefix ?? '') && col.includes('TOPLAM'),
           );
+
+          const registryMatch = fresh.scales.registryMeta?.registry_matched?.find(
+            (m) =>
+              m.id === (scale as { registry_id?: string; id?: string }).registry_id
+              || m.id === (scale as { id?: string }).id
+              || m.name === scale.name,
+          );
+
           return {
             ...scale,
             items: (scale as { cronbach_items?: string[] }).cronbach_items ?? items,
             name: (matchingCol && fresh.variables.userLabels[matchingCol] !== matchingCol)
               ? fresh.variables.userLabels[matchingCol]
               : scale.name,
+            reverse_items: (scale as { reverse_items?: number[] }).reverse_items
+              ?? (registryMatch as { reverse_items?: number[] } | undefined)?.reverse_items
+              ?? [],
+            scale_range: (scale as { scale_range?: number[] }).scale_range
+              ?? (registryMatch as { scale_range?: number[] } | undefined)?.scale_range
+              ?? [0, 4],
           };
         });
         const cbData = await apiCall<{ results?: AnalysisResult[] }>('/analyze/cronbach-batch', {
