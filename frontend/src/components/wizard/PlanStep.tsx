@@ -50,9 +50,9 @@ export function PlanStep({ onBack }: PlanStepProps) {
     );
   } else if (planLoading) {
     body = (
-      <div className="emptyState">
-        <div className="uploadHero">⏳</div>
-        <p>Test planı hazırlanıyor...</p>
+      <div className="planLoadingState">
+        <span className="spinner" style={{ width: 24, height: 24, borderWidth: 2 }} aria-hidden />
+        <p className="planLoadingText">Test planı hazırlanıyor...</p>
       </div>
     );
   } else if (error && !catalog.length) {

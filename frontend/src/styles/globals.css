@@ -279,7 +279,7 @@ code, .mono {
 .wizardShell {
   display: flex;
   justify-content: center;
-  min-height: 420px;
+  align-items: flex-start;
 }
 
 .wizardCard {
@@ -290,10 +290,16 @@ code, .mono {
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   box-shadow: var(--shadow-card);
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
 }
 
 .wizardCardWide {
   max-width: var(--layout-max);
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
 }
 
 .wizardCardCenter {
@@ -328,7 +334,7 @@ code, .mono {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  margin-top: 24px;
+  margin-top: auto;
   padding-top: 16px;
   border-top: 1px solid var(--border);
   gap: 8px;
@@ -447,6 +453,21 @@ code, .mono {
 }
 
 .uploadHero { display: none; }
+
+.planLoadingState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 200px;
+  color: var(--muted);
+}
+
+.planLoadingText {
+  font-size: 14px;
+  color: var(--muted);
+}
 
 .uploadZone {
   border: 1px dashed var(--border);
@@ -1294,6 +1315,55 @@ code, .mono {
   padding: var(--space-2);
   margin-bottom: var(--space-2);
   text-align: left;
+}
+
+.regPanelToggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  padding: var(--space-2);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.regPanelToggle:hover { background: var(--bg); border-radius: var(--radius-sm); }
+
+.regPanelTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.regPanelHint {
+  font-size: 13px;
+  color: var(--muted);
+  flex: 1;
+}
+
+.regPanelChevron {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.regPanelBody {
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.regPanelDesc {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+  line-height: 1.5;
+}
+
+.regLabelHint {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
 }
 
 .regGrid {

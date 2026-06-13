@@ -25,6 +25,13 @@ from data_cleaning import (
     detect_scale_groups,
 )
 
+def _safe_int(val) -> int:
+    """'1.0' gibi float-string değerleri güvenle int'e çevir."""
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return int(float(val))
+
 def cohens_d_interpretation(d: float) -> str:
     ad = abs(d)
     if ad < 0.20:
@@ -378,17 +385,17 @@ def table_chi_square(
     col_headers = [format_category_value(c) for c in ct.columns]
     rows = []
     for idx in ct.index:
-        row_total = int(ct.loc[idx].sum())
+        row_total = _safe_int(ct.loc[idx].sum())
         cells = [format_category_value(idx)]
         for col in ct.columns:
-            n = int(ct.loc[idx, col])
+            n = _safe_int(ct.loc[idx, col])
             pct = round(n / row_total * 100, 1) if row_total else 0
             cells.append(f"{n} ({fmt_num(pct, 1)})")
         cells.append(str(row_total))
         cells.extend(["", ""])
         rows.append(cells)
-    valid_n = int(ct.values.sum())
-    summary_row = ["Toplam"] + [str(int(ct[c].sum())) for c in ct.columns] + [str(valid_n)]
+    valid_n = _safe_int(ct.values.sum())
+    summary_row = ["Toplam"] + [str(_safe_int(ct[c].sum())) for c in ct.columns] + [str(valid_n)]
     if use_fisher:
         summary_row += [f"OR = {fmt_num(odds_ratio)}", fmt_p_display(p)]
         stat_headers = ["OR", "p"]
@@ -419,11 +426,11 @@ def table_chi_square(
     if not use_fisher:
         max_pct = -1.0
         for idx in ct.index:
-            row_total = int(ct.loc[idx].sum())
+            row_total = _safe_int(ct.loc[idx].sum())
             if row_total <= 0:
                 continue
             for col in ct.columns:
-                n_cell = int(ct.loc[idx, col])
+                n_cell = _safe_int(ct.loc[idx, col])
                 pct = round(n_cell / row_total * 100, 1)
                 if pct > max_pct:
                     max_pct = pct
@@ -445,7 +452,7 @@ def table_chi_square(
         extra["test_used"] = "fisher_exact"
     else:
         extra["chi2"] = chi2_report
-        n_valid = int(ct.values.sum())
+        n_valid = _safe_int(ct.values.sum())
         k_dim = min(ct.shape[0], ct.shape[1])
         if k_dim > 1 and n_valid > 0:
             cramers_v = float(np.sqrt(float(chi2) / (n_valid * (k_dim - 1))))
