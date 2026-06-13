@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx';
 import { normalizeDecimalValue } from './formatting';
 import { inferMissingCodesFromRows, missingCodesRecordFromInferred } from './missingCodes';
 import type { DataRow, FileType, ReadFileResponse } from '../types';
@@ -29,51 +28,54 @@ export function parseSpreadsheetFile(file: File): Promise<ReadFileResponse> {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Dosya okunamadı'));
     reader.onload = (e) => {
-      try {
-        const binary = e.target?.result;
-        if (typeof binary !== 'string') {
-          reject(new Error('Dosya okunamadı'));
-          return;
-        }
-
-        let wb: XLSX.WorkBook;
-        if (file.name.toLowerCase().endsWith('.csv')) {
-          wb = XLSX.read(binary, { type: 'binary', FS: ';' });
-          const wsTry = wb.Sheets[wb.SheetNames[0]];
-          const jsonTry = XLSX.utils.sheet_to_json<DataRow>(wsTry, { defval: '', raw: false });
-          if (jsonTry.length > 0 && Object.keys(jsonTry[0]).length === 1) {
-            wb = XLSX.read(binary, { type: 'binary', FS: ',' });
+      void (async () => {
+        try {
+          const XLSX = await import('xlsx');
+          const binary = e.target?.result;
+          if (typeof binary !== 'string') {
+            reject(new Error('Dosya okunamadı'));
+            return;
           }
-        } else {
-          wb = XLSX.read(binary, { type: 'binary' });
+
+          let wb: import('xlsx').WorkBook;
+          if (file.name.toLowerCase().endsWith('.csv')) {
+            wb = XLSX.read(binary, { type: 'binary', FS: ';' });
+            const wsTry = wb.Sheets[wb.SheetNames[0]];
+            const jsonTry = XLSX.utils.sheet_to_json<DataRow>(wsTry, { defval: '', raw: false });
+            if (jsonTry.length > 0 && Object.keys(jsonTry[0]).length === 1) {
+              wb = XLSX.read(binary, { type: 'binary', FS: ',' });
+            }
+          } else {
+            wb = XLSX.read(binary, { type: 'binary' });
+          }
+
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json<DataRow>(ws, { defval: '', raw: false });
+          if (!json.length) {
+            reject(new Error('Dosya boş görünüyor'));
+            return;
+          }
+
+          const columns = Object.keys(json[0]);
+          const inferred = inferMissingCodesFromRows(json);
+          const data = normalizeDataDecimals(json, columns);
+
+          resolve({
+            data,
+            columns,
+            labels: {},
+            value_labels: {},
+            variable_measure: {},
+            missing_codes: missingCodesRecordFromInferred(inferred),
+            global_missing_code: inferred.global,
+            labels_found: 0,
+            source: file.name.toLowerCase().endsWith('.csv') ? 'csv' : 'excel',
+            row_count: data.length,
+          });
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error('Dosya okunamadı'));
         }
-
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json<DataRow>(ws, { defval: '', raw: false });
-        if (!json.length) {
-          reject(new Error('Dosya boş görünüyor'));
-          return;
-        }
-
-        const columns = Object.keys(json[0]);
-        const inferred = inferMissingCodesFromRows(json);
-        const data = normalizeDataDecimals(json, columns);
-
-        resolve({
-          data,
-          columns,
-          labels: {},
-          value_labels: {},
-          variable_measure: {},
-          missing_codes: missingCodesRecordFromInferred(inferred),
-          global_missing_code: inferred.global,
-          labels_found: 0,
-          source: file.name.toLowerCase().endsWith('.csv') ? 'csv' : 'excel',
-          row_count: data.length,
-        });
-      } catch (err) {
-        reject(err instanceof Error ? err : new Error('Dosya okunamadı'));
-      }
+      })();
     };
     reader.readAsBinaryString(file);
   });

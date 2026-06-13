@@ -1,5 +1,6 @@
 import { apiBlob } from '../api/client';
 import { buildReviewScaleList } from '../lib/reviewScales';
+import { notifyError } from '../lib/notify';
 import { scaleMatchingInline } from '../lib/scaleApi';
 import { useAppStore } from '../stores/useAppStore';
 import type { QualityCheckResult } from '../types';
@@ -97,7 +98,7 @@ export async function downloadWord(force = false): Promise<void> {
     a.click();
     URL.revokeObjectURL(url);
   } catch (e) {
-    window.alert(`Word indirme hatası: ${e instanceof Error ? e.message : 'Bilinmeyen hata'}`);
+    notifyError(`Word indirme hatası: ${e instanceof Error ? e.message : 'Bilinmeyen hata'}`);
   } finally {
     useAppStore.getState().setWordExporting(false);
   }

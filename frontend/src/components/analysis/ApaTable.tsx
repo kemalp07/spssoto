@@ -1,4 +1,5 @@
-import { renderApaCell, renderApaNoteHtml, splitApaTitle } from '../../lib/apaTable';
+import { ApaNote, ApaRichText } from './ApaRichText';
+import { splitApaTitle } from '../../lib/apaTable';
 import type { AnalysisResult } from '../../types';
 
 interface ApaTableProps {
@@ -12,17 +13,23 @@ export function ApaTable({ result }: ApaTableProps) {
   return (
     <>
       <div className="apaTableHeading">
-        <div className="apaTableNumber">{renderApaCell(num)}</div>
+        <div className="apaTableNumber">
+          <ApaRichText value={num} />
+        </div>
         {caption ? (
-          <div className="apaTableCaption">{renderApaCell(caption)}</div>
+          <div className="apaTableCaption">
+            <ApaRichText value={caption} />
+          </div>
         ) : null}
       </div>
       <div className="apaTableWrap">
         <table className="apaTable">
           <thead>
             <tr>
-              {result.headers.map((h) => (
-                <th key={String(h)} dangerouslySetInnerHTML={{ __html: renderApaCell(h) }} />
+              {result.headers.map((h, i) => (
+                <th key={`${String(h)}-${i}`}>
+                  <ApaRichText value={h} />
+                </th>
               ))}
             </tr>
           </thead>
@@ -30,15 +37,15 @@ export function ApaTable({ result }: ApaTableProps) {
             {result.rows.map((row, ri) => (
               <tr key={ri}>
                 {row.map((c, ci) => (
-                  <td key={ci} dangerouslySetInnerHTML={{ __html: renderApaCell(c) }} />
+                  <td key={ci}>
+                    <ApaRichText value={c} />
+                  </td>
                 ))}
               </tr>
             ))}
           </tbody>
         </table>
-        {result.note ? (
-          <div dangerouslySetInnerHTML={{ __html: renderApaNoteHtml(result.note) }} />
-        ) : null}
+        {result.note ? <ApaNote note={result.note} /> : null}
       </div>
     </>
   );

@@ -4,6 +4,7 @@ import { EXCLUDE_PATTERNS, STEPS } from '../lib/constants';
 import { buildVariablesForDerivedDetection } from '../lib/derivedVariables';
 import { getMissingCodesFromState } from '../lib/missingCodes';
 import { documentContextPayload } from '../lib/wizardSkip';
+import { notifyError } from '../lib/notify';
 import { useAppStore } from '../stores/useAppStore';
 import type { AnalysisResult, ClassifyResponse, DetectDerivedResponse } from '../types';
 
@@ -24,7 +25,7 @@ export async function runAnalysisFromPlan(): Promise<boolean> {
     .map((t) => t.id)
     .filter(Boolean) as string[];
   if (!enabledTests.length) {
-    window.alert('En az bir test seçmelisiniz.');
+    notifyError('En az bir test seçmelisiniz.');
     return false;
   }
   return runAnalysis(enabledTests);
@@ -33,7 +34,7 @@ export async function runAnalysisFromPlan(): Promise<boolean> {
 export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
   const state = useAppStore.getState();
   if (!state.variables.selectedCat.size && !state.variables.selectedCont.size) {
-    window.alert('En az bir değişken seçmelisiniz.');
+    notifyError('En az bir değişken seçmelisiniz.');
     return false;
   }
 
@@ -104,15 +105,15 @@ export async function runMultipleRegression(
   outcome: string,
 ): Promise<boolean> {
   if (!predictors.length) {
-    window.alert('En az bir yordayıcı seçin.');
+    notifyError('En az bir yordayıcı seçin.');
     return false;
   }
   if (!outcome) {
-    window.alert('Sonuç değişkeni seçin.');
+    notifyError('Sonuç değişkeni seçin.');
     return false;
   }
   if (predictors.includes(outcome)) {
-    window.alert('Sonuç değişkeni yordayıcılar arasında olamaz.');
+    notifyError('Sonuç değişkeni yordayıcılar arasında olamaz.');
     return false;
   }
 
@@ -132,7 +133,7 @@ export async function runMultipleRegression(
     }
     return false;
   } catch (e) {
-    window.alert(e instanceof Error ? e.message : 'Regresyon hatası');
+    notifyError(e instanceof Error ? e.message : 'Regresyon hatası');
     return false;
   }
 }

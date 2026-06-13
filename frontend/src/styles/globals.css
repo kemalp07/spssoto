@@ -1236,15 +1236,148 @@ code, .mono {
   margin-bottom: var(--space-2);
 }
 
-@media (max-width: 640px) {
-  .regGrid { grid-template-columns: 1fr; }
-}
-
 .regLabel {
   display: block;
   font-size: 12px;
   font-weight: 600;
   margin-bottom: 6px;
+}
+
+.alphaLow { background: #fee2e2; color: #b91c1c; }
+
+/* Responsive */
+@media (max-width: 720px) {
+  .container {
+    padding: var(--space-3) var(--space-2);
+  }
+
+  .appHeader {
+    padding: var(--space-2);
+  }
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding: var(--space-2) var(--space-1);
+  }
+
+  .wizardCard {
+    padding: var(--space-3) var(--space-2);
+  }
+
+  .wizardCardWide {
+    padding: var(--space-2);
+  }
+
+  .wizardTitle {
+    font-size: 18px;
+  }
+
+  .wizardProgress {
+    padding: var(--space-1) 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .stepperInner {
+    min-width: min-content;
+    padding: 0 var(--space-1);
+  }
+
+  .progressSteps {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    width: 100%;
+  }
+
+  .stepperItem {
+    min-width: 64px;
+    flex-shrink: 0;
+  }
+
+  .stepperLabel {
+    font-size: 10px;
+    max-width: 72px;
+    text-align: center;
+  }
+
+  .progressLabel {
+    font-size: 12px;
+    text-align: center;
+    width: 100%;
+  }
+
+  .wizardNav {
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+
+  .wizardNavActions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .colGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .labelRow {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .apaTableWrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .apaTable {
+    min-width: 480px;
+  }
+
+  .regGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .stepHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stepActions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .stepActions .btn {
+    flex: 1;
+  }
+
+  .planToolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hypothesisCards {
+    flex-direction: column;
+  }
+
+  .reviewCardHead {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .reviewHeader {
+    flex-direction: column;
+  }
+
+  .reviewHeader .btnPrimary {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .regCheckboxList {

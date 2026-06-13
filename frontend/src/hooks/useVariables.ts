@@ -4,6 +4,7 @@ import {
   getMissingLabelColumns,
   shouldSkipLabelsPhase,
 } from '../lib/labels';
+import { notifyError } from '../lib/notify';
 import { runAIClassify } from './useAnalysis';
 import { useAppStore } from '../stores/useAppStore';
 
@@ -40,7 +41,7 @@ export async function proceedToPhase2(silent = false): Promise<boolean> {
   );
 
   if (missing.length > 0 && !silent) {
-    window.alert(`Devam etmeden önce şu değişkenlere Türkçe isim verin: ${missing.join(', ')}`);
+    notifyError(`Devam etmeden önce şu değişkenlere Türkçe isim verin: ${missing.join(', ')}`);
     return false;
   }
 
@@ -57,7 +58,7 @@ export function validateVariablesStep(): boolean {
   if (state.wizard.variablesPhase === 1) return false;
 
   if (!state.variables.selectedCat.size && !state.variables.selectedCont.size) {
-    window.alert('En az bir değişken seçmelisiniz.');
+    notifyError('En az bir değişken seçmelisiniz.');
     return false;
   }
 
@@ -77,7 +78,7 @@ export function validateVariablesStep(): boolean {
   );
 
   if (missingLabels.length > 0) {
-    window.alert(`Devam etmeden önce şu değişkenlere Türkçe isim verin: ${missingLabels.join(', ')}`);
+    notifyError(`Devam etmeden önce şu değişkenlere Türkçe isim verin: ${missingLabels.join(', ')}`);
     return false;
   }
 
