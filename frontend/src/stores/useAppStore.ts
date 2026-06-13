@@ -796,7 +796,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   setPlanProfile: (profile) =>
     set((s) => ({
       plan: { ...s.plan, profile, userTouched: false },
-      hypotheses: { ...s.hypotheses, isApproved: false, editMode: false },
     })),
 
   setPlanActiveFilter: (filter) =>

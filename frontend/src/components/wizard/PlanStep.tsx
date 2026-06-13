@@ -25,18 +25,21 @@ export function PlanStep({ onBack }: PlanStepProps) {
   const toggleTier = useAppStore((s) => s.togglePlanTier);
   const setProfile = useAppStore((s) => s.setPlanProfile);
   const setFilter = useAppStore((s) => s.setPlanActiveFilter);
+  const hypothesesLoaded = useAppStore(
+    (s) => s.hypotheses.candidates.length > 0 || s.hypotheses.isApproved,
+  );
 
   useEffect(() => {
     if (!researchTopic.trim()) return;
-    if (!isApproved) void loadHypothesisReview();
-    else if (!catalog.length) void loadAnalysisPlan();
-  }, [isApproved, catalog.length, researchTopic]);
+    if (!isApproved && !hypothesesLoaded) void loadHypothesisReview();
+    else if (isApproved && !catalog.length) void loadAnalysisPlan();
+  }, [isApproved, hypothesesLoaded, catalog.length, researchTopic]);
 
   const handleProfileChange = (profile: PlanProfileId) => {
     const userTouched = getAppState().plan.userTouched;
     if (userTouched && !window.confirm('Seçimleriniz sıfırlanacak, devam?')) return;
     setProfile(profile);
-    void loadHypothesisReview();
+    void loadAnalysisPlan();
   };
 
   let body: ReactNode;
