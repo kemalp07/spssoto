@@ -13,9 +13,11 @@ from config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL, BULGU_MODEL
 from data_cleaning import apply_scale_item_resolution
 from data_profile import profile_from_samples, profile_json
 from llm_router import (
+    _parse_json_object,
     claude_decide,
     format_enrichment_block,
     gemini_enrich_profile,
+    gemini_json_task,
     has_claude,
     has_gemini_enrich,
     merge_meta,
@@ -1141,4 +1143,53 @@ def run_import_ethics_report(
             "chars_sent": chars_sent,
         },
     })
+
+
+LABEL_SYSTEM = """Sen akademik araştırma veri seti uzmanısın.
+Verilen kolon adları için kısa, anlaşılır Türkçe değişken isimleri üret.
+
+Kurallar:
+- Kısaltmaları çöz: OYS → Online Yemek Sipariş, NEQ → Night Eating Questionnaire (Gece Yeme Anketi), vb.
+- _TOPLAM → "Toplam Puanı", _GRUP → "Grubu", _BINARY → "(İkili)" ekle
+- Demografikler: cinsiyet → "Cinsiyet", bolum → "Bölüm"
+- Belge bağlamını kullan (ölçek adları, araştırma konusu)
+- Etiket max 6-8 kelime olsun
+- Çözemezsen kolon adının düzeltilmiş halini yaz
+
+SADECE JSON döndür:
+{
+  "labels": {
+    "KOLON_ADI": "Türkçe Etiket"
+  }
+}"""
+
+
+def generate_labels_ai(
+    columns: list[str],
+    scale_names: list[str] | None = None,
+    research_topic: str = "",
+) -> tuple[dict[str, str], dict]:
+    """Gemini Flash ile kalan boş etiketleri doldurur. Yoksa Haiku."""
+    context_parts = []
+    if scale_names:
+        context_parts.append(f"Ölçekler: {', '.join(scale_names)}")
+    if research_topic:
+        context_parts.append(f"Araştırma konusu: {research_topic[:300]}")
+
+    user = f"Kolon adları: {', '.join(columns)}"
+    if context_parts:
+        user += "\n" + "\n".join(context_parts)
+
+    if has_gemini_enrich():
+        text, meta = gemini_json_task(LABEL_SYSTEM, user, max_tokens=800)
+        if text:
+            parsed = _parse_json_object(text)
+            return parsed.get("labels", {}), meta
+
+    if has_claude():
+        text, meta = claude_decide(LABEL_SYSTEM, user, max_tokens=800)
+        parsed = _parse_json_object(text)
+        return parsed.get("labels", {}), meta
+
+    return {}, {}
 

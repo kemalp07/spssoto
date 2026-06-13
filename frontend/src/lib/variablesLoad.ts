@@ -1,4 +1,5 @@
 import { apiCall } from '../api/client';
+import { applyDocumentLabels, getUnlabeledColumns } from './autoLabels';
 import { EXCLUDE_PATTERNS } from './constants';
 import { classifyColumns } from './classify';
 import { computeMissingData } from './derivedVariables';
@@ -98,14 +99,70 @@ export async function loadVariablesData(input: VariablesLoadInput): Promise<Vari
     (col) => aiExcluded.has(col) || EXCLUDE_PATTERNS.some((p) => p.test(col)),
   );
 
+  // ══════ 4 AŞAMALI ETİKET PIPELINE ══════
+
+  // Aşama 1: SAV/SPSS labels
   const userLabels: Record<string, string> = {};
   nonItemColumns.forEach((col) => { userLabels[col] = col; });
   if (Object.keys(input.pendingLabels).length > 0) {
     Object.assign(userLabels, input.pendingLabels);
-    if (input.labelMeta) {
-      const src = input.labelMeta.source === 'spss' ? "SPSS'den" : "Excel'den";
-      input.showToast(`✅ ${input.labelMeta.count} değişken etiketi ${src} otomatik okundu`);
+  }
+
+  // Aşama 2+3: Anket + Etik Kurul belgelerinden etiket
+  const documentScaleNames: string[] = [];
+  if (input.documentsContext) {
+    const ctx = input.documentsContext as Record<string, unknown>;
+    const etik = ctx.etik_kurul as Record<string, unknown> | null;
+    if (etik?.scale_names && Array.isArray(etik.scale_names)) {
+      documentScaleNames.push(...(etik.scale_names as string[]));
     }
+    const anket = ctx.anket as Record<string, unknown> | null;
+    if (anket?.sections && Array.isArray(anket.sections)) {
+      for (const sec of anket.sections as Array<{ name?: string }>) {
+        if (sec.name) documentScaleNames.push(sec.name);
+      }
+    }
+  }
+
+  const afterDocs = applyDocumentLabels(
+    userLabels,
+    input.matchResults,
+    documentScaleNames,
+    nonItemColumns,
+  );
+  Object.assign(userLabels, afterDocs);
+
+  // Aşama 4: Hâlâ boş kalanlar → AI (Gemini Flash, yoksa Haiku)
+  const unlabeled = getUnlabeledColumns(userLabels, nonItemColumns);
+  if (unlabeled.length > 0) {
+    try {
+      const aiResult = await apiCall<{ labels?: Record<string, string> }>(
+        '/generate-labels',
+        {
+          columns: unlabeled,
+          scale_names: documentScaleNames.length > 0 ? documentScaleNames : undefined,
+          research_topic: '',
+        },
+        { timeout: 15_000 },
+      );
+      if (aiResult.labels) {
+        for (const [col, label] of Object.entries(aiResult.labels)) {
+          if (label && userLabels[col] === col) {
+            userLabels[col] = label;
+          }
+        }
+      }
+    } catch {
+      /* AI optional — ham isimlerle devam */
+    }
+  }
+
+  const filledCount = nonItemColumns.filter((c) => userLabels[c] !== c).length;
+  if (input.labelMeta && Object.keys(input.pendingLabels).length > 0) {
+    const src = input.labelMeta.source === 'spss' ? "SPSS'den" : "Excel'den";
+    input.showToast(`✅ ${input.labelMeta.count} etiket ${src} okundu`);
+  } else if (filledCount > 0) {
+    input.showToast(`✅ ${filledCount} etiket otomatik üretildi`);
   }
 
   const fb = classifyColumns(nonItemColumns, normalized);

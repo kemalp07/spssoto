@@ -192,3 +192,9 @@ class ExtractContextRequest(BaseModel):
     file_base64: str
     file_type: str
     column_labels: List[ColumnLabel]
+
+
+class GenerateLabelsRequest(BaseModel):
+    columns: List[str]
+    scale_names: Optional[List[str]] = None
+    research_topic: Optional[str] = None

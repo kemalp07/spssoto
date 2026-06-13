@@ -26,6 +26,7 @@ from schemas import (
     PairedRequest,
     PlanRequest,
     DetectDerivedRequest,
+    GenerateLabelsRequest,
     ParseHypothesesRequest,
     PlanTestsRequest,
     BulguSummaryRequest,
@@ -77,6 +78,7 @@ from ai_services import (
     run_classify,
     run_detect_scales,
     run_import_ethics_report,
+    generate_labels_ai,
 )
 from test_planner import (
     apply_deterministic_flags,
@@ -632,6 +634,17 @@ async def export_word(req: WordExportRequest):
 @limiter.limit("10/minute")
 async def match_scales_endpoint(request: Request, req: ScaleMatchRequest):
     return match_all_scales(req.scale_names, req.column_names)
+
+
+@app.post("/generate-labels")
+@limiter.limit("10/minute")
+async def generate_labels_endpoint(request: Request, req: GenerateLabelsRequest):
+    labels, meta = generate_labels_ai(
+        req.columns,
+        req.scale_names,
+        req.research_topic or "",
+    )
+    return {"labels": labels, "meta": meta}
 
 
 @app.post("/extract-context")
