@@ -72,6 +72,8 @@ code, .mono {
   font-family: inherit;
   line-height: 1;
   height: 36px;
+  min-width: fit-content;
+  box-sizing: border-box;
   white-space: nowrap;
 }
 
@@ -157,7 +159,7 @@ code, .mono {
 .container {
   max-width: var(--layout-max);
   margin: 0 auto;
-  padding: var(--space-4) var(--space-3);
+  padding: var(--space-3) var(--space-3);
 }
 
 /* Stepper */
@@ -172,6 +174,7 @@ code, .mono {
   padding: 10px var(--space-3);
   display: flex;
   align-items: center;
+  justify-content: center;
   overflow-x: auto;
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -415,17 +418,17 @@ code, .mono {
 .wizardNavProceeding {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  margin-left: auto;
-  padding: var(--space-1) var(--space-2);
-  color: var(--text-muted);
-  font-size: 0.875rem;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .wizardNavActions {
   display: flex;
   gap: 8px;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .alertSuccess {
@@ -1344,8 +1347,6 @@ code, .mono {
 
   .progressSteps {
     flex-wrap: nowrap;
-    justify-content: flex-start;
-    width: 100%;
   }
 
   .stepperLabel {
@@ -1354,10 +1355,6 @@ code, .mono {
 
   .wizardNav {
     gap: var(--space-1);
-  }
-
-  .wizardNavActions {
-    justify-content: flex-end;
   }
 
   .colGrid {
