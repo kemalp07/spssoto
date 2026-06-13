@@ -44,7 +44,6 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
       <FileDropZone
         accept=".docx"
         formats={['.docx']}
-        icon="📄"
         title="Etik kurul raporunuzu sürükleyin"
         subtitle="Hipotezler ve araştırma amacı otomatik çıkarılır"
         onFile={uploadEtik}
@@ -71,32 +70,24 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
       <WizardNav
         onBack={onBack}
         showBack={!proceeding}
+        showSkip={!proceeding}
+        onSkip={() => void handleProceed()}
         showNext={false}
         extra={proceeding ? (
           <div className="wizardNavProceeding" role="status" aria-live="polite">
             <span className="spinner" aria-hidden />
             Belgeler işleniyor, lütfen bekleyin…
           </div>
+        ) : hasEtikLoaded ? (
+          <LoadingButton
+            variant="primary"
+            disabled={etikKurul.loading}
+            onClick={() => void handleProceed()}
+          >
+            İleri →
+          </LoadingButton>
         ) : (
-          <div className="wizardNavActions">
-            <button
-              type="button"
-              className="btn btnGhost"
-              disabled={etikKurul.loading}
-              onClick={() => void handleProceed()}
-            >
-              Atla →
-            </button>
-            {hasEtikLoaded ? (
-              <LoadingButton
-                variant="primary"
-                disabled={etikKurul.loading}
-                onClick={() => void handleProceed()}
-              >
-                İleri →
-              </LoadingButton>
-            ) : null}
-          </div>
+          <span />
         )}
       />
     </>

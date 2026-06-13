@@ -1,7 +1,6 @@
 import { useAppStore } from '../../stores/useAppStore';
 import { isTopicStepOptional } from '../../lib/wizardSkip';
 import { useWizard } from '../../hooks/useWizard';
-import { LoadingButton } from '../shared/LoadingButton';
 import { WizardNav } from './StepPlaceholder';
 
 interface TopicStepProps {
@@ -47,19 +46,11 @@ export function TopicStep({ onBack }: TopicStepProps) {
 
       <WizardNav
         onBack={onBack}
-        showNext={false}
-        extra={(
-          <div className="wizardNavActions">
-            {optional ? (
-              <button type="button" className="btn btnGhost" onClick={skipTopic}>
-                Atla →
-              </button>
-            ) : null}
-            <LoadingButton variant="primary" onClick={() => void nextStep()}>
-              Devam →
-            </LoadingButton>
-          </div>
-        )}
+        onSkip={optional ? skipTopic : undefined}
+        showSkip={optional}
+        showNext
+        onNext={() => void nextStep()}
+        nextLabel="Devam →"
       />
     </>
   );

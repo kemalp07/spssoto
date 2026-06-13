@@ -24,10 +24,13 @@ export function StepPlaceholder({ icon, title, subtitle, children }: StepPlaceho
 interface WizardNavProps {
   onBack?: () => void;
   onNext?: () => void;
+  onSkip?: () => void;
   backLabel?: string;
   nextLabel?: string;
+  skipLabel?: string;
   showBack?: boolean;
   showNext?: boolean;
+  showSkip?: boolean;
   hint?: string;
   extra?: ReactNode;
 }
@@ -35,23 +38,34 @@ interface WizardNavProps {
 export function WizardNav({
   onBack,
   onNext,
-  backLabel = '← Geri',
+  onSkip,
+  backLabel = '‹ Geri',
   nextLabel = 'Devam →',
+  skipLabel = 'Atla →',
   showBack = true,
   showNext = true,
+  showSkip = false,
   hint,
   extra,
 }: WizardNavProps) {
   return (
     <div className="wizardNav">
       {showBack ? (
-        <button type="button" className="btn btnGhost" onClick={onBack}>
+        <button type="button" className="wizardNavBack" onClick={onBack}>
           {backLabel}
         </button>
       ) : (
         <span />
       )}
-      {hint ? <span className="stepMeta">{hint}</span> : <span />}
+      {showSkip && onSkip ? (
+        <button type="button" className="wizardNavSkip" onClick={onSkip}>
+          {skipLabel}
+        </button>
+      ) : hint ? (
+        <span className="stepMeta">{hint}</span>
+      ) : (
+        <span />
+      )}
       {showNext ? (
         <button type="button" className="btn btnPrimary" onClick={onNext}>
           {nextLabel}

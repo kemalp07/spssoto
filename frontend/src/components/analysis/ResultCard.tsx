@@ -21,7 +21,7 @@ export function ResultCard({ result, bulgu }: ResultCardProps) {
         ) : null}
         <ApaTable result={result} />
         <div className="bulguBox">
-          <div className="bulguLabel">✨ Bulgu</div>
+          <div className="bulguLabel">Bulgu</div>
           {bulgu ? (
             <p className="bulguText">{bulgu}</p>
           ) : (

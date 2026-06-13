@@ -13,7 +13,6 @@ interface FileDropZoneProps {
   onReset?: () => void;
   title?: string;
   subtitle?: string;
-  icon?: string;
   accept?: string;
   formats?: string[];
 }
@@ -28,7 +27,6 @@ export function FileDropZone({
   onReset,
   title = 'Veri dosyanızı sürükleyin',
   subtitle = 'SPSS (.sav), Excel veya CSV dosyanızı sürükleyin — veya tıklayarak seçin',
-  icon = '📁',
   accept = DEFAULT_ACCEPT,
   formats = DEFAULT_FORMATS,
 }: FileDropZoneProps) {
@@ -80,13 +78,17 @@ export function FileDropZone({
       >
         {loading ? (
           <>
-            <div className="uploadZoneIcon" aria-hidden>⏳</div>
+            <div className="uploadZoneIconBox" aria-hidden>
+              <span className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
+            </div>
             <h2 className="uploadZoneTitle">Dosya okunuyor...</h2>
             <p>{fileName ?? 'Lütfen bekleyin'}</p>
           </>
         ) : uploaded && fileName ? (
           <>
-            <div className="uploadZoneIcon" aria-hidden>✅</div>
+            <div className="uploadZoneIconBox uploadZoneIconBoxSuccess" aria-hidden>
+              <i className="ti ti-check" style={{ fontSize: 20 }} />
+            </div>
             <div className="uploadFileName">{fileName}</div>
             {fileMeta ? <div className="uploadFileMeta">{fileMeta}</div> : null}
             {onReset ? (
@@ -104,7 +106,9 @@ export function FileDropZone({
           </>
         ) : (
           <>
-            <div className="uploadZoneIcon" aria-hidden>{icon}</div>
+            <div className="uploadZoneIconBox" aria-hidden>
+              <i className="ti ti-upload" style={{ fontSize: 20, color: 'var(--accent)' }} />
+            </div>
             <h2 className="uploadZoneTitle">{title}</h2>
             <p>{subtitle}</p>
             <div className="formatBadges">

@@ -43,9 +43,7 @@ export function WizardStepper({ currentStep, maxReachedStep, onStepClick }: Wiza
                   title={`${label}${isSkipped ? ' — otomatik geçildi' : ''}`}
                   onClick={() => isReachable && onStepClick(i)}
                 >
-                  <div className="stepperNode">
-                    {isSkipped ? '✓' : isDone ? '✓' : i}
-                  </div>
+                  <div className="stepperNode" aria-hidden />
                   <span className="stepperLabel">{label}</span>
                   {isSkipped ? (
                     <span className="stepperAutoTag">otomatik</span>

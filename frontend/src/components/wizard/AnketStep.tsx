@@ -1,6 +1,5 @@
 import { FileDropZone } from '../shared/FileDropZone';
 import { ErrorBanner } from '../shared/ErrorBanner';
-import { LoadingButton } from '../shared/LoadingButton';
 import { useDocuments } from '../../hooks/useDocuments';
 import { WizardNav } from './StepPlaceholder';
 
@@ -27,7 +26,6 @@ export function AnketStep({ onNext, onBack }: AnketStepProps) {
       <FileDropZone
         accept=".docx"
         formats={['.docx']}
-        icon="📋"
         title="Anket formunuzu sürükleyin"
         subtitle="Ölçek maddeleri, ters puanlama ve alt boyutlar otomatik tanınır"
         onFile={uploadAnket}
@@ -52,19 +50,11 @@ export function AnketStep({ onNext, onBack }: AnketStepProps) {
 
       <WizardNav
         onBack={onBack}
-        showNext={false}
-        extra={(
-          <div className="wizardNavActions">
-            <button type="button" className="btn btnGhost" onClick={onNext}>
-              Atla →
-            </button>
-            {hasAnketLoaded ? (
-              <LoadingButton variant="primary" onClick={onNext}>
-                İleri →
-              </LoadingButton>
-            ) : null}
-          </div>
-        )}
+        onSkip={onNext}
+        showSkip
+        showNext={hasAnketLoaded}
+        onNext={onNext}
+        nextLabel="İleri →"
       />
     </>
   );
