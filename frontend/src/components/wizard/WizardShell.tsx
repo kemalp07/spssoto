@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useWizard } from '../../hooks/useWizard';
 import { STEP_ICONS, STEPS } from '../../lib/constants';
 import { WizardStepper } from '../layout/WizardStepper';
@@ -9,6 +10,8 @@ import { TopicStep } from './TopicStep';
 import { UploadStep } from './UploadStep';
 
 export function WizardShell() {
+  const [maxReachedStep, setMaxReachedStep] = useState(0);
+
   const {
     currentStep,
     currentStepId,
@@ -19,6 +22,14 @@ export function WizardShell() {
     canGoBack,
     canGoForward,
   } = useWizard();
+
+  useEffect(() => {
+    if (currentStep === 0) {
+      setMaxReachedStep(0);
+      return;
+    }
+    setMaxReachedStep((prev) => Math.max(prev, currentStep));
+  }, [currentStep]);
 
   const nav = {
     onNext: () => void nextStep(),
@@ -55,7 +66,11 @@ export function WizardShell() {
 
   return (
     <>
-      <WizardStepper currentStep={currentStep} onStepClick={(idx) => void jumpToStep(idx)} />
+      <WizardStepper
+        currentStep={currentStep}
+        maxReachedStep={maxReachedStep}
+        onStepClick={(idx) => void jumpToStep(idx)}
+      />
       <div className="container">
         <div className="wizardShell">
           <article

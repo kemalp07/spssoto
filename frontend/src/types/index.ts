@@ -350,6 +350,7 @@ export interface WizardSlice {
   autoSkippedSteps: Set<WizardStepId>;
   variablesPhase: 1 | 2;
   variablesDataReady: boolean;
+  classifyDone: boolean;
   labelsPhaseAutoSkipped: boolean;
   researchTopic: string;
   scaleNames: string;

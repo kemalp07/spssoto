@@ -36,24 +36,6 @@ export const STEP_ICONS: Record<WizardStepId, string> = {
   review: '🔍',
 };
 
-export const WORKFLOW_STEPS: WizardStepId[] = [
-  'scales',
-  'topic',
-  'variables',
-  'plan',
-  'results',
-  'review',
-];
-
-export const STEPPER_GROUPS = [
-  { label: 'Yükle', steps: ['upload', 'anket', 'etikkurul'] as WizardStepId[] },
-  { label: 'Değişkenler', steps: ['topic', 'variables'] as WizardStepId[] },
-  { label: 'Ölçekler', steps: ['scales'] as WizardStepId[] },
-  { label: 'Plan', steps: ['plan'] as WizardStepId[] },
-  { label: 'Sonuçlar', steps: ['results'] as WizardStepId[] },
-  { label: 'Gözden Geçir', steps: ['review'] as WizardStepId[] },
-];
-
 export const EXCLUDE_PATTERNS = [
   /^(anket_no|id|no|sira|num|serial)$/i,
   /^[a-z]+_\d+(_ters)?$/i,
@@ -97,5 +79,3 @@ export const OUTCOME_CONT_PATTERNS = [
 ];
 
 export const ITEM_COL_PATTERN = /^[a-zA-Z]+_\d+(_ters|_T)?$/i;
-
-export const SCALES_STEP_INDEX = STEPS.indexOf('scales');

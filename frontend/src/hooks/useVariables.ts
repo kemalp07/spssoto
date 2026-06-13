@@ -30,10 +30,28 @@ export async function enterVariablesStep(): Promise<void> {
   }
 }
 
-export async function proceedToPhase2(silent = false): Promise<boolean> {
+export async function proceedToPhase2(silent = false, force = false): Promise<boolean> {
+  let state = getAppState();
+
+  if (state.wizard.classifyDone && !force) {
+    const missing = getMissingLabelColumns(
+      state.columns,
+      state.variables.userLabels,
+      state.savMetadata.pendingLabels,
+    );
+
+    if (missing.length > 0 && !silent) {
+      notifyError(`Devam etmeden önce şu değişkenlere Türkçe isim verin: ${missing.join(', ')}`);
+      return false;
+    }
+
+    getAppState().setVariablesPhase(2);
+    return true;
+  }
+
   await runAIClassify();
 
-  const state = getAppState();
+  state = getAppState();
   const missing = getMissingLabelColumns(
     state.columns,
     state.variables.userLabels,

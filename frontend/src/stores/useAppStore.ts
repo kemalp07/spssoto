@@ -170,6 +170,7 @@ function emptyWizardSlice(): WizardSlice {
     autoSkippedSteps: new Set(),
     variablesPhase: 1,
     variablesDataReady: false,
+    classifyDone: false,
     labelsPhaseAutoSkipped: false,
     researchTopic: '',
     scaleNames: '',
@@ -327,6 +328,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         autoSkippedSteps: new Set(),
         labelsPhaseAutoSkipped: false,
         variablesDataReady: false,
+        classifyDone: false,
         variablesPhase: 1,
         detectScalesRan: false,
         manualMissingCodesText: '99',
@@ -646,6 +648,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         lastRecommendations: mapped.recommendations,
       },
       results: { ...s.results, missingData },
+      wizard: { ...s.wizard, classifyDone: true },
     }));
   },
 

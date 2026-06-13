@@ -222,8 +222,19 @@ code, .mono {
   background: var(--bg);
 }
 
+.stepperItemFuture:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.stepperItemClickable:hover .stepperNode {
+  background: var(--accent);
+  color: #fff;
+}
+
 .stepperItemSkipped {
-  opacity: 0.72;
+  opacity: 0.5;
+  cursor: default;
 }
 
 .stepperItemSkipped .stepperNode {
