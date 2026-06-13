@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { STEPS } from '../lib/constants';
 import { topicFromEtikKurul } from '../lib/wizardSkip';
 import { detectScalesInline, scaleMatchingInline } from '../lib/scaleApi';
+import { getAppState } from '../lib/storeAccess';
 import { useAppStore } from '../stores/useAppStore';
 import type { WizardStepId } from '../types';
 import {
@@ -17,13 +18,13 @@ export async function resolveForwardStepAsync(fromIdx: number): Promise<number> 
   let next = fromIdx + 1;
   while (next < STEPS.length) {
     const stepId = STEPS[next];
-    const state = useAppStore.getState();
+    const state = getAppState();
     if (SKIP_RULES[stepId]?.(state)) {
-      useAppStore.getState().markStepSkipped(stepId);
+      getAppState().markStepSkipped(stepId);
       if (stepId === 'scales') await scaleMatchingInline();
       if (stepId === 'topic') {
         const text = topicFromEtikKurul(state.documents.context?.etik_kurul);
-        if (text) useAppStore.getState().setResearchTopic(text);
+        if (text) getAppState().setResearchTopic(text);
       }
       next += 1;
       continue;
@@ -81,7 +82,7 @@ export function useWizard() {
       unmarkStepSkipped(stepId);
       if (stepId === 'variables') {
         setLabelsPhaseAutoSkipped(false);
-        const state = useAppStore.getState();
+        const state = getAppState();
         if (!state.wizard.variablesDataReady) {
           await enterVariablesStep();
         }

@@ -1,8 +1,8 @@
 import { apiCall } from '../api/client';
-import { useAppStore } from '../stores/useAppStore';
+import { getAppState } from '../lib/storeAccess';
 
 export async function generateBulgu(index: number): Promise<string | null> {
-  const state = useAppStore.getState();
+  const state = getAppState();
   const r = state.results.analysis[index];
   if (!r) return null;
 
@@ -17,22 +17,22 @@ export async function generateBulgu(index: number): Promise<string | null> {
       all_results: state.results.analysis,
     });
     const text = data.bulgu || 'Bulgu üretilemedi.';
-    useAppStore.getState().setBulgu(index, text);
+    getAppState().setBulgu(index, text);
     return text;
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'API hatası. ANTHROPIC_API_KEY ayarlı mı?';
-    useAppStore.getState().setBulgu(index, msg);
+    getAppState().setBulgu(index, msg);
     return null;
   }
 }
 
 export async function generateAllBulgu(): Promise<void> {
-  const state = useAppStore.getState();
+  const state = getAppState();
   const total = state.results.analysis.length;
   if (!total) return;
 
-  useAppStore.getState().setBulguLoading(true);
-  useAppStore.getState().setBulguSummary('');
+  getAppState().setBulguLoading(true);
+  getAppState().setBulguSummary('');
 
   try {
     for (let i = 0; i < total; i += 1) {
@@ -40,7 +40,7 @@ export async function generateAllBulgu(): Promise<void> {
       await generateBulgu(i);
     }
 
-    const fresh = useAppStore.getState();
+    const fresh = getAppState();
     try {
       const data = await apiCall<{ summary?: string }>('/ai/bulgu-summary', {
         results: fresh.results.analysis,
@@ -48,12 +48,12 @@ export async function generateAllBulgu(): Promise<void> {
         research_topic: fresh.wizard.researchTopic || fresh.results.meta.research_topic || '',
         hypotheses: fresh.hypotheses.approved.length ? fresh.hypotheses.approved : undefined,
       });
-      if (data.summary) useAppStore.getState().setBulguSummary(data.summary);
+      if (data.summary) getAppState().setBulguSummary(data.summary);
     } catch {
       /* optional */
     }
   } finally {
-    useAppStore.getState().setBulguLoading(false);
+    getAppState().setBulguLoading(false);
   }
 }
 

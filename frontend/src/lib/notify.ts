@@ -1,8 +1,8 @@
-import { useAppStore } from '../stores/useAppStore';
+import { getAppState } from './storeAccess';
 import type { ToastMessage } from '../types';
 
 export function notify(text: string, type: ToastMessage['type'] = 'info'): void {
-  useAppStore.getState().showToast(text, type);
+  getAppState().showToast(text, type);
 }
 
 export function notifyError(text: string): void {

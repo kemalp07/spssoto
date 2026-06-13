@@ -6,15 +6,15 @@ import {
 } from '../lib/labels';
 import { notifyError } from '../lib/notify';
 import { runAIClassify } from './useAnalysis';
-import { useAppStore } from '../stores/useAppStore';
+import { getAppState } from '../lib/storeAccess';
 
 export async function enterVariablesStep(): Promise<void> {
-  const state = useAppStore.getState();
+  const state = getAppState();
   if (!state.wizard.variablesDataReady) {
     await state.loadVariablesStepData();
   }
 
-  const fresh = useAppStore.getState();
+  const fresh = getAppState();
   const skipLabels = shouldSkipLabelsPhase(
     fresh.columns,
     fresh.variables.userLabels,
@@ -22,18 +22,18 @@ export async function enterVariablesStep(): Promise<void> {
   );
 
   if (skipLabels) {
-    useAppStore.getState().setLabelsPhaseAutoSkipped(true);
-    useAppStore.getState().setVariablesPhase(2);
+    getAppState().setLabelsPhaseAutoSkipped(true);
+    getAppState().setVariablesPhase(2);
     await proceedToPhase2(true);
   } else {
-    useAppStore.getState().setVariablesPhase(1);
+    getAppState().setVariablesPhase(1);
   }
 }
 
 export async function proceedToPhase2(silent = false): Promise<boolean> {
   await runAIClassify();
 
-  const state = useAppStore.getState();
+  const state = getAppState();
   const missing = getMissingLabelColumns(
     state.columns,
     state.variables.userLabels,
@@ -45,16 +45,16 @@ export async function proceedToPhase2(silent = false): Promise<boolean> {
     return false;
   }
 
-  useAppStore.getState().setVariablesPhase(2);
+  getAppState().setVariablesPhase(2);
   return true;
 }
 
 export function backToPhase1(): void {
-  useAppStore.getState().setVariablesPhase(1);
+  getAppState().setVariablesPhase(1);
 }
 
 export function validateVariablesStep(): boolean {
-  const state = useAppStore.getState();
+  const state = getAppState();
   if (state.wizard.variablesPhase === 1) return false;
 
   if (!state.variables.selectedCat.size && !state.variables.selectedCont.size) {

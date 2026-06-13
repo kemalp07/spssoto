@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { runAnalysisFromPlan } from '../../hooks/useAnalysis';
 import { loadAnalysisPlan, loadHypothesisReview } from '../../hooks/usePlan';
+import { getAppState } from '../../lib/storeAccess';
 import { useAppStore } from '../../stores/useAppStore';
 import { LoadingButton } from '../shared/LoadingButton';
 import { WizardNav } from '../wizard/StepPlaceholder';
@@ -32,7 +33,7 @@ export function PlanStep({ onBack }: PlanStepProps) {
   }, [isApproved, catalog.length, researchTopic]);
 
   const handleProfileChange = (profile: PlanProfileId) => {
-    const userTouched = useAppStore.getState().plan.userTouched;
+    const userTouched = getAppState().plan.userTouched;
     if (userTouched && !window.confirm('Seçimleriniz sıfırlanacak, devam?')) return;
     setProfile(profile);
     void loadHypothesisReview();

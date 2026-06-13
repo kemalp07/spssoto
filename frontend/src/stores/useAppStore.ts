@@ -1,3 +1,7 @@
+/**
+ * Monolithic app store (~900 lines). Async hooks read fresh snapshots via
+ * getAppState() in lib/storeAccess.ts; use useAppStore(selector) in components.
+ */
 import { create } from 'zustand';
 import { STEPS } from '../lib/constants';
 import type {

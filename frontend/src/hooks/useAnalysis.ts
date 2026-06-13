@@ -5,6 +5,7 @@ import { buildVariablesForDerivedDetection } from '../lib/derivedVariables';
 import { getMissingCodesFromState } from '../lib/missingCodes';
 import { documentContextPayload } from '../lib/wizardSkip';
 import { notifyError } from '../lib/notify';
+import { getAppState } from '../lib/storeAccess';
 import { useAppStore } from '../stores/useAppStore';
 import type { AnalysisResult, ClassifyResponse, DetectDerivedResponse } from '../types';
 
@@ -19,7 +20,7 @@ async function applyTableLayout(results: AnalysisResult[]): Promise<AnalysisResu
 }
 
 export async function runAnalysisFromPlan(): Promise<boolean> {
-  const state = useAppStore.getState();
+  const state = getAppState();
   const enabledTests = state.plan.catalog
     .filter((t) => t.cekirdek || t.enabled !== false)
     .map((t) => t.id)
@@ -32,17 +33,17 @@ export async function runAnalysisFromPlan(): Promise<boolean> {
 }
 
 export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
-  const state = useAppStore.getState();
+  const state = getAppState();
   if (!state.variables.selectedCat.size && !state.variables.selectedCont.size) {
     notifyError('En az bir değişken seçmelisiniz.');
     return false;
   }
 
-  useAppStore.getState().clearBulgu();
-  useAppStore.getState().setAnalyzing(true);
+  getAppState().clearBulgu();
+  getAppState().setAnalyzing(true);
 
   try {
-    const fresh = useAppStore.getState();
+    const fresh = getAppState();
     const json = await apiCall<{
       results?: AnalysisResult[];
       meta?: Record<string, unknown>;
@@ -82,13 +83,13 @@ export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
     }
 
     results = await applyTableLayout(results);
-    useAppStore.getState().setAnalysisResults(results, json.meta);
+    getAppState().setAnalysisResults(results, json.meta);
     if (json.missing_data) {
       useAppStore.setState((s) => ({
         results: { ...s.results, missingData: json.missing_data as typeof s.results.missingData },
       }));
     }
-    useAppStore.getState().goToStep(STEPS.indexOf('results'));
+    getAppState().goToStep(STEPS.indexOf('results'));
     return true;
   } catch {
     useAppStore.setState((s) => ({
@@ -96,7 +97,7 @@ export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
     }));
     return false;
   } finally {
-    useAppStore.getState().setAnalyzing(false);
+    getAppState().setAnalyzing(false);
   }
 }
 
@@ -117,7 +118,7 @@ export async function runMultipleRegression(
     return false;
   }
 
-  const state = useAppStore.getState();
+  const state = getAppState();
   const { variables, data } = getAnalysisContext(state);
   try {
     const json = await apiCall<{ result?: AnalysisResult }>('/analyze/regression', {
@@ -127,8 +128,8 @@ export async function runMultipleRegression(
       variables,
     });
     if (json.result) {
-      useAppStore.getState().appendAnalysisResult(json.result);
-      useAppStore.getState().clearBulgu();
+      getAppState().appendAnalysisResult(json.result);
+      getAppState().clearBulgu();
       return true;
     }
     return false;
@@ -139,7 +140,7 @@ export async function runMultipleRegression(
 }
 
 export async function runAIClassify(): Promise<boolean> {
-  const state = useAppStore.getState();
+  const state = getAppState();
   if (!state.parsedData.length) return false;
 
   const nonItemCols = state.columns.filter(
@@ -171,9 +172,9 @@ export async function runAIClassify(): Promise<boolean> {
     const cls = await apiCall<ClassifyResponse>('/classify', payload);
 
     if (cls.derived?.length) {
-      useAppStore.getState().applyDerivedList(cls.derived);
+      getAppState().applyDerivedList(cls.derived);
       cls.derived.forEach((d) => {
-        const current = useAppStore.getState().variables.derivedVarMap[d.name] ?? {};
+        const current = getAppState().variables.derivedVarMap[d.name] ?? {};
         useAppStore.setState((s) => ({
           variables: {
             ...s.variables,
@@ -191,7 +192,7 @@ export async function runAIClassify(): Promise<boolean> {
       return false;
     }
 
-    useAppStore.getState().applyClassifyResult(cls);
+    getAppState().applyClassifyResult(cls);
     return true;
   } catch {
     await fetchAndApplyDerivedVariables();
@@ -200,7 +201,7 @@ export async function runAIClassify(): Promise<boolean> {
 }
 
 export async function fetchAndApplyDerivedVariables(): Promise<void> {
-  const state = useAppStore.getState();
+  const state = getAppState();
   if (!state.parsedData.length) return;
 
   const variables = buildVariablesForDerivedDetection(
@@ -221,7 +222,7 @@ export async function fetchAndApplyDerivedVariables(): Promise<void> {
         state.wizard.missingCodesEditOpen,
       ),
     });
-    useAppStore.getState().applyDerivedList(json.derived ?? []);
+    getAppState().applyDerivedList(json.derived ?? []);
   } catch {
     /* optional fallback */
   }

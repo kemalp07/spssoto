@@ -1,11 +1,12 @@
 import { apiCall } from '../api/client';
 import { buildHypothesisPayload, buildPlanPayload } from '../lib/analysisPayload';
 import { documentContextPayload } from '../lib/wizardSkip';
+import { getAppState } from '../lib/storeAccess';
 import { useAppStore } from '../stores/useAppStore';
 import type { ParseHypothesesResponse, PlanTestsResponse } from '../types';
 
 export async function loadHypothesisReview(): Promise<void> {
-  const state = useAppStore.getState();
+  const state = getAppState();
   if (!state.wizard.researchTopic.trim()) return;
 
   useAppStore.setState((s) => ({
@@ -18,7 +19,7 @@ export async function loadHypothesisReview(): Promise<void> {
       ...buildHypothesisPayload(state),
       ...documentContextPayload(state.documents.context, state.documents.sessionId),
     });
-    useAppStore.getState().applyHypothesisParse(res);
+    getAppState().applyHypothesisParse(res);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Bilinmeyen hata';
     useAppStore.setState((s) => ({
@@ -29,7 +30,7 @@ export async function loadHypothesisReview(): Promise<void> {
 }
 
 export async function loadAnalysisPlan(): Promise<void> {
-  const state = useAppStore.getState();
+  const state = getAppState();
   if (!state.wizard.researchTopic.trim()) return;
 
   useAppStore.setState((s) => ({
@@ -38,12 +39,12 @@ export async function loadAnalysisPlan(): Promise<void> {
   }));
 
   try {
-    const fresh = useAppStore.getState();
+    const fresh = getAppState();
     const res = await apiCall<PlanTestsResponse>('/plan-tests', {
       ...buildPlanPayload(fresh),
       ...documentContextPayload(fresh.documents.context, fresh.documents.sessionId),
     });
-    useAppStore.getState().applyPlanResponse(res);
+    getAppState().applyPlanResponse(res);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Bilinmeyen hata';
     useAppStore.setState((s) => ({
@@ -54,12 +55,12 @@ export async function loadAnalysisPlan(): Promise<void> {
 }
 
 export function approveHypothesesAndLoadPlan(): void {
-  useAppStore.getState().setHypothesesApproved(true);
+  getAppState().setHypothesesApproved(true);
   void loadAnalysisPlan();
 }
 
 export function skipHypothesisReviewAndLoadPlan(): void {
-  useAppStore.getState().skipHypothesisReview();
+  getAppState().skipHypothesisReview();
   void loadAnalysisPlan();
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { ApiError, apiUpload } from '../api/client';
 import { DOC_PARTIAL_WARN } from '../lib/documents';
+import { getAppState } from '../lib/storeAccess';
 import { useAppStore } from '../stores/useAppStore';
 import type { UploadDocumentsResponse } from '../types';
 
@@ -30,7 +31,7 @@ export function useDocuments() {
   const showToast = useAppStore((s) => s.showToast);
 
   const syncUpload = useCallback(async () => {
-    const state = useAppStore.getState();
+    const state = getAppState();
     const { anket, etikKurul, sessionId } = state.documents;
     if (!anket.file && !etikKurul.file) return;
 
