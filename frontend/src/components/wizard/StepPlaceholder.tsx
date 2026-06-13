@@ -40,7 +40,7 @@ export function WizardNav({
   onNext,
   onSkip,
   backLabel = '‹ Geri',
-  nextLabel = 'Devam →',
+  nextLabel = 'İleri →',
   skipLabel = 'Atla →',
   showBack = true,
   showNext = true,
@@ -51,14 +51,15 @@ export function WizardNav({
   return (
     <div className="wizardNav">
       {showBack ? (
-        <button type="button" className="wizardNavBack" onClick={onBack}>
+        <button type="button" className="btn btnGhost" onClick={onBack}>
           {backLabel}
         </button>
       ) : (
         <span />
       )}
+
       {showSkip && onSkip ? (
-        <button type="button" className="wizardNavSkip" onClick={onSkip}>
+        <button type="button" className="btn btnGhost" onClick={onSkip}>
           {skipLabel}
         </button>
       ) : hint ? (
@@ -66,6 +67,7 @@ export function WizardNav({
       ) : (
         <span />
       )}
+
       {showNext ? (
         <button type="button" className="btn btnPrimary" onClick={onNext}>
           {nextLabel}
