@@ -1,11 +1,10 @@
 import { useEffect, type ReactNode } from 'react';
 import { runAnalysisFromPlan } from '../../hooks/useAnalysis';
-import { loadAnalysisPlan, loadHypothesisReview } from '../../hooks/usePlan';
+import { loadAnalysisPlan } from '../../hooks/usePlan';
 import { getAppState } from '../../lib/storeAccess';
 import { useAppStore } from '../../stores/useAppStore';
 import { LoadingButton } from '../shared/LoadingButton';
 import { WizardNav } from '../wizard/StepPlaceholder';
-import { HypothesisReview } from '../plan/HypothesisReview';
 import { PlanCatalogView } from '../plan/PlanCatalogView';
 import type { PlanProfileId } from '../../types';
 
@@ -14,8 +13,6 @@ interface PlanStepProps {
 }
 
 export function PlanStep({ onBack }: PlanStepProps) {
-  const isApproved = useAppStore((s) => s.hypotheses.isApproved);
-  const loading = useAppStore((s) => s.hypotheses.loading);
   const planLoading = useAppStore((s) => s.hypotheses.planLoading);
   const analyzing = useAppStore((s) => s.results.analyzing);
   const catalog = useAppStore((s) => s.plan.catalog);
@@ -25,15 +22,17 @@ export function PlanStep({ onBack }: PlanStepProps) {
   const toggleTier = useAppStore((s) => s.togglePlanTier);
   const setProfile = useAppStore((s) => s.setPlanProfile);
   const setFilter = useAppStore((s) => s.setPlanActiveFilter);
-  const hypothesesLoaded = useAppStore(
-    (s) => s.hypotheses.candidates.length > 0 || s.hypotheses.isApproved,
-  );
 
   useEffect(() => {
     if (!researchTopic.trim()) return;
-    if (!isApproved && !hypothesesLoaded) void loadHypothesisReview();
-    else if (isApproved && !catalog.length) void loadAnalysisPlan();
-  }, [isApproved, hypothesesLoaded, catalog.length, researchTopic]);
+    if (!catalog.length) {
+      const state = getAppState();
+      if (!state.hypotheses.isApproved) {
+        state.setHypothesesApproved(true);
+      }
+      void loadAnalysisPlan();
+    }
+  }, [catalog.length, researchTopic]);
 
   const handleProfileChange = (profile: PlanProfileId) => {
     const userTouched = getAppState().plan.userTouched;
@@ -44,31 +43,30 @@ export function PlanStep({ onBack }: PlanStepProps) {
 
   let body: ReactNode;
   if (!researchTopic.trim()) {
-    body = <p className="textSm textMuted">Araştırma soruları boş. Önceki adımda en az bir soru girin.</p>;
-  } else if (loading || planLoading) {
+    body = (
+      <p className="textSm textMuted">
+        Araştırma soruları boş. Önceki adımda en az bir soru girin.
+      </p>
+    );
+  } else if (planLoading) {
     body = (
       <div className="emptyState">
         <div className="uploadHero">⏳</div>
-        <p>{loading ? 'Araştırma soruları analiz ediliyor...' : 'Test planı hazırlanıyor...'}</p>
+        <p>Test planı hazırlanıyor...</p>
       </div>
     );
-  } else if (error && !catalog.length && !isApproved) {
-    body = (
-      <div className="alert alertWarn textSm">
-        Hipotez eşlemesi yapılamadı. Sorularınızı kontrol edin.
-        <div className="textXs mt2">{error}</div>
-        <button type="button" className="btn btnSecondary mt2" onClick={() => loadHypothesisReview()}>
-          Tekrar dene
-        </button>
-      </div>
-    );
-  } else if (!isApproved) {
-    body = <HypothesisReview />;
   } else if (error && !catalog.length) {
     body = (
       <div className="alert alertWarn textSm">
-        Test planı oluşturulamadı. Araştırma amacını ve backend ayarlarını kontrol edin.
+        Test planı oluşturulamadı.
         <div className="textXs mt2">{error}</div>
+        <button
+          type="button"
+          className="btn btnSecondary mt2"
+          onClick={() => void loadAnalysisPlan()}
+        >
+          Tekrar dene
+        </button>
       </div>
     );
   } else if (!catalog.length) {
@@ -87,9 +85,11 @@ export function PlanStep({ onBack }: PlanStepProps) {
   return (
     <>
       <h2 className="wizardTitle">📊 Analiz Planı</h2>
-      <p className="wizardSubtitle">Yapılacak testleri onaylayın veya istediğinizi kapatın.</p>
+      <p className="wizardSubtitle">
+        Yapılacak testleri onaylayın veya istediğinizi kapatın.
+      </p>
       {body}
-      {isApproved && catalog.length ? (
+      {catalog.length > 0 ? (
         <WizardNav
           onBack={onBack}
           showNext={false}

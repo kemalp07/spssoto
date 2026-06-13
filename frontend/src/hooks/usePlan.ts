@@ -1,5 +1,6 @@
 import { apiCall } from '../api/client';
 import { buildHypothesisPayload, buildPlanPayload } from '../lib/analysisPayload';
+import { notify } from '../lib/notify';
 import { documentContextPayload } from '../lib/wizardSkip';
 import { getAppState } from '../lib/storeAccess';
 import { useAppStore } from '../stores/useAppStore';
@@ -18,7 +19,7 @@ export async function loadHypothesisReview(): Promise<void> {
     const res = await apiCall<ParseHypothesesResponse>('/parse-hypotheses', {
       ...buildHypothesisPayload(state),
       ...documentContextPayload(state.documents.context, state.documents.sessionId),
-    });
+    }, { timeout: 30_000 });
     getAppState().applyHypothesisParse(res);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Bilinmeyen hata';
@@ -26,6 +27,7 @@ export async function loadHypothesisReview(): Promise<void> {
       hypotheses: { ...s.hypotheses, loading: false },
       plan: { ...s.plan, error: msg },
     }));
+    notify(msg, 'error');
   }
 }
 
@@ -43,7 +45,7 @@ export async function loadAnalysisPlan(): Promise<void> {
     const res = await apiCall<PlanTestsResponse>('/plan-tests', {
       ...buildPlanPayload(fresh),
       ...documentContextPayload(fresh.documents.context, fresh.documents.sessionId),
-    });
+    }, { timeout: 30_000 });
     getAppState().applyPlanResponse(res);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Bilinmeyen hata';
@@ -51,6 +53,7 @@ export async function loadAnalysisPlan(): Promise<void> {
       hypotheses: { ...s.hypotheses, planLoading: false },
       plan: { ...s.plan, error: msg },
     }));
+    notify(msg, 'error');
   }
 }
 

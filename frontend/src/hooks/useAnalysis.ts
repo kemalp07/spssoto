@@ -89,11 +89,19 @@ export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
         results: { ...s.results, missingData: json.missing_data as typeof s.results.missingData },
       }));
     }
+
+    if (!results.length) {
+      notifyError('Analiz tamamlandı ancak sonuç üretilemedi. Test seçimlerinizi kontrol edin.');
+      return false;
+    }
+
     getAppState().goToStep(STEPS.indexOf('results'));
     return true;
-  } catch {
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Analiz sırasında bir hata oluştu';
+    notifyError(msg);
     useAppStore.setState((s) => ({
-      plan: { ...s.plan, error: 'Backend bağlantısı kurulamadı. baslat.bat çalışıyor mu?' },
+      plan: { ...s.plan, error: msg },
     }));
     return false;
   } finally {

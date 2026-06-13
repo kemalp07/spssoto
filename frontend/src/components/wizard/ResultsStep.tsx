@@ -1,3 +1,4 @@
+import { Component, type ReactNode } from 'react';
 import { generateAllBulgu } from '../../hooks/useBulgu';
 import { useWizard } from '../../hooks/useWizard';
 import { useAppStore } from '../../stores/useAppStore';
@@ -10,7 +11,40 @@ interface ResultsStepProps {
   onBack: () => void;
 }
 
-export function ResultsStep({ onBack }: ResultsStepProps) {
+class ResultsErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; error: string }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error: error.message };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="alert alertWarn">
+          <strong>Sonuçlar gösterilirken hata oluştu</strong>
+          <p className="textSm mt2">{this.state.error}</p>
+          <button
+            type="button"
+            className="btn btnSecondary mt2"
+            onClick={() => this.setState({ hasError: false, error: '' })}
+          >
+            Tekrar dene
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function ResultsStepContent({ onBack }: ResultsStepProps) {
   const { nextStep } = useWizard();
   const results = useAppStore((s) => s.results.analysis);
   const meta = useAppStore((s) => s.results.meta);
@@ -80,5 +114,13 @@ export function ResultsStep({ onBack }: ResultsStepProps) {
         showNext={results.length > 0}
       />
     </>
+  );
+}
+
+export function ResultsStep({ onBack }: ResultsStepProps) {
+  return (
+    <ResultsErrorBoundary>
+      <ResultsStepContent onBack={onBack} />
+    </ResultsErrorBoundary>
   );
 }
