@@ -51,7 +51,7 @@ export function WizardShell() {
   };
 
   const wide = ['variables', 'plan', 'results', 'review'].includes(currentStepId);
-  const center = currentStepId === 'upload';
+  const center = ['upload', 'anket', 'etikkurul', 'scales', 'topic'].includes(currentStepId);
 
   return (
     <>

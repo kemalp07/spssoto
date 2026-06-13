@@ -29,11 +29,19 @@ _AIM_HEADER = re.compile(
     re.IGNORECASE,
 )
 _HYPOTHESIS_RE = re.compile(
-    r"^\s*(H\d+)\s*[:.)]\s*(.+)$",
+    r"^\s*(?:H|AS|HS|AH)\s*(\d+)\s*[:.)]\s*(.+)$",
+    re.IGNORECASE,
+)
+_HYPOTHESIS_NUMBERED = re.compile(
+    r"^\s*(?:Soru|Hipotez|Araştırma\s+Sorusu)\s*(\d+)\s*[:.)]\s*(.+)$",
     re.IGNORECASE,
 )
 _HYPOTHESIS_INLINE = re.compile(
-    r"\b(hipotez|araştırma\s+sorusu)\s*[:.)]?\s*(.+)$",
+    r"\b(hipotez|araştırma\s+sorusu|araştırma\s+problemi)\s*[:.)]?\s*(.+)$",
+    re.IGNORECASE,
+)
+_HYPOTHESIS_SECTION_HEADER = re.compile(
+    r"^\s*(?:araştırma\s+sorular[ıi]|hipotezler|araştırma\s+problemler[ıi])\s*[:.]?\s*$",
     re.IGNORECASE,
 )
 _SAMPLE_N = re.compile(
@@ -221,20 +229,63 @@ def _extract_aim(lines: List[str]) -> Optional[str]:
 def _extract_hypotheses(lines: List[str]) -> List[str]:
     found: List[str] = []
     seen = set()
-    for line in lines:
-        m = _HYPOTHESIS_RE.match(line.strip())
+    in_hypothesis_section = False
+    numbered_re = re.compile(r"^\s*(\d+)\s*[.):\-]\s*(.+)$")
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            if in_hypothesis_section and found:
+                in_hypothesis_section = False
+            continue
+
+        # Check for section header like "Araştırma Soruları:" or "Hipotezler"
+        if _HYPOTHESIS_SECTION_HEADER.match(stripped):
+            in_hypothesis_section = True
+            continue
+
+        # Explicit hypothesis label: H1, AS1, HS1, AH1
+        m = _HYPOTHESIS_RE.match(stripped)
         if m:
             text = m.group(2).strip()
             if text and text not in seen:
                 seen.add(text)
                 found.append(text)
+            in_hypothesis_section = True
             continue
+
+        # Named pattern: "Soru 1:", "Hipotez 1:", "Araştırma Sorusu 1:"
+        m_named = _HYPOTHESIS_NUMBERED.match(stripped)
+        if m_named:
+            text = m_named.group(2).strip()
+            if text and text not in seen:
+                seen.add(text)
+                found.append(text)
+            in_hypothesis_section = True
+            continue
+
+        # Inside a hypothesis section, catch numbered lines: "1. ...", "2) ..."
+        if in_hypothesis_section:
+            m_num = numbered_re.match(stripped)
+            if m_num:
+                text = m_num.group(2).strip()
+                if text and text not in seen and len(text) > 10:
+                    seen.add(text)
+                    found.append(text)
+                continue
+            # Non-numbered, non-empty line after section → end section
+            if _is_section_header(stripped):
+                in_hypothesis_section = False
+                continue
+
+        # Inline: "... hipotez: ..." or "... araştırma sorusu: ..."
         m2 = _HYPOTHESIS_INLINE.search(line)
         if m2:
             text = m2.group(2).strip()
             if text and text not in seen:
                 seen.add(text)
                 found.append(text)
+
     return found
 
 
