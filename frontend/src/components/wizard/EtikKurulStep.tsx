@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { FileDropZone } from '../shared/FileDropZone';
 import { ErrorBanner } from '../shared/ErrorBanner';
 import { LoadingButton } from '../shared/LoadingButton';
@@ -7,10 +8,11 @@ import { WizardNav } from './StepPlaceholder';
 interface EtikKurulStepProps {
   onNext: () => void;
   onBack: () => void;
-  onProceed: () => void;
+  onProceed: () => void | Promise<void>;
 }
 
 export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
+  const [proceeding, setProceeding] = useState(false);
   const {
     etikKurul,
     uploadEtik,
@@ -20,7 +22,15 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
     hasEtikLoaded,
   } = useDocuments();
 
-  const skip = onProceed;
+  const handleProceed = async () => {
+    if (proceeding) return;
+    setProceeding(true);
+    try {
+      await onProceed();
+    } finally {
+      setProceeding(false);
+    }
+  };
 
   return (
     <>
@@ -39,7 +49,20 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
         fileName={etikKurul.fileName}
         fileMeta={hasEtikLoaded ? `${etikKurul.hypothesisCount} hipotez bulundu` : undefined}
         onReset={clearEtik}
+        disabled={proceeding}
       />
+
+      {proceeding ? (
+        <div className="wizardStepBusy" role="status" aria-live="polite">
+          <span className="spinner" aria-hidden />
+          <div>
+            <strong>Lütfen bekleyin</strong>
+            <p className="textSm" style={{ margin: '4px 0 0' }}>
+              Belgeler ve ölçekler işleniyor, bir sonraki adıma geçiliyor…
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {etikKurul.partial && hasEtikLoaded ? (
         <div className="alert alertWarn textSm" role="status">{partialWarn}</div>
@@ -59,14 +82,27 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
 
       <WizardNav
         onBack={onBack}
+        showBack={!proceeding}
         showNext={false}
         extra={(
           <div className="wizardNavActions">
-            <button type="button" className="btn btnGhost" onClick={skip}>
+            <LoadingButton
+              variant="ghost"
+              loading={proceeding}
+              loadingText="Bekleyin…"
+              disabled={proceeding || etikKurul.loading}
+              onClick={() => void handleProceed()}
+            >
               Atla →
-            </button>
+            </LoadingButton>
             {hasEtikLoaded ? (
-              <LoadingButton variant="primary" onClick={onProceed}>
+              <LoadingButton
+                variant="primary"
+                loading={proceeding}
+                loadingText="Bekleyin…"
+                disabled={proceeding || etikKurul.loading}
+                onClick={() => void handleProceed()}
+              >
                 İleri →
               </LoadingButton>
             ) : null}

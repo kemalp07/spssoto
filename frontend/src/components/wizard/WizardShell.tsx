@@ -32,7 +32,7 @@ export function WizardShell() {
       case 'anket':
         return <AnketStep {...nav} />;
       case 'etikkurul':
-        return <EtikKurulStep {...nav} onProceed={() => void preparePostUploadWizard()} />;
+        return <EtikKurulStep {...nav} onProceed={preparePostUploadWizard} />;
       case 'scales':
         return <ScalesStep {...nav} />;
       case 'topic':

@@ -41,8 +41,15 @@ _HYPOTHESIS_INLINE = re.compile(
     re.IGNORECASE,
 )
 _HYPOTHESIS_SECTION_HEADER = re.compile(
-    r"^\s*(?:araştırma\s+sorular[ıi]|hipotezler|araştırma\s+problemler[ıi])\s*[:.]?\s*$",
+    r"^\s*(?:araştırma\s+sorular[ıi]|hipotezler|araştırma\s+problemler[ıi]|alt\s+problemler)"
+    r"\s*[:.]?\s*$",
     re.IGNORECASE,
+)
+_BULLET_ITEM = re.compile(
+    r"^\s*[-–—•*]\s*(.+)$",
+)
+_NUMBERED_ITEM = re.compile(
+    r"^\s*(\d+)\s*[.):\-]\s*(.+)$",
 )
 _SAMPLE_N = re.compile(
     r"(\d{2,5})\s*(?:katılımcı|öğrenci|kişi|denek|gönüllü)",
@@ -227,66 +234,125 @@ def _extract_aim(lines: List[str]) -> Optional[str]:
 
 
 def _extract_hypotheses(lines: List[str]) -> List[str]:
+    """Regex ile hipotez/araştırma sorusu çıkar. Bulamazsa boş liste döner."""
     found: List[str] = []
-    seen = set()
-    in_hypothesis_section = False
-    numbered_re = re.compile(r"^\s*(\d+)\s*[.):\-]\s*(.+)$")
+    seen: set = set()
+    in_section = False
 
-    for i, line in enumerate(lines):
+    for line in lines:
         stripped = line.strip()
         if not stripped:
-            if in_hypothesis_section and found:
-                in_hypothesis_section = False
+            if in_section and found:
+                in_section = False
             continue
 
-        # Check for section header like "Araştırma Soruları:" or "Hipotezler"
         if _HYPOTHESIS_SECTION_HEADER.match(stripped):
-            in_hypothesis_section = True
+            in_section = True
             continue
 
-        # Explicit hypothesis label: H1, AS1, HS1, AH1
         m = _HYPOTHESIS_RE.match(stripped)
         if m:
             text = m.group(2).strip()
             if text and text not in seen:
                 seen.add(text)
                 found.append(text)
-            in_hypothesis_section = True
+            in_section = True
             continue
 
-        # Named pattern: "Soru 1:", "Hipotez 1:", "Araştırma Sorusu 1:"
-        m_named = _HYPOTHESIS_NUMBERED.match(stripped)
-        if m_named:
-            text = m_named.group(2).strip()
+        m = _HYPOTHESIS_NUMBERED.match(stripped)
+        if m:
+            text = m.group(2).strip()
             if text and text not in seen:
                 seen.add(text)
                 found.append(text)
-            in_hypothesis_section = True
+            in_section = True
             continue
 
-        # Inside a hypothesis section, catch numbered lines: "1. ...", "2) ..."
-        if in_hypothesis_section:
-            m_num = numbered_re.match(stripped)
-            if m_num:
-                text = m_num.group(2).strip()
-                if text and text not in seen and len(text) > 10:
+        if in_section:
+            m = _BULLET_ITEM.match(stripped)
+            if m:
+                text = m.group(1).strip()
+                if text and text not in seen and len(text) > 15:
                     seen.add(text)
                     found.append(text)
                 continue
-            # Non-numbered, non-empty line after section → end section
-            if _is_section_header(stripped):
-                in_hypothesis_section = False
+
+            m = _NUMBERED_ITEM.match(stripped)
+            if m:
+                text = m.group(2).strip()
+                if text and text not in seen and len(text) > 15:
+                    seen.add(text)
+                    found.append(text)
                 continue
 
-        # Inline: "... hipotez: ..." or "... araştırma sorusu: ..."
-        m2 = _HYPOTHESIS_INLINE.search(line)
-        if m2:
-            text = m2.group(2).strip()
+            if _is_section_header(stripped):
+                in_section = False
+                continue
+
+        m = _HYPOTHESIS_INLINE.search(line)
+        if m:
+            text = m.group(2).strip()
             if text and text not in seen:
                 seen.add(text)
                 found.append(text)
 
     return found
+
+
+def _extract_hypotheses_ai(full_text: str) -> List[str]:
+    """Regex bulamazsa Gemini Flash ile araştırma sorularını çıkar."""
+    if len(full_text.strip()) < 50:
+        return []
+
+    relevant = full_text
+    lower = full_text.lower()
+    for keyword in ["araştırma sorular", "hipotez", "araştırmanın amacı", "alt problem"]:
+        idx = lower.find(keyword)
+        if idx >= 0:
+            start = max(0, idx - 500)
+            end = min(len(full_text), idx + 3000)
+            relevant = full_text[start:end]
+            break
+
+    system = """Verilen etik kurul raporu metninden araştırma sorularını veya hipotezleri çıkar.
+
+Kurallar:
+- Her araştırma sorusunu/hipotezi ayrı bir item olarak döndür
+- Sorunun/hipotezin tam metnini yaz, kısaltma
+- Sadece araştırma soruları/hipotezler, başka bilgi ekleme
+- Bulamazsan boş liste döndür
+
+SADECE JSON döndür:
+{"hypotheses": ["soru1 metni", "soru2 metni"]}"""
+
+    try:
+        from llm_router import (
+            _parse_json_object,
+            claude_decide,
+            gemini_json_task,
+            has_claude,
+            has_gemini_enrich,
+        )
+
+        text = ""
+        if has_gemini_enrich():
+            text, _ = gemini_json_task(system, relevant[:4000], max_tokens=1000)
+        elif has_claude():
+            text, _ = claude_decide(system, relevant[:4000], max_tokens=1000)
+
+        if text:
+            parsed = _parse_json_object(text)
+            hyps = parsed.get("hypotheses", [])
+            if isinstance(hyps, list):
+                return [
+                    h.strip()
+                    for h in hyps
+                    if isinstance(h, str) and len(h.strip()) > 10
+                ]
+    except Exception:
+        pass
+
+    return []
 
 
 def _extract_sample_n(text: str) -> Optional[int]:
@@ -344,6 +410,10 @@ def parse_etik_kurul_docx(file_bytes: bytes) -> dict:
         blob = "\n".join(lines)
         aim = _extract_aim(lines)
         hypotheses = _extract_hypotheses(lines)
+
+        if not hypotheses:
+            hypotheses = _extract_hypotheses_ai(blob)
+
         n_val = _extract_sample_n(blob)
         scale_names = _extract_scale_names(lines)
         institution = _extract_institution(lines)
