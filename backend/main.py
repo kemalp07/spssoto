@@ -63,6 +63,7 @@ from file_io import read_uploaded_file
 from document_parser import parse_anket_docx, parse_etik_kurul_docx
 from analiz_oneri import gemini_analiz_oneri, haiku_gozden_gecir
 from document_context import (
+    get_document_context,
     resolve_document_context,
     save_document_context,
     effective_research_text,
@@ -547,9 +548,10 @@ async def upload_documents(
     if anket_result is None and etik_result is None:
         raise HTTPException(status_code=400, detail="En az bir .docx dosyası yükleyin")
 
+    existing = get_document_context(session_id) or {}
     document_context = {
-        "anket": anket_result,
-        "etik_kurul": etik_result,
+        "anket": anket_result if anket_result is not None else existing.get("anket"),
+        "etik_kurul": etik_result if etik_result is not None else existing.get("etik_kurul"),
     }
     sid = save_document_context(document_context, session_id)
     return sanitize({

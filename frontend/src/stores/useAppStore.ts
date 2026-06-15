@@ -10,6 +10,7 @@ import type {
   ClassifyResponse,
   DataRow,
   DerivedVariable,
+  DocumentContext,
   DocumentSlice,
   FileInfo,
   HypothesesSlice,
@@ -431,7 +432,12 @@ export const useAppStore = create<AppState>()(
     })),
 
   applyDocumentUpload: (response) => {
-    const context = buildDocumentContext(response);
+    const incoming = buildDocumentContext(response);
+    const prev = get().documents.context;
+    const context: DocumentContext = {
+      anket: incoming.anket ?? prev?.anket ?? null,
+      etik_kurul: incoming.etik_kurul ?? prev?.etik_kurul ?? null,
+    };
     const anket = context.anket ?? null;
     const etik = context.etik_kurul ?? null;
     const state = get();

@@ -4,17 +4,22 @@ import {
   etikTextFromContext,
 } from './analizOneri';
 import { getAppState } from './storeAccess';
-import type { AnalizOneriResponse } from '../types';
+import type { AnalizOneriResponse, AnketParseResult, EtikKurulParseResult } from '../types';
 
 export async function fetchAnalizOneri(): Promise<AnalizOneriResponse> {
   const state = getAppState();
   const ctx = state.documents.context;
-  const anketText = anketTextFromContext(ctx?.anket);
-  const etikText = etikTextFromContext(ctx?.etik_kurul);
+  const anketSource = (ctx?.anket ?? state.documents.anket.data) as AnketParseResult | null | undefined;
+  const etikSource = (ctx?.etik_kurul ?? state.documents.etikKurul.data) as EtikKurulParseResult | null | undefined;
 
+  const anketText = anketTextFromContext(anketSource);
+  const etikText = etikTextFromContext(etikSource);
+
+  console.log('[ONERİ] ctx:', !!ctx);
+  console.log('[ONERİ] anket:', !!anketSource, 'sections:', anketSource?.sections?.length);
+  console.log('[ONERİ] etik:', !!etikSource, 'aim:', etikSource?.aim?.length, 'hyp:', etikSource?.hypotheses?.length);
   console.log('[ONERİ] anket_text length:', anketText.length);
   console.log('[ONERİ] etik_text length:', etikText.length);
-  console.log('[ONERİ] columns count:', state.columns.length);
 
   return apiCall<AnalizOneriResponse>('/analiz-oneri', {
     columns: state.columns,

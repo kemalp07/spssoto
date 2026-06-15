@@ -7,21 +7,26 @@ import type {
 } from '../types';
 
 export function anketTextFromContext(anket?: AnketParseResult | null): string {
-  if (!anket?.sections?.length || anket.parse_error) return '';
-  return anket.sections
-    .map((sec) => {
-      const title = sec.title?.trim() || '';
-      const items = (sec.items ?? [])
-        .map((item) => {
-          const no = item.no != null ? `${item.no}. ` : '';
-          return `${no}${item.text ?? ''}`.trim();
-        })
-        .filter(Boolean)
-        .join('\n');
-      return [title, items].filter(Boolean).join('\n');
-    })
-    .filter(Boolean)
-    .join('\n\n');
+  if (!anket) return '';
+  if (anket.sections?.length) {
+    const text = anket.sections
+      .map((sec) => {
+        const title = sec.title?.trim() || '';
+        const items = (sec.items ?? [])
+          .map((item) => {
+            const no = item.no != null ? `${item.no}. ` : '';
+            return `${no}${item.text ?? ''}`.trim();
+          })
+          .filter(Boolean)
+          .join('\n');
+        return [title, items].filter(Boolean).join('\n');
+      })
+      .filter(Boolean)
+      .join('\n\n');
+    if (text.trim()) return text;
+  }
+  if (!anket.parse_error) return '';
+  return 'Anket formu yüklendi ancak metin çıkarılamadı.';
 }
 
 export function etikTextFromContext(etik?: EtikKurulParseResult | null): string {
