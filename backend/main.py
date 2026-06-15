@@ -96,6 +96,10 @@ from hypothesis_engine import (
 )
 
 limiter = Limiter(key_func=get_remote_address)
+ALREADY_REVERSED_RE = re.compile(
+    r"(_ters|_rev|_r|_t|_reversed|_recoded|_inv|_rc)$",
+    re.I,
+)
 app = FastAPI(title="StatAI - Akademik Analiz API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -431,6 +435,8 @@ async def analyze_cronbach_batch(req: CronbachBatchRequest):
 
             if reverse_set:
                 for col in valid_items:
+                    if ALREADY_REVERSED_RE.search(col):
+                        continue
                     match = re.search(r"_(\d+)", col)
                     if match and int(match.group(1)) in reverse_set:
                         items_df[col] = scale_max - items_df[col]

@@ -913,48 +913,116 @@ Bu değişkenler için istatistiksel analiz planı oluştur."""
 
 
 TOPLAM_RE = re.compile(r"_(TOPLAM|TOTAL|PUAN|SCORE|SUM)$", re.I)
+BINARY_RE = re.compile(r"_(BINARY|IKILI|İKİLİ|RISK_BINARY)$", re.I)
+GRUP_RE = re.compile(r"_(GRUBU?|GROUP|KATEGORI|KAT|CATEGORY)$", re.I)
+DBF_PREFIX = re.compile(r"^dbf_", re.I)
 
 
-def _locked_outcome_column_names(columns: List[str]) -> List[str]:
-    return [c for c in columns if TOPLAM_RE.search(c)]
+def _deterministic_classify(col: str, label: str = "") -> Optional[dict]:
+    """Kesin kural varsa döndür, yoksa None (AI'a bırak)."""
+    col_u = col.upper()
+
+    if TOPLAM_RE.search(col):
+        return {
+            "type": "continuous",
+            "role": "outcome",
+            "recommended": True,
+            "reason": "Ölçek toplam puanı, ana outcome",
+        }
+
+    if BINARY_RE.search(col):
+        return {
+            "type": "categorical",
+            "role": "outcome",
+            "recommended": True,
+            "reason": "İkili kategorik outcome",
+        }
+
+    if GRUP_RE.search(col):
+        return {
+            "type": "categorical",
+            "role": "outcome",
+            "recommended": True,
+            "reason": "Kategorik outcome",
+        }
+
+    if DBF_PREFIX.match(col):
+        return {
+            "type": "categorical",
+            "role": "grouping",
+            "recommended": True,
+            "reason": "Demografik gruplandırma değişkeni",
+        }
+
+    if col_u in ("BOLUM", "CINSIYET", "GENDER", "DEPARTMENT", "DEPT"):
+        return {
+            "type": "categorical",
+            "role": "grouping",
+            "recommended": True,
+            "reason": "Ana demografik gruplandırma",
+        }
+
+    return None
 
 
-def _apply_toplam_outcome_to_variables(variables: Optional[List[Variable]]) -> None:
-    """_TOPLAM suffix'li değişkenler her zaman outcome/continuous."""
+def _apply_deterministic_to_variables(
+    variables: Optional[List[Variable]],
+    labels: Optional[Dict[str, str]] = None,
+) -> None:
+    """Gemini öncesi Variable nesnelerine kesin kuralları uygula."""
     if not variables:
         return
     for var in variables:
-        if TOPLAM_RE.search(var.name):
-            var.type = "continuous"
-            var.role = "outcome"
+        override = _deterministic_classify(var.name, var.label or (labels or {}).get(var.name, ""))
+        if override:
+            var.type = override["type"]
+            var.role = override["role"]
 
 
-def _apply_toplam_outcome_to_classify(
+def _apply_deterministic_classify_override(
     columns: List[str],
+    labels: Optional[Dict[str, str]],
     categorical: List[str],
     continuous: List[str],
     exclude: List[str],
     recommendations: Dict[str, dict],
 ) -> Tuple[List[str], List[str], List[str], Dict[str, dict]]:
+    """Gemini sonrası sınıflandırma listelerine kesin kuralları uygula."""
     cat = list(categorical)
     cont = list(continuous)
     excl = list(exclude)
     recs = dict(recommendations)
-    for col in _locked_outcome_column_names(columns):
+
+    for col in columns:
+        override = _deterministic_classify(col, (labels or {}).get(col, ""))
+        if not override:
+            continue
+
         if col in excl:
             excl.remove(col)
         if col in cat:
             cat.remove(col)
-        if col not in cont:
+        if col in cont:
+            cont.remove(col)
+
+        var_type = override["type"]
+        role = override["role"]
+        if var_type == "exclude" or role == "exclude":
+            excl.append(col)
+        elif var_type == "continuous":
             cont.append(col)
+        else:
+            cat.append(col)
+
         prev = recs.get(col, {})
         recs[col] = {
             **prev,
-            "role": "outcome",
-            "status": prev.get("status") or "recommended",
+            "role": role,
+            "status": "recommended" if override.get("recommended", True) else "optional",
             "ai_status": "approved",
-            "reason": prev.get("reason") or "Ölçek toplam puanı",
+            "reason": override.get("reason") or prev.get("reason") or "",
         }
+
     return cat, cont, excl, recs
 
 
@@ -980,7 +1048,7 @@ def run_classify(req: ClassifyRequest) -> dict:
         ]
         variables = normalize_variable_labels(variables)
         df = prepare_analysis_df(df, variables, req.missing_codes)
-        _apply_toplam_outcome_to_variables(variables)
+        _apply_deterministic_to_variables(variables, req.labels)
 
     result = run_variable_ai_pipeline(req, df=df, variables=variables)
 
@@ -991,8 +1059,9 @@ def run_classify(req: ClassifyRequest) -> dict:
                 detail="AI katmanı kullanılamıyor — manuel sınıflandırma kullanın",
             )
 
-    categorical, continuous, exclude, recommendations = _apply_toplam_outcome_to_classify(
+    categorical, continuous, exclude, recommendations = _apply_deterministic_classify_override(
         req.columns,
+        req.labels,
         result.get("categorical") or [],
         result.get("continuous") or [],
         result.get("exclude") or [],

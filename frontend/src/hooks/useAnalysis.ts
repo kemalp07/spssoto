@@ -94,8 +94,8 @@ export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
           const insertIdx = normIdx >= 0 ? normIdx + 1 : 2;
           results = [...results.slice(0, insertIdx), ...cbData.results, ...results.slice(insertIdx)];
         }
-      } catch {
-        /* cronbach batch optional */
+      } catch (err) {
+        console.error('[CRONBACH BATCH] HATA:', err);
       }
     }
 
