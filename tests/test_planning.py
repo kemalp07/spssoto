@@ -1,7 +1,7 @@
 """Test planlama katmanı birim testleri (LLM mock)."""
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -120,20 +120,16 @@ async def test_plan_tests_without_llm(planner_df, planner_vars):
 
 @pytest.mark.asyncio
 async def test_plan_tests_llm_mocked(planner_df, planner_vars):
-    mock_selection = {
-        "selected": [make_candidate_id("descriptive", ["neq_toplam"])],
-        "excluded": [],
-    }
     with patch(
-        "test_planner.select_tests_with_llm",
-        new=AsyncMock(return_value=(mock_selection, {"llm_calls": 1, "approx_input_tokens": 120, "approx_output_tokens": 40})),
+        "hypothesis_engine.translate_decision_reasons",
+        return_value=([], {"llm_calls": 1, "approx_input_tokens": 120, "approx_output_tokens": 40}),
     ):
         recommended, excluded, catalog, meta = await plan_tests(
             planner_df, planner_vars, "Tanımlayıcı analiz", use_ai=True,
         )
     assert meta["llm_calls"] == 1
     assert any(t["id"] == "descriptive" for t in recommended)
-    assert any(c["tier"] in (TIER_KESIN, TIER_ONERILEN) for c in catalog)
+    assert any(c.get("relevance_flag") for c in catalog)
 
 
 def test_no_grouping_by_grouping_chi_square(planner_df, planner_vars):

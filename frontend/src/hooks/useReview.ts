@@ -1,4 +1,5 @@
 import { apiBlob } from '../api/client';
+import { bulgularForApi, bulgularForWordExport } from '../lib/bulgu';
 import { buildReviewScaleList } from '../lib/reviewScales';
 import { notifyError } from '../lib/notify';
 import { scaleMatchingInline } from '../lib/scaleApi';
@@ -15,7 +16,7 @@ export async function runQualityCheck(): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         results: state.results.analysis,
-        bulgular: state.results.bulgular,
+        bulgular: bulgularForApi(state.results.bulgular),
         intro: state.results.meta.intro || '',
         hypotheses: state.hypotheses.approved.length ? state.hypotheses.approved : undefined,
         n_total: state.parsedData?.length || null,
@@ -82,14 +83,24 @@ export async function downloadWord(force = false): Promise<void> {
   );
 
   try {
+    const methodology = state.plan.catalog
+      .filter((t) => (t.cekirdek || t.enabled !== false) && t.decision_log)
+      .map((t) => ({
+        vars: t.vars,
+        decision_log: t.decision_log,
+        test: t.test,
+        id: t.id,
+      }));
+
     const blob = await apiBlob('/export/word', {
       results: state.results.analysis,
-      bulgular: state.results.bulgular,
+      bulgular: bulgularForWordExport(state.results.bulgular),
       intro: state.results.meta.intro || '',
       label_map: state.variables.userLabels,
       custom_labels: exportCustomLabels,
       custom_titles: state.review.customTitles,
       hypotheses: state.hypotheses.approved.length ? state.hypotheses.approved : undefined,
+      methodology: methodology.length ? methodology : undefined,
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

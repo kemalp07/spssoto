@@ -9,15 +9,10 @@ import pandas as pd
 
 from constants import (
     GEMINI_HYPOTHESIS_SPLIT_SYSTEM,
-    HYPOTHESIS_DECIDE_SYSTEM,
-    HYPOTHESIS_SINGLE_STAGE_SYSTEM,
     _TR_ASCII,
 )
-from data_cleaning import detect_scale_groups
 from llm_router import (
     claude_decide,
-    format_enrichment_block,
-    gemini_enrich_profile,
     gemini_json_task,
     has_claude,
     has_gemini_enrich,
@@ -27,7 +22,14 @@ from schemas import Variable
 
 MAX_HYPOTHESES = 8
 MAX_HYPOTHESIS_TOKENS = 1200
+MAX_REASON_TRANSLATE_TOKENS = 1500
 _LABEL_MAX = 40
+
+REASON_TRANSLATE_SYSTEM = """Sen akademik Türkçe editörüsün.
+Verilen istatistik test seçim gerekçelerini akıcı, tek cümlelik onay ekranı metnine çevir.
+Test seçimini, p değerlerini veya test adlarını DEĞİŞTİRME.
+SADECE JSON döndür: {"reasons": ["...", "..."]}
+Girdi sırasını koru; her girdi için bir çıktı üret."""
 
 SAMPLE_SECTION_TYPES = frozenset({
     "demographics",
@@ -206,6 +208,39 @@ def _compact_candidates_for_llm(candidates: List[dict]) -> List[dict]:
     ]
 
 
+async def translate_decision_reasons(
+    reasons: List[str],
+) -> Tuple[List[str], dict]:
+    """Kural motoru reason string'lerini toplu olarak akıcı Türkçeye çevirir."""
+    meta: dict = {"llm_calls": 0, "approx_input_tokens": 0, "approx_output_tokens": 0}
+    cleaned = [str(r or "").strip() for r in reasons]
+    if not cleaned or not any(cleaned):
+        return cleaned, meta
+    if not has_claude() and not has_gemini_enrich():
+        return cleaned, meta
+
+    payload = json.dumps({"reasons": cleaned}, ensure_ascii=False)
+    user = f"Gerekçeler:\n{payload}"
+    try:
+        if has_claude():
+            raw, decide_meta = claude_decide(
+                REASON_TRANSLATE_SYSTEM, user, max_tokens=MAX_REASON_TRANSLATE_TOKENS,
+            )
+            meta = merge_meta(meta, decide_meta)
+        else:
+            raw, decide_meta = gemini_json_task(
+                REASON_TRANSLATE_SYSTEM, user, MAX_REASON_TRANSLATE_TOKENS,
+            )
+            meta = merge_meta(meta, decide_meta)
+        data = _parse_json_object(raw)
+        translated = data.get("reasons") or []
+        if isinstance(translated, list) and len(translated) == len(cleaned):
+            return [str(t).strip() or cleaned[i] for i, t in enumerate(translated)], meta
+    except (RuntimeError, TypeError, ValueError):
+        pass
+    return cleaned, meta
+
+
 async def parse_research_questions(
     text: str,
     variables: List[Variable],
@@ -215,59 +250,77 @@ async def parse_research_questions(
     gemini_context: Optional[dict] = None,
     document_context: Optional[dict] = None,
 ) -> Tuple[dict, dict]:
-    """Gemini veri analizi → Claude karar verici (hipotez eşleşmesi)."""
-    from karar_verici import run_hypothesis_matching
-    from veri_analisti import run_veri_analisti
+    """Kural tabanlı puanlama + AI yalnızca gerekçe çevirisi."""
+    from test_planner import (
+        candidate_display_label,
+        partition_scored_candidates,
+        score_candidates_from_context,
+    )
 
     meta = {"llm_calls": 0, "approx_input_tokens": 0, "approx_output_tokens": 0}
-    text = (text or "").strip()
-    if not text or not uygun_candidates:
-        return {"hypotheses": [], "unmatched": []}, meta
+    if not uygun_candidates:
+        return {"hypotheses": [], "unmatched": [], "candidates": [], "low_priority": []}, meta
 
     labels = compact_labels(variables)
-    valid_ids = {c["id"] for c in uygun_candidates}
-    compact = _compact_candidates_for_llm(uygun_candidates)
+    scored = score_candidates_from_context(uygun_candidates, text or "", labels)
+    primary, accordion = partition_scored_candidates(scored)
 
-    g_ctx = gemini_context or {}
-    if not g_ctx and df is not None and has_gemini_enrich():
-        cols = [v.name for v in variables if v.included and v.name in df.columns]
-        samples = {
-            c: df[c].dropna().head(5).tolist()
-            for c in cols[:40]
+    reason_targets = primary + accordion
+    reasons = [
+        (c.get("decision_log") or {}).get("reason") or c.get("reason", "")
+        for c in reason_targets
+    ]
+    translated, tr_meta = await translate_decision_reasons(reasons)
+    meta = merge_meta(meta, tr_meta)
+    meta["claude_used"] = bool(has_claude() and tr_meta.get("llm_provider") == "anthropic")
+    meta["gemini_used"] = bool(
+        tr_meta.get("enrich_provider") or (not has_claude() and tr_meta.get("llm_calls"))
+    )
+    meta["scoring_used"] = True
+
+    for cand, tr_reason in zip(reason_targets, translated):
+        if tr_reason:
+            cand["reason"] = tr_reason
+            if cand.get("decision_log"):
+                cand["decision_log"] = {**cand["decision_log"], "reason": tr_reason}
+
+    preview = [
+        {
+            "id": c["id"],
+            "test": c.get("test"),
+            "label": candidate_display_label(c, variables),
+            "reason": c.get("reason", ""),
+            "relevance_flag": c.get("relevance_flag"),
+            "relevance_score": c.get("relevance_score", 0),
+            "vars": c.get("vars") or [],
+            "decision_log": c.get("decision_log"),
+            "enabled_default": c.get("relevance_flag") == "uygun",
         }
-        g_ctx, gem_meta = run_veri_analisti(
-            df, cols, samples,
-            {v.name: v.label for v in variables},
-            research_topic=text,
-            variables=variables,
-            document_context=document_context,
-        )
-        meta = merge_meta(meta, gem_meta)
+        for c in primary
+    ]
+    low_priority = [
+        {
+            "id": c["id"],
+            "test": c.get("test"),
+            "label": candidate_display_label(c, variables),
+            "reason": c.get("reason", ""),
+            "relevance_flag": c.get("relevance_flag"),
+            "relevance_score": c.get("relevance_score", 0),
+            "vars": c.get("vars") or [],
+            "decision_log": c.get("decision_log"),
+            "enabled_default": False,
+        }
+        for c in accordion
+    ]
 
-    if has_claude() or has_gemini_enrich():
-        parsed, decide_meta = run_hypothesis_matching(
-            text, compact, g_ctx, labels,
-        )
-        meta = merge_meta(meta, decide_meta)
-        meta["claude_used"] = bool(has_claude() and decide_meta.get("llm_provider") == "anthropic")
-        meta["gemini_used"] = bool(
-            decide_meta.get("enrich_provider") or (not has_claude() and decide_meta.get("llm_calls"))
-        )
-        hypotheses, unmatched = _normalize_hypothesis_response(parsed, valid_ids)
-        if hypotheses:
-            return {"hypotheses": hypotheses, "unmatched": unmatched}, meta
-
-    split_items: list = []
-    enrich_meta: dict = {}
-    if has_gemini_enrich():
-        split_items, enrich_meta = _gemini_split_questions(text, labels)
-        meta = merge_meta(meta, enrich_meta)
-
-    if split_items:
-        hypotheses, unmatched = _fallback_match_by_hints(split_items, uygun_candidates, labels)
-        return {"hypotheses": hypotheses, "unmatched": unmatched}, meta
-
-    return {"hypotheses": [], "unmatched": [text[:200]]}, meta
+    return {
+        "hypotheses": [],
+        "unmatched": [],
+        "candidates": preview,
+        "low_priority": low_priority,
+        "primary_count": len(preview),
+        "accordion_count": len(low_priority),
+    }, meta
 
 
 def apply_hypothesis_to_catalog(

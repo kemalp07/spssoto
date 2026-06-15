@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from hypothesis_engine import (
     apply_hypothesis_to_catalog,
     parse_research_questions,
+    translate_decision_reasons,
 )
 from layout_config import DEFAULT_LAYOUT_CONFIG
 from schemas import Variable
@@ -20,18 +21,6 @@ from test_planner import TIER_KESIN, TIER_ONERILEN, build_test_catalog, pick_kes
 from word_export import _group_results_for_export, _hypothesis_section_title
 
 _EMPTY_LLM_META = {"llm_calls": 0, "approx_input_tokens": 0, "approx_output_tokens": 0}
-
-
-@pytest.fixture
-def mock_hypothesis_llm():
-    """Claude/Gemini cagrilarini tamamen yerel mock'a al."""
-    with patch("hypothesis_engine.has_claude", return_value=True), \
-         patch("hypothesis_engine.has_gemini_enrich", return_value=False), \
-         patch("karar_verici.has_claude", return_value=True), \
-         patch("karar_verici.has_gemini_enrich", return_value=False), \
-         patch("hypothesis_engine.gemini_enrich_profile", return_value=({}, _EMPTY_LLM_META)), \
-         patch("hypothesis_engine._gemini_split_questions", return_value=([], _EMPTY_LLM_META)):
-        yield
 
 
 @pytest.fixture
@@ -59,12 +48,48 @@ def planner_vars() -> list:
 @pytest.fixture
 def uygun_candidates():
     return [
-        {"id": "descriptive", "test": "descriptive", "vars": ["oys", "gya", "sonuc"], "auto_flag": "uygun"},
-        {"id": "correlation", "test": "correlation", "vars": ["oys", "gya", "sonuc"], "auto_flag": "uygun"},
-        {"id": "ttest:cinsiyet:oys", "test": "ttest", "vars": ["cinsiyet", "oys"], "auto_flag": "uygun"},
-        {"id": "ttest:cinsiyet:gya", "test": "ttest", "vars": ["cinsiyet", "gya"], "auto_flag": "uygun"},
-        {"id": "ttest:cinsiyet:sonuc", "test": "ttest", "vars": ["cinsiyet", "sonuc"], "auto_flag": "uygun"},
-        {"id": "chi_square:cinsiyet:dummy", "test": "chi_square", "vars": ["cinsiyet", "dummy"], "auto_flag": "uygun"},
+        {
+            "id": "descriptive",
+            "test": "descriptive",
+            "vars": ["oys", "gya", "sonuc"],
+            "auto_flag": "uygun",
+            "decision_log": {"reason": "Tanımlayıcı istatistikler"},
+        },
+        {
+            "id": "correlation",
+            "test": "correlation",
+            "vars": ["oys", "gya", "sonuc"],
+            "auto_flag": "uygun",
+            "decision_log": {"reason": "Korelasyon analizi"},
+        },
+        {
+            "id": "ttest:cinsiyet:oys",
+            "test": "ttest",
+            "vars": ["cinsiyet", "oys"],
+            "auto_flag": "uygun",
+            "decision_log": {"reason": "t-testi seçildi"},
+        },
+        {
+            "id": "ttest:cinsiyet:gya",
+            "test": "ttest",
+            "vars": ["cinsiyet", "gya"],
+            "auto_flag": "uygun",
+            "decision_log": {"reason": "t-testi seçildi"},
+        },
+        {
+            "id": "ttest:cinsiyet:sonuc",
+            "test": "ttest",
+            "vars": ["cinsiyet", "sonuc"],
+            "auto_flag": "uygun",
+            "decision_log": {"reason": "t-testi seçildi"},
+        },
+        {
+            "id": "chi_square:cinsiyet:dummy",
+            "test": "chi_square",
+            "vars": ["cinsiyet", "dummy"],
+            "auto_flag": "uygun",
+            "decision_log": {"reason": "Ki-kare seçildi"},
+        },
     ]
 
 
@@ -118,46 +143,48 @@ def test_budget_prioritizes_hypothesis_linked(uygun_candidates, planner_vars):
 
 
 @pytest.mark.asyncio
-async def test_parse_research_questions_claude_mock(
-    mock_hypothesis_llm, uygun_candidates, planner_vars, planner_df,
-):
-    claude_response = (
-        '{"hypotheses":[{"id":"H1","label":"OYŞTÖ ile GYA ilişkisi","type":"iliski",'
-        '"candidate_ids":["correlation"],"var_hints":["oys","gya"]}],'
-        '"unmatched":["Regresyon sorusu"]}'
+async def test_parse_research_questions_scoring(uygun_candidates, planner_vars):
+    parsed, meta = await parse_research_questions(
+        "Cinsiyet ile OYŞTÖ arasında fark var mı?",
+        planner_vars,
+        uygun_candidates,
     )
-    with patch(
-        "karar_verici.claude_decide",
-        return_value=(claude_response, {"llm_calls": 1, "llm_provider": "anthropic"}),
-    ):
-        parsed, meta = await parse_research_questions(
-            "OYŞTÖ ile GYA arasında ilişki var mı?\nRegresyon sorusu",
-            planner_vars,
-            uygun_candidates,
-            df=planner_df,
-        )
-    assert len(parsed["hypotheses"]) == 1
-    assert parsed["hypotheses"][0]["candidate_ids"] == ["correlation"]
-    assert "Regresyon sorusu" in parsed["unmatched"]
-    assert meta.get("llm_calls", 0) >= 1
+    assert meta.get("scoring_used") is True
+    assert parsed["candidates"]
+    oys = next(
+        (c for c in parsed["candidates"] if c["id"] == "ttest:cinsiyet:oys"),
+        None,
+    )
+    assert oys is not None
+    assert oys.get("relevance_flag") == "uygun"
 
 
 @pytest.mark.asyncio
-async def test_parse_unmatched_only_when_no_match(
-    mock_hypothesis_llm, uygun_candidates, planner_vars,
-):
-    claude_response = '{"hypotheses":[],"unmatched":["Bilinmeyen soru"]}'
-    with patch(
-        "karar_verici.claude_decide",
-        return_value=(claude_response, {"llm_calls": 1, "llm_provider": "anthropic"}),
-    ):
-        parsed, _ = await parse_research_questions(
-            "Bilinmeyen soru",
-            planner_vars,
-            uygun_candidates,
+async def test_translate_decision_reasons_passthrough_without_llm():
+    reasons = ["Normallik sağlanamadı → Mann-Whitney seçildi"]
+    with patch("hypothesis_engine.has_claude", return_value=False), \
+         patch("hypothesis_engine.has_gemini_enrich", return_value=False):
+        translated, meta = await translate_decision_reasons(reasons)
+    assert translated == reasons
+    assert meta["llm_calls"] == 0
+
+
+@pytest.mark.asyncio
+async def test_translate_decision_reasons_claude_mock():
+    with patch("hypothesis_engine.has_claude", return_value=True), \
+         patch("hypothesis_engine.has_gemini_enrich", return_value=False), \
+         patch(
+             "hypothesis_engine.claude_decide",
+             return_value=(
+                 '{"reasons":["Shapiro-Wilk sonucu normallik varsayımını karşılamadığı için Mann-Whitney U testi seçilmiştir."]}',
+                 {"llm_calls": 1, "llm_provider": "anthropic"},
+             ),
+         ):
+        translated, meta = await translate_decision_reasons(
+            ["Shapiro-Wilk p=0.03 → Mann-Whitney seçildi"],
         )
-    assert parsed["hypotheses"] == []
-    assert parsed["unmatched"] == ["Bilinmeyen soru"]
+    assert "Mann-Whitney" in translated[0]
+    assert meta.get("llm_calls", 0) >= 1
 
 
 def test_word_export_grouping_sample_first():

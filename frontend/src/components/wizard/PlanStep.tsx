@@ -86,7 +86,7 @@ export function PlanStep({ onBack }: PlanStepProps) {
     <>
       <h2 className="wizardTitle">📊 Analiz Planı</h2>
       <p className="wizardSubtitle">
-        Yapılacak testleri onaylayın veya istediğinizi kapatın.
+        Önerilen testleri onaylayın; uygun olanlar seçili gelir, olası olanları işaretleyerek ekleyebilirsiniz.
       </p>
       {body}
       {catalog.length > 0 ? (

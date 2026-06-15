@@ -3,6 +3,7 @@
  * getAppState() in lib/storeAccess.ts; use useAppStore(selector) in components.
  */
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { STEPS } from '../lib/constants';
 import type {
   AnalysisResult,
@@ -55,6 +56,11 @@ import {
   shouldSkipTopicStep,
   topicFromEtikKurul,
 } from '../lib/wizardSkip';
+import {
+  BULGU_PERSIST_KEY,
+  clearBulguPersistStorage,
+  migratePersistedBulgular,
+} from '../lib/bulgu';
 
 function emptyVariableSlice(): VariableSlice {
   return {
@@ -248,8 +254,12 @@ export interface AppState {
   setAnalysisResults: (results: AnalysisResult[], meta?: Record<string, unknown>) => void;
   appendAnalysisResult: (result: AnalysisResult) => void;
   setBulgu: (index: number, text: string) => void;
+  lockBulgu: (index: number) => void;
+  unlockBulgu: (index: number) => void;
+  regenerateBulgu: (index: number, text: string) => void;
   setBulguSummary: (text: string) => void;
   clearBulgu: () => void;
+  clearPersistedAnalysis: (showToast?: boolean) => void;
   setAnalyzing: (v: boolean) => void;
   setBulguLoading: (v: boolean) => void;
   setQualityCheck: (result: QualityCheckResult | null) => void;
@@ -281,7 +291,9 @@ const initialState = {
   toasts: [] as ToastMessage[],
 };
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
   ...initialState,
 
   setFileData: (data, cols, fileInfo) =>
@@ -290,6 +302,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   applyFileUpload: (file, readResult) => {
     const data = readResult.data ?? [];
     if (!data.length) return;
+
+    const hadPrior = get().results.analysis.length > 0
+      || Object.keys(get().results.bulgular).length > 0;
+    clearBulguPersistStorage();
 
     const cols = readResult.columns ?? Object.keys(data[0]);
     const fileType = file.name.toLowerCase().endsWith('.sav')
@@ -336,16 +352,26 @@ export const useAppStore = create<AppState>((set, get) => ({
         detectedMissingCodes: { codes: [], columnMap: {}, global: null },
       },
       variables: emptyVariableSlice(),
+      results: emptyResultsSlice(),
+      plan: emptyPlanSlice(),
+      hypotheses: emptyHypothesesSlice(),
     });
+    if (hadPrior) get().showToast('Önceki analiz temizlendi', 'info');
   },
 
-  clearFileUpload: () =>
+  clearFileUpload: () => {
+    const hadPrior = get().results.analysis.length > 0
+      || Object.keys(get().results.bulgular).length > 0;
+    clearBulguPersistStorage();
     set({
       parsedData: [],
       columns: [],
       fileInfo: null,
       savMetadata: emptySavMetadata(),
-    }),
+      results: emptyResultsSlice(),
+    });
+    if (hadPrior) get().showToast('Önceki analiz temizlendi', 'info');
+  },
 
   setAnketFile: (file) =>
     set((s) => ({
@@ -825,18 +851,104 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
   setBulgu: (index, text) =>
-    set((s) => ({
-      results: {
-        ...s.results,
-        bulgular: { ...s.results.bulgular, [String(index)]: text },
-      },
-    })),
+    set((s) => {
+      const key = String(index);
+      const existing = s.results.bulgular[key];
+      if (existing?.isLocked) return s;
+      return {
+        results: {
+          ...s.results,
+          bulgular: {
+            ...s.results.bulgular,
+            [key]: {
+              text,
+              lockedAt: new Date().toISOString(),
+              version: existing?.version ?? 1,
+              isLocked: false,
+              previousVersions: existing?.previousVersions ?? [],
+            },
+          },
+        },
+      };
+    }),
+
+  lockBulgu: (index) =>
+    set((s) => {
+      const key = String(index);
+      const existing = s.results.bulgular[key];
+      if (!existing) return s;
+      return {
+        results: {
+          ...s.results,
+          bulgular: {
+            ...s.results.bulgular,
+            [key]: {
+              ...existing,
+              isLocked: true,
+              lockedAt: new Date().toISOString(),
+            },
+          },
+        },
+      };
+    }),
+
+  unlockBulgu: (index) =>
+    set((s) => {
+      const key = String(index);
+      const existing = s.results.bulgular[key];
+      if (!existing) return s;
+      return {
+        results: {
+          ...s.results,
+          bulgular: {
+            ...s.results.bulgular,
+            [key]: { ...existing, isLocked: false },
+          },
+        },
+      };
+    }),
+
+  regenerateBulgu: (index, text) =>
+    set((s) => {
+      const key = String(index);
+      const existing = s.results.bulgular[key];
+      if (existing?.isLocked) return s;
+      const previousVersions = existing?.text
+        ? [existing.text, ...(existing.previousVersions ?? [])].slice(0, 3)
+        : (existing?.previousVersions ?? []);
+      return {
+        results: {
+          ...s.results,
+          bulgular: {
+            ...s.results.bulgular,
+            [key]: {
+              text,
+              lockedAt: new Date().toISOString(),
+              version: (existing?.version ?? 0) + 1,
+              isLocked: false,
+              previousVersions,
+            },
+          },
+        },
+      };
+    }),
 
   setBulguSummary: (text) =>
     set((s) => ({ results: { ...s.results, bulguSummary: text } })),
 
   clearBulgu: () =>
     set((s) => ({ results: { ...s.results, bulgular: {}, bulguSummary: '' } })),
+
+  clearPersistedAnalysis: (showToast = true) => {
+    const hadPrior = get().results.analysis.length > 0
+      || Object.keys(get().results.bulgular).length > 0;
+    clearBulguPersistStorage();
+    set((s) => ({
+      results: emptyResultsSlice(),
+      review: { ...s.review, qualityCheck: null },
+    }));
+    if (showToast && hadPrior) get().showToast('Önceki analiz temizlendi', 'info');
+  },
 
   setAnalyzing: (v) =>
     set((s) => ({ results: { ...s.results, analyzing: v } })),
@@ -906,8 +1018,34 @@ export const useAppStore = create<AppState>((set, get) => ({
   dismissToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
-  reset: () => set({ ...initialState, wizard: emptyWizardSlice(), toasts: [] }),
-}));
+  reset: () => {
+    clearBulguPersistStorage();
+    set({ ...initialState, wizard: emptyWizardSlice(), toasts: [] });
+  },
+    }),
+    {
+      name: BULGU_PERSIST_KEY,
+      partialize: (state) => ({
+        results: {
+          analysis: state.results.analysis,
+          bulgular: state.results.bulgular,
+          bulguSummary: state.results.bulguSummary,
+          meta: state.results.meta,
+        },
+      }),
+      version: 1,
+      migrate: (persistedState) => {
+        const persisted = persistedState as { results?: { bulgular?: Record<string, unknown> } };
+        if (persisted?.results?.bulgular) {
+          persisted.results.bulgular = migratePersistedBulgular(
+            persisted.results.bulgular,
+          ) as unknown as Record<string, unknown>;
+        }
+        return persistedState as AppState;
+      },
+    },
+  ),
+);
 
 export function getCurrentStepId(): WizardStepId {
   const { wizard } = useAppStore.getState();

@@ -20,9 +20,10 @@ export function catalogFromLegacy(json: PlanTestsResponse): PlanCatalogItem[] {
 
 export function normalizeCatalogItem(t: PlanCatalogItem): PlanCatalogItem {
   const tier = t.tier ?? 'onerilen';
+  const relevance = t.relevance_flag ?? 'uygun';
   const enabledDefault = t.enabled_default !== undefined
     ? t.enabled_default
-    : tier !== 'onerilmeyen';
+    : (relevance === 'uygun' ? tier !== 'onerilmeyen' : false);
   return {
     ...t,
     tier,
@@ -33,6 +34,9 @@ export function normalizeCatalogItem(t: PlanCatalogItem): PlanCatalogItem {
     butce_disi: Boolean(t.butce_disi),
     merge_key: t.merge_key ?? t.id,
     hypothesis_id: t.hypothesis_id ?? null,
+    display_section: t.display_section ?? (relevance === 'düşük_öncelik' ? 'accordion' : 'primary'),
+    relevance_flag: relevance,
+    relevance_score: t.relevance_score ?? 0,
   };
 }
 
@@ -83,9 +87,11 @@ export function planTotalBarText(
   const onerilenCount = (meta.onerilen_count as number)
     ?? catalog.filter((t) => t.tier === 'onerilen').length;
   const budget = (meta.table_budget as number) ?? 12;
-  const aiNote = meta.ai_used && (meta.llm_calls as number) > 0
-    ? ' · Claude önerisi aktif'
-    : (meta.ai_used === false ? '' : '');
+  const aiNote = meta.scoring_used
+    ? ' · Kural tabanlı seçim'
+    : (meta.ai_used && (meta.llm_calls as number) > 0
+      ? ' · Claude önerisi aktif'
+      : (meta.ai_used === false ? '' : ''));
   const tok = meta.approx_input_tokens
     ? ` · ~${meta.approx_input_tokens} token`
     : '';

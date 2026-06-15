@@ -231,6 +231,46 @@ def _merge_label_maps(
 
 
 from hypothesis_engine import SAMPLE_SECTION_TYPES
+from test_planner import format_methodology_paragraph
+
+
+def _parse_bulgu_entry(entry) -> tuple:
+    """Bulgu metni ve kilitleme metadata'sını çıkar."""
+    if isinstance(entry, dict):
+        text = str(entry.get("text") or "").strip()
+        version = entry.get("version")
+        locked_at = entry.get("lockedAt") or entry.get("locked_at") or ""
+        try:
+            version_int = int(version) if version is not None else None
+        except (TypeError, ValueError):
+            version_int = None
+        return text, version_int, str(locked_at).strip() or None
+    text = str(entry or "").strip()
+    return text, None, None
+
+
+def _bulgu_caption(version: Optional[int], locked_at: Optional[str]) -> str:
+    if not version:
+        return ""
+    stamp = locked_at or ""
+    if "T" in stamp:
+        stamp = stamp.split("T", 1)[0]
+    return f"[Bulgu v{version} · {stamp}]" if stamp else f"[Bulgu v{version}]"
+
+
+def _add_bulgu_caption(doc: Document, version: Optional[int], locked_at: Optional[str]) -> None:
+    caption = _bulgu_caption(version, locked_at)
+    if not caption:
+        return
+    cap_p = doc.add_paragraph(caption)
+    cap_p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    try:
+        cap_p.style = "Caption"
+    except Exception:
+        for run in cap_p.runs:
+            run.italic = True
+            run.font.size = Pt(9)
+            run.font.color.rgb = RGBColor(100, 100, 100)
 
 
 def _is_sample_section_result(result: dict) -> bool:
@@ -309,6 +349,7 @@ def build_word_document(
     custom_labels: Optional[Dict[str, str]] = None,
     custom_titles: Optional[Dict[str, str]] = None,
     hypotheses: Optional[List[dict]] = None,
+    methodology: Optional[List[dict]] = None,
 ) -> bytes:
     doc = Document()
     style = doc.styles["Normal"]
@@ -321,6 +362,21 @@ def build_word_document(
     doc.add_paragraph()
 
     resolved_labels = _merge_label_maps(label_map, custom_labels)
+    if methodology:
+        doc.add_heading("İstatistiksel Yöntem", level=2)
+        doc.add_paragraph()
+        for entry in methodology:
+            if not isinstance(entry, dict):
+                continue
+            decision_log = entry.get("decision_log") or entry
+            vars_ = entry.get("vars") or []
+            paragraph_text = format_methodology_paragraph(
+                decision_log, resolved_labels, vars_,
+            )
+            if paragraph_text:
+                doc.add_paragraph(paragraph_text)
+        doc.add_paragraph()
+
     sections = _group_results_for_export(results, hypotheses)
 
     for section_title, items in sections:
@@ -336,12 +392,15 @@ def build_word_document(
             add_apa_table(doc, export_result, resolved_labels)
             doc.add_paragraph()
             key = str(i)
-            if bulgular and key in bulgular and bulgular[key]:
-                bulgu_p = doc.add_paragraph(bulgular[key])
-                bulgu_p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                bulgu_p.paragraph_format.first_line_indent = Pt(0)
-                for run in bulgu_p.runs:
-                    run.font.color.rgb = RGBColor(0, 0, 0)
+            if bulgular and key in bulgular:
+                bulgu_text, bulgu_version, bulgu_locked_at = _parse_bulgu_entry(bulgular[key])
+                if bulgu_text:
+                    bulgu_p = doc.add_paragraph(bulgu_text)
+                    bulgu_p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    bulgu_p.paragraph_format.first_line_indent = Pt(0)
+                    for run in bulgu_p.runs:
+                        run.font.color.rgb = RGBColor(0, 0, 0)
+                    _add_bulgu_caption(doc, bulgu_version, bulgu_locked_at)
             doc.add_paragraph()
             spacer = doc.add_paragraph()
             spacer.paragraph_format.space_after = Pt(12)

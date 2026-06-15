@@ -119,6 +119,7 @@ class WordExportRequest(BaseModel):
     custom_labels: Optional[Dict[str, str]] = None
     custom_titles: Optional[Dict[str, str]] = None
     hypotheses: Optional[List[dict]] = None
+    methodology: Optional[List[dict]] = None
 
 
 class QualityCheckRequest(BaseModel):

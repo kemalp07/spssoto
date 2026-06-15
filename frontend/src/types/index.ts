@@ -249,6 +249,10 @@ export interface PlanCatalogItem {
   hypothesis_id?: string | null;
   reason?: string;
   reason_code?: string;
+  relevance_flag?: 'uygun' | 'olası' | 'düşük_öncelik' | string;
+  relevance_score?: number;
+  display_section?: 'primary' | 'accordion' | string;
+  decision_log?: Record<string, unknown>;
 }
 
 export interface PlanTestsResponse {
@@ -328,12 +332,20 @@ export interface ReviewScaleEntry {
   okMatch: boolean;
 }
 
+export interface BulguEntry {
+  text: string;
+  lockedAt: string;
+  version: number;
+  isLocked: boolean;
+  previousVersions?: string[];
+}
+
 export interface ResultsSlice {
   analysis: AnalysisResult[];
   meta: Record<string, unknown>;
   missingData: MissingDataEntry[];
   cronbach: AnalysisResult[];
-  bulgular: Record<string, string>;
+  bulgular: Record<string, BulguEntry>;
   bulguSummary: string;
   analyzing: boolean;
   bulguLoading: boolean;

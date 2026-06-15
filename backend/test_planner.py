@@ -7,6 +7,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
+from scipy.stats import levene as scipy_levene
 
 from data_profile import profile_from_dataframe, profile_json
 from llm_router import (
@@ -68,6 +69,29 @@ _MAX_CHI_SQUARE = 5
 _MAX_FREQ_TABLES = 10
 _MAX_KESIN_FREQ = 6
 _MAX_KESIN_CHI = 3
+_VISIBLE_CANDIDATE_CAP = 12
+
+_COMPARISON_KEYWORDS = (
+    "fark", "karsilastir", "karsilastirma", "gruplar arasi", "gruplararas",
+)
+_CORRELATION_KEYWORDS = ("iliski", "korelasyon", "baglanti")
+_REGRESSION_KEYWORDS = ("yordama", "etki", "tahmin", "regresyon")
+_COMPARISON_TESTS = frozenset({
+    "ttest", "mann_whitney", "anova", "kruskal_wallis", "chi_square",
+})
+_CORRELATION_TESTS = frozenset({"correlation"})
+
+_TEST_DISPLAY_PLANNER = {
+    "ttest": "bağımsız örneklem t-testi",
+    "mann_whitney": "Mann-Whitney U testi",
+    "anova": "tek yönlü ANOVA",
+    "kruskal_wallis": "Kruskal-Wallis H testi",
+    "chi_square": "ki-kare bağımsızlık testi",
+    "correlation": "Pearson/Spearman korelasyon analizi",
+    "descriptive": "tanımlayıcı istatistikler",
+    "frequency": "frekans analizi",
+    "cronbach": "Cronbach alfa güvenirlik analizi",
+}
 
 TIER_KESIN = "kesin_onerilen"
 TIER_ONERILEN = "onerilen"
@@ -306,10 +330,285 @@ def _is_tautological_pair(v1: str, v2: str, scale_groups: Dict[str, List[str]]) 
     return one_total and one_item
 
 
+def _normality_test_key(norm_info: dict) -> str:
+    test = str(norm_info.get("test") or norm_info.get("method") or "").lower()
+    if "shapiro" in test:
+        return "shapiro-wilk"
+    return "lilliefors"
+
+
+def _outcome_measure_type(
+    var: Variable,
+    measure_map: Optional[Dict[str, str]] = None,
+) -> str:
+    measure = str((measure_map or {}).get(var.name, "")).lower()
+    if measure == "ordinal":
+        return "ordinal"
+    if measure == "nominal":
+        return "nominal"
+    if var.type == "categorical":
+        return "nominal"
+    return "continuous"
+
+
+def _levene_assessment(
+    df: pd.DataFrame,
+    grouping: str,
+    outcome: str,
+) -> Tuple[Optional[float], Optional[bool]]:
+    groups = df.groupby(grouping)[outcome].apply(
+        lambda x: pd.to_numeric(x, errors="coerce").dropna().tolist()
+    )
+    group_lists = [g for g in groups if len(g) >= 2]
+    if len(group_lists) < 2:
+        return None, None
+    _, lev_p = scipy_levene(*group_lists)
+    p_val = round(float(lev_p), 3)
+    return p_val, bool(p_val >= 0.05)
+
+
+def _planner_test_display(test: str, welch: bool = False) -> str:
+    base = _TEST_DISPLAY_PLANNER.get(test, test)
+    if welch and test == "ttest":
+        return "Welch düzeltmeli bağımsız örneklem t-testi"
+    if welch and test == "anova":
+        return "Welch ANOVA ve Games-Howell post-hoc testi"
+    return base
+
+
+def _build_comparison_decision_log(
+    df: pd.DataFrame,
+    grouping: Variable,
+    outcome: Variable,
+    norm_map: Dict[str, dict],
+    n_groups: int,
+    measure_map: Optional[Dict[str, str]] = None,
+) -> Tuple[str, dict]:
+    ov_type = _outcome_measure_type(outcome, measure_map)
+    outcome_label = _truncate_label(outcome.label or outcome.name)
+
+    if ov_type == "ordinal":
+        test = "mann_whitney" if n_groups == 2 else "kruskal_wallis"
+        display = _planner_test_display(test)
+        reason = (
+            f"{outcome_label} sıralı (ordinal) ölçüm düzeyindedir; "
+            f"parametrik varsayımlar uygulanmadı → {display} seçildi"
+        )
+        return test, {
+            "normality_test": None,
+            "normality_p": None,
+            "normality_passed": None,
+            "levene_p": None,
+            "levene_passed": None,
+            "selected_test": test,
+            "reason": reason,
+        }
+
+    norm_info = norm_map.get(outcome.name, {})
+    norm_key = _normality_test_key(norm_info)
+    norm_p = norm_info.get("p")
+    normal = bool(norm_info.get("normal", True))
+    is_parametric = bool(norm_info.get("is_parametric", normal))
+    p_str = f"{norm_p:.3f}" if norm_p is not None else "—"
+    norm_label = "Shapiro-Wilk" if norm_key == "shapiro-wilk" else "Lilliefors düzeltmeli KS"
+
+    if not is_parametric:
+        test = "mann_whitney" if n_groups == 2 else "kruskal_wallis"
+        display = _planner_test_display(test)
+        reason = (
+            f"{norm_label} p={p_str} < 0.05, normallik varsayımı sağlanamadı "
+            f"→ {display} seçildi"
+        )
+        return test, {
+            "normality_test": norm_key,
+            "normality_p": norm_p,
+            "normality_passed": False,
+            "levene_p": None,
+            "levene_passed": None,
+            "selected_test": test,
+            "reason": reason,
+        }
+
+    levene_p, levene_passed = _levene_assessment(df, grouping.name, outcome.name)
+    welch = levene_passed is False
+    test = "ttest" if n_groups == 2 else "anova"
+    display = _planner_test_display(test, welch=welch)
+    reason = (
+        f"{norm_label} p={p_str} ≥ 0.05, normallik sağlandı"
+    )
+    if levene_p is not None:
+        lev_cmp = "≥" if levene_passed else "<"
+        reason += (
+            f"; Levene p={levene_p:.3f} {lev_cmp} 0.05, "
+            f"varyans homojenliği {'sağlandı' if levene_passed else 'sağlanamadı'}"
+        )
+    reason += f" → {display} seçildi"
+    return test, {
+        "normality_test": norm_key,
+        "normality_p": norm_p,
+        "normality_passed": True,
+        "levene_p": levene_p,
+        "levene_passed": levene_passed,
+        "selected_test": test,
+        "welch": welch,
+        "reason": reason,
+    }
+
+
+def _build_chi_square_decision_log(outcome: Variable) -> dict:
+    outcome_label = _truncate_label(outcome.label or outcome.name)
+    return {
+        "normality_test": None,
+        "normality_p": None,
+        "normality_passed": None,
+        "levene_p": None,
+        "levene_passed": None,
+        "selected_test": "chi_square",
+        "reason": (
+            f"{outcome_label} nominal kategorik bağımlı değişkendir "
+            f"→ ki-kare bağımsızlık testi seçildi"
+        ),
+    }
+
+
+def format_methodology_paragraph(
+    decision_log: dict,
+    label_map: Optional[Dict[str, str]] = None,
+    vars_: Optional[List[str]] = None,
+) -> str:
+    """APA 7 uyumlu metodoloji paragrafı — decision_log'dan deterministik üretim."""
+    if not decision_log:
+        return ""
+    label_map = label_map or {}
+    var_label = ""
+    if vars_ and len(vars_) >= 2:
+        var_label = label_map.get(vars_[1], vars_[1])
+    elif vars_:
+        var_label = label_map.get(vars_[0], vars_[0])
+
+    parts: List[str] = []
+    norm_test = decision_log.get("normality_test")
+    if norm_test and var_label:
+        norm_name = "Shapiro-Wilk" if norm_test == "shapiro-wilk" else "Lilliefors düzeltmeli KS"
+        norm_p = decision_log.get("normality_p")
+        p_disp = f"{norm_p:.3f}" if norm_p is not None else "—"
+        parts.append(
+            f"{var_label} için normallik {norm_name} testi ile incelendi (p = {p_disp})"
+        )
+        if decision_log.get("normality_passed") is True:
+            parts.append("Normallik varsayımı sağlandı")
+        elif decision_log.get("normality_passed") is False:
+            parts.append("Normallik varsayımı sağlanamadı")
+
+    levene_p = decision_log.get("levene_p")
+    if levene_p is not None:
+        if decision_log.get("levene_passed"):
+            parts.append(
+                f"Varyans homojenliği Levene testi ile kontrol edildi (p = {levene_p:.3f})"
+            )
+        else:
+            parts.append(
+                f"Varyans homojenliği Levene testi ile kontrol edildi (p = {levene_p:.3f}); "
+                f"homojenlik varsayımı sağlanamadı"
+            )
+
+    selected = decision_log.get("selected_test", "")
+    welch = decision_log.get("welch")
+    test_name = _planner_test_display(str(selected), welch=bool(welch))
+    if not parts:
+        reason = str(decision_log.get("reason") or "").strip()
+        if reason:
+            return reason if reason.endswith(".") else f"{reason}."
+        return f"Bu nedenle {test_name} uygulandı."
+
+    text = ". ".join(parts) + f". Bu nedenle {test_name} uygulandı."
+    return text if text.endswith(".") else f"{text}."
+
+
+def score_candidates_from_context(
+    candidates: List[dict],
+    etik_text: str,
+    variable_labels: Dict[str, str],
+) -> List[dict]:
+    """Kural tabanlı aday puanlama — AI yerine etik belge bağlamı."""
+    etik_blob = _norm_var(etik_text or "")
+    no_context = not etik_blob.strip()
+
+    scored: List[dict] = []
+    for cand in candidates:
+        item = dict(cand)
+        score = 0
+        vars_ = item.get("vars") or []
+        test = str(item.get("test") or "")
+
+        if no_context:
+            score = 2
+        else:
+            for var_name in vars_:
+                name_norm = _norm_var(var_name)
+                label_norm = _norm_var(variable_labels.get(var_name, var_name))
+                if name_norm and name_norm in etik_blob:
+                    score += 2
+                    break
+                if label_norm and len(label_norm) >= 2 and label_norm in etik_blob:
+                    score += 2
+                    break
+
+            if any(k in etik_blob for k in _COMPARISON_KEYWORDS) and test in _COMPARISON_TESTS:
+                score += 1
+            if any(k in etik_blob for k in _CORRELATION_KEYWORDS) and test in _CORRELATION_TESTS:
+                score += 1
+            if any(k in etik_blob for k in _REGRESSION_KEYWORDS):
+                score += 1
+
+        if score >= 2:
+            relevance_flag = "uygun"
+        elif score == 1:
+            relevance_flag = "olası"
+        else:
+            relevance_flag = "düşük_öncelik"
+
+        item["relevance_score"] = score
+        item["relevance_flag"] = relevance_flag
+        scored.append(item)
+
+    return scored
+
+
+def partition_scored_candidates(
+    scored: List[dict],
+    cap: int = _VISIBLE_CANDIDATE_CAP,
+) -> Tuple[List[dict], List[dict]]:
+    """Birincil (max cap) ve accordion (düşük öncelik + taşan) adayları ayır."""
+    ranked = sorted(
+        [c for c in scored if c.get("relevance_flag") in ("uygun", "olası")],
+        key=lambda c: (-int(c.get("relevance_score", 0)), str(c.get("seq", ""))),
+    )
+    primary = ranked[:cap]
+    primary_ids = {c["id"] for c in primary}
+    accordion = [
+        c for c in ranked[cap:]
+        if c["id"] not in primary_ids
+    ]
+    accordion.extend(
+        c for c in scored
+        if c.get("relevance_flag") == "düşük_öncelik" and c["id"] not in primary_ids
+    )
+    seen: set = set()
+    deduped_accordion: List[dict] = []
+    for c in accordion:
+        if c["id"] in seen:
+            continue
+        seen.add(c["id"])
+        deduped_accordion.append(c)
+    return primary, deduped_accordion
+
+
 def build_candidate_tests(
     df: pd.DataFrame,
     variables: List[Variable],
     norm_map: Optional[Dict[str, dict]] = None,
+    variable_measure: Optional[Dict[str, str]] = None,
 ) -> List[dict]:
     norm_map = norm_map or {}
     active = [v for v in variables if v.included]
@@ -370,11 +669,14 @@ def build_candidate_tests(
                 break
             if not chi_square_allowed(cv, ov, col_names, scale_groups):
                 continue
+            chi_log = _build_chi_square_decision_log(ov)
             add(
                 "chi_square",
                 [cv.name, ov.name],
                 n_groups=int(df[cv.name].dropna().nunique()),
                 min_group_n=_min_group_n(df, cv.name),
+                decision_log=chi_log,
+                reason=chi_log["reason"],
             )
             chi_count += 1
         if chi_count >= _MAX_CHI_SQUARE:
@@ -403,27 +705,43 @@ def build_candidate_tests(
             continue
         min_n = _min_group_n(df, cv.name)
         for sv in cont_targets:
-            parametric = norm_map.get(sv.name, {}).get("is_parametric", True)
-            if n_groups == 2:
-                test = "ttest" if parametric else "mann_whitney"
-            else:
-                test = "anova" if parametric else "kruskal_wallis"
+            test, decision_log = _build_comparison_decision_log(
+                df, cv, sv, norm_map, n_groups, variable_measure,
+            )
             add(
                 test,
                 [cv.name, sv.name],
                 n_groups=n_groups,
                 min_group_n=min_n,
-                parametric=bool(parametric),
+                parametric=test in ("ttest", "anova"),
+                decision_log=decision_log,
+                reason=decision_log.get("reason", ""),
             )
 
     corr_vars = [v for v in outcome_cont if is_numeric_continuous(df, v, norm_map)]
     if len(corr_vars) >= 2:
+        parametric = all(
+            norm_map.get(v.name, {}).get("is_parametric", True) for v in corr_vars
+        )
+        corr_log = {
+            "normality_test": None,
+            "normality_p": None,
+            "normality_passed": None,
+            "levene_p": None,
+            "levene_passed": None,
+            "selected_test": "correlation",
+            "reason": (
+                "Sürekli değişkenler arası ilişki için "
+                + ("Pearson" if parametric else "Spearman")
+                + " korelasyon analizi seçildi"
+            ),
+        }
         add(
             "correlation",
             [v.name for v in corr_vars],
-            parametric=all(
-                norm_map.get(v.name, {}).get("is_parametric", True) for v in corr_vars
-            ),
+            parametric=parametric,
+            decision_log=corr_log,
+            reason=corr_log["reason"],
         )
 
     for cols in scale_groups.values():
@@ -799,6 +1117,8 @@ def build_test_catalog(
     selected_ids: set,
     excluded: List[dict],
     variables: List[Variable],
+    primary_ids: Optional[set] = None,
+    accordion_ids: Optional[set] = None,
 ) -> List[dict]:
     """Kurallara uygun tüm adaylar — 3 katman: kesin / önerilen / önerilmeyen."""
     kesin_ids = set(pick_kesin_core_ids(uygun, variables))
@@ -807,23 +1127,34 @@ def build_test_catalog(
         for e in excluded
         if str(e.get("reason_code") or "") not in RULE_EXCLUDED_CODES
     }
+    primary_ids = primary_ids or set()
+    accordion_ids = accordion_ids or set()
     catalog: List[dict] = []
     for c in uygun:
         cid = c["id"]
         exc = reason_by_id.get(cid, {})
+        relevance = c.get("relevance_flag", "uygun")
+        in_accordion = cid in accordion_ids or relevance == "düşük_öncelik"
+
         if cid in kesin_ids:
             tier = TIER_KESIN
             enabled_default = True
-            reason, reason_code = "", ""
+            reason, reason_code = c.get("reason", ""), ""
         elif cid in selected_ids:
             tier = TIER_ONERILEN
-            enabled_default = True
-            reason, reason_code = "", ""
+            enabled_default = relevance == "uygun"
+            reason = c.get("reason") or ""
+            reason_code = ""
+        elif in_accordion:
+            tier = TIER_ONERILMEYEN
+            enabled_default = False
+            reason_code = "dusuk_oncelik"
+            reason = c.get("reason") or format_reason(reason_code, c, variables)
         else:
             tier = TIER_ONERILMEYEN
             enabled_default = False
             reason_code = str(exc.get("reason_code") or "dusuk_oncelik")
-            reason = exc.get("reason") or format_reason(reason_code, c, variables)
+            reason = c.get("reason") or exc.get("reason") or format_reason(reason_code, c, variables)
 
         catalog.append({
             **c,
@@ -834,6 +1165,9 @@ def build_test_catalog(
             "reason": reason,
             "reason_code": reason_code,
             "selected": tier != TIER_ONERILMEYEN,
+            "display_section": "accordion" if in_accordion and cid not in kesin_ids else "primary",
+            "relevance_flag": relevance,
+            "relevance_score": c.get("relevance_score", 0),
         })
     return catalog
 
@@ -846,34 +1180,46 @@ async def plan_tests(
     profile: str = "standart",
     layout_config: Optional[LayoutConfig] = None,
     hypotheses: Optional[List[dict]] = None,
+    variable_measure: Optional[Dict[str, str]] = None,
 ) -> Tuple[List[dict], List[dict], List[dict], dict]:
     """Önerilen ve elenen test listeleri + meta döndürür."""
+    from hypothesis_engine import translate_decision_reasons
+
     norm_map = build_norm_map(df, variables)
-    candidates = build_candidate_tests(df, variables, norm_map)
+    candidates = build_candidate_tests(df, variables, norm_map, variable_measure)
     candidates = apply_deterministic_flags(df, variables, candidates)
     by_id = {c["id"]: c for c in candidates}
 
     auto_excluded = [c for c in candidates if c["auto_flag"] != "uygun"]
     uygun = [c for c in candidates if c["auto_flag"] == "uygun"]
 
+    labels = _compact_labels(variables)
+    scored = score_candidates_from_context(uygun, research_aim, labels)
+    primary_scored, accordion_scored = partition_scored_candidates(scored)
+    primary_ids = {c["id"] for c in primary_scored}
+    accordion_ids = {c["id"] for c in accordion_scored}
+
     llm_meta = {"llm_calls": 0, "approx_input_tokens": 0, "approx_output_tokens": 0}
-    llm_selected: List[str] = []
-    llm_excluded: List[dict] = []
+    if use_ai and scored:
+        reason_targets = primary_scored + accordion_scored
+        reasons = [
+            (c.get("decision_log") or {}).get("reason") or c.get("reason", "")
+            for c in reason_targets
+        ]
+        translated, llm_meta = await translate_decision_reasons(reasons)
+        for cand, tr_reason in zip(reason_targets, translated):
+            if tr_reason:
+                cand["reason"] = tr_reason
+                if cand.get("decision_log"):
+                    cand["decision_log"] = {**cand["decision_log"], "reason": tr_reason}
 
-    if use_ai and research_aim.strip():
-        selection, llm_meta = await select_tests_with_llm(
-            uygun, research_aim, _compact_labels(variables), df, variables,
-        )
-        llm_selected = selection.get("selected") or []
-        llm_excluded = selection.get("excluded") or []
-    else:
-        llm_selected = pick_thesis_core_ids(uygun, variables)
-
-    selected_ids = set(llm_selected)
+    kesin_ids = set(pick_kesin_core_ids(uygun, variables))
+    selected_ids = {
+        c["id"] for c in scored
+        if c.get("relevance_flag") == "uygun" or c["id"] in kesin_ids
+    }
     if not selected_ids and uygun:
         selected_ids = set(pick_thesis_core_ids(uygun, variables))
-    if use_ai and research_aim.strip():
-        selected_ids = _cap_selection(selected_ids, uygun, variables)
 
     recommended: List[dict] = []
     excluded: List[dict] = []
@@ -887,40 +1233,29 @@ async def plan_tests(
             "label": candidate_display_label(c, variables),
         })
 
-    for item in llm_excluded:
-        cid = item["id"]
-        cand = by_id.get(cid)
-        if not cand or cand["auto_flag"] != "uygun":
-            continue
-        code = item["reason_code"]
-        excluded.append({
-            **cand,
-            "reason_code": code,
-            "reason": format_reason(code, cand, variables),
-            "selected": False,
-            "label": candidate_display_label(cand, variables),
-        })
-        selected_ids.discard(cid)
-
+    scored_by_id = {c["id"]: c for c in scored}
     for c in uygun:
-        if c["id"] in selected_ids:
+        enriched = scored_by_id.get(c["id"], c)
+        if enriched["id"] in selected_ids:
             recommended.append({
-                **c,
+                **enriched,
                 "selected": True,
                 "recommended": True,
-                "label": candidate_display_label(c, variables),
+                "label": candidate_display_label(enriched, variables),
                 "count": 1,
             })
-        elif not any(e["id"] == c["id"] for e in excluded):
+        elif not any(e["id"] == enriched["id"] for e in excluded):
             excluded.append({
-                **c,
+                **enriched,
                 "reason_code": "dusuk_oncelik",
-                "reason": format_reason("dusuk_oncelik", c, variables),
+                "reason": enriched.get("reason") or format_reason("dusuk_oncelik", enriched, variables),
                 "selected": False,
-                "label": candidate_display_label(c, variables),
+                "label": candidate_display_label(enriched, variables),
             })
 
-    catalog = build_test_catalog(uygun, selected_ids, excluded, variables)
+    catalog = build_test_catalog(
+        scored, selected_ids, excluded, variables, primary_ids, accordion_ids,
+    )
     cfg = layout_config or DEFAULT_LAYOUT_CONFIG
     core_ids = core_candidate_ids(uygun)
     enrich_catalog_metadata(catalog, cfg, core_ids)
@@ -948,7 +1283,10 @@ async def plan_tests(
             1 for e in excluded if str(e.get("reason_code") or "") in RULE_EXCLUDED_CODES
         ),
         "catalog_count": len(catalog),
-        "ai_used": bool(use_ai and research_aim.strip()),
+        "ai_used": bool(use_ai and scored),
+        "scoring_used": True,
+        "primary_visible_count": len(primary_scored),
+        "accordion_count": len(accordion_scored),
         "profile": profile if profile in PLAN_PROFILES else "standart",
         "table_budget": PLAN_PROFILES.get(profile, PLAN_PROFILES["standart"]),
         "estimated_tables": estimated_tables,

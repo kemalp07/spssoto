@@ -192,6 +192,7 @@ async def parse_hypotheses_endpoint(request: Request, req: ParseHypothesesReques
         "unmatched": parsed.get("unmatched") or [],
         "unmatched_display": unmatched_display,
         "candidates": candidates,
+        "low_priority": parsed.get("low_priority") or [],
         "meta": meta,
     })
 
@@ -631,6 +632,7 @@ async def export_word(req: WordExportRequest):
             req.custom_labels,
             req.custom_titles,
             req.hypotheses,
+            req.methodology,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Word dosyası oluşturulamadı: {str(e)}")

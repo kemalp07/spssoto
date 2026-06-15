@@ -96,7 +96,7 @@ function ResultsStepContent({ onBack }: ResultsStepProps) {
         </div>
       ) : (
         results.map((r, i) => (
-          <ResultCard key={i} result={r} bulgu={bulgular[String(i)]} />
+          <ResultCard key={i} result={r} index={i} bulgu={bulgular[String(i)]} />
         ))
       )}
 

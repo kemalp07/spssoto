@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   countHypothesisTables,
   estimatePlanTableCount,
@@ -28,6 +29,7 @@ function PlanCard({
   const locked = item.cekirdek;
   const disabled = !locked && item.enabled === false;
   const highlight = activeFilter && item.hypothesis_id === activeFilter;
+  const relevance = item.relevance_flag ?? 'uygun';
 
   return (
     <div
@@ -35,7 +37,6 @@ function PlanCard({
         'planCard',
         item.cekirdek ? 'planCardCore' : '',
         disabled ? 'disabled' : '',
-        item.tier === 'onerilmeyen' ? 'planCardExcluded' : '',
         highlight ? 'planCardHypHighlight' : '',
       ].filter(Boolean).join(' ')}
     >
@@ -51,10 +52,10 @@ function PlanCard({
       <div className="flex1">
         <div className="planLabel">{item.label || item.id}</div>
         <div className="planDetail">
-          {(item.test || '') + (item.vars?.length ? ` · ${item.vars.join(', ')}` : '')}
+          {(item.test || '') + (item.vars?.length ? ` · ${item.vars.join(' × ')}` : '')}
         </div>
         {item.reason ? (
-          <div className="planDetail planDetailWarn">{item.reason}</div>
+          <div className="planDetail textMuted">{item.reason}</div>
         ) : null}
       </div>
       {item.hypothesis_id ? (
@@ -64,56 +65,12 @@ function PlanCard({
         <span className="planBadgeKesin">Çekirdek</span>
       ) : item.butce_disi ? (
         <span className="planBadgeBudget">Bütçe dışı</span>
-      ) : item.tier === 'kesin_onerilen' ? (
-        <span className="planBadgeKesin">⭐ Kesin</span>
-      ) : item.tier === 'onerilen' ? (
-        <span className="planBadgeRec">✅ Önerilen</span>
-      ) : (
-        <span className="planBadgeNot">○ Düşük öncelik</span>
-      )}
+      ) : relevance === 'uygun' ? (
+        <span className="planBadgeRec">Uygun</span>
+      ) : relevance === 'olası' ? (
+        <span className="planBadgeNot">Olası</span>
+      ) : null}
     </div>
-  );
-}
-
-function CatalogSection({
-  title,
-  hint,
-  tier,
-  catalog,
-  activeFilter,
-  onToggle,
-  onToggleTier,
-}: {
-  title: string;
-  hint?: string;
-  tier: string;
-  catalog: (PlanCatalogItem & { catalogIndex: number })[];
-  activeFilter: string | null;
-  onToggle: (index: number, enabled: boolean) => void;
-  onToggleTier: (tier: string, enabled: boolean) => void;
-}) {
-  const items = catalog.filter((t) => t.tier === tier && !t.cekirdek);
-  if (!items.length) return null;
-  return (
-    <>
-      <div className="planSectionHeader">
-        <div className="planSectionLabel">{title} ({items.length})</div>
-        <div className="planSectionActions">
-          <button type="button" onClick={() => onToggleTier(tier, true)}>Tümünü seç</button>
-          <button type="button" onClick={() => onToggleTier(tier, false)}>Temizle</button>
-        </div>
-      </div>
-      {hint ? <p className="textXs textMuted mb1">{hint}</p> : null}
-      {items.map((t) => (
-        <PlanCard
-          key={t.catalogIndex}
-          item={t}
-          index={t.catalogIndex}
-          activeFilter={activeFilter}
-          onToggle={onToggle}
-        />
-      ))}
-    </>
   );
 }
 
@@ -128,9 +85,16 @@ export function PlanCatalogView({
   const profile = useAppStore((s) => s.plan.profile);
   const activeFilter = useAppStore((s) => s.hypotheses.activeFilter);
   const approved = useAppStore((s) => s.hypotheses.approved);
+  const [accordionOpen, setAccordionOpen] = useState(false);
 
   const indexed = catalog.map((t, i) => ({ ...t, catalogIndex: i }));
   const core = indexed.filter((t) => t.cekirdek);
+  const primary = indexed.filter(
+    (t) => !t.cekirdek && (t.display_section ?? 'primary') !== 'accordion',
+  );
+  const accordion = indexed.filter(
+    (t) => !t.cekirdek && (t.display_section === 'accordion' || t.relevance_flag === 'düşük_öncelik'),
+  );
   const tableCount = estimatePlanTableCount(catalog);
 
   return (
@@ -198,33 +162,53 @@ export function PlanCatalogView({
         </>
       ) : null}
 
-      <CatalogSection
-        title="Kesin önerilen"
-        hint="Varsayılan seçili — tez için temel paket"
-        tier="kesin_onerilen"
-        catalog={indexed}
-        activeFilter={activeFilter}
-        onToggle={onToggleItem}
-        onToggleTier={onToggleTier}
-      />
-      <CatalogSection
-        title="Önerilen"
-        hint="Araştırma amacına uygun ek testler"
-        tier="onerilen"
-        catalog={indexed}
-        activeFilter={activeFilter}
-        onToggle={onToggleItem}
-        onToggleTier={onToggleTier}
-      />
-      <CatalogSection
-        title="Önerilmeyen"
-        hint="İsterseniz işaretleyip analize dahil edin"
-        tier="onerilmeyen"
-        catalog={indexed}
-        activeFilter={activeFilter}
-        onToggle={onToggleItem}
-        onToggleTier={onToggleTier}
-      />
+      {primary.length ? (
+        <>
+          <div className="planSectionHeader">
+            <div className="planSectionLabel">Önerilen analizler ({primary.length})</div>
+            <div className="planSectionActions">
+              <button type="button" onClick={() => onToggleTier('onerilen', true)}>Tümünü seç</button>
+              <button type="button" onClick={() => onToggleTier('onerilen', false)}>Temizle</button>
+            </div>
+          </div>
+          <p className="textXs textMuted mb1">
+            Uygun analizler varsayılan seçili; olası analizleri işaretleyerek ekleyebilirsiniz.
+          </p>
+          {primary.map((t) => (
+            <PlanCard
+              key={t.catalogIndex}
+              item={t}
+              index={t.catalogIndex}
+              activeFilter={activeFilter}
+              onToggle={onToggleItem}
+            />
+          ))}
+        </>
+      ) : null}
+
+      {accordion.length ? (
+        <details
+          className="planAccordion mt2"
+          open={accordionOpen}
+          onToggle={(e) => setAccordionOpen((e.target as HTMLDetailsElement).open)}
+        >
+          <summary className="planSectionLabel" style={{ cursor: 'pointer' }}>
+            Diğer analizler ({accordion.length})
+          </summary>
+          <p className="textXs textMuted mb1">
+            Düşük öncelikli veya etik belgeyle zayıf eşleşen adaylar.
+          </p>
+          {accordion.map((t) => (
+            <PlanCard
+              key={t.catalogIndex}
+              item={t}
+              index={t.catalogIndex}
+              activeFilter={activeFilter}
+              onToggle={onToggleItem}
+            />
+          ))}
+        </details>
+      ) : null}
 
       <div className="planNote">
         📈 <strong>Regresyon:</strong> Sonuçlar adımında yordayıcı ve sonuç seçerek çoklu doğrusal regresyon çalıştırabilirsiniz.
