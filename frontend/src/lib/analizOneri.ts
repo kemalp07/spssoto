@@ -25,11 +25,17 @@ export function anketTextFromContext(anket?: AnketParseResult | null): string {
 }
 
 export function etikTextFromContext(etik?: EtikKurulParseResult | null): string {
-  if (!etik || etik.parse_error) return '';
+  if (!etik) return '';
   const parts: string[] = [];
   if (etik.aim?.trim()) parts.push(`Amaç: ${etik.aim.trim()}`);
   for (const h of etik.hypotheses ?? []) {
     if (h?.trim()) parts.push(h.trim());
+  }
+  if (etik.scale_names?.length) {
+    parts.push(`Ölçekler: ${etik.scale_names.join(', ')}`);
+  }
+  if (!parts.length) {
+    return 'Etik kurul belgesi yüklendi ancak metin çıkarılamadı.';
   }
   return parts.join('\n');
 }

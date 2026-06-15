@@ -45,6 +45,12 @@ SADECE JSON döndür:
   "gruplama_degiskenleri": ["bolum", "dbf_cinsiyet", "dbf_sk"],
   "outcome_degiskenleri": ["OYS_TOPLAM", "NEQ_TOPLAM", "SBITO_TOPLAM"]
 }
+
+ÖNEMLİ: Anket veya etik kurul metni sınırlı olsa bile,
+sütun adlarından ve etiketlerden çıkarım yap.
+_TOPLAM suffix'li sütunlar = ölçek toplam puanı → outcome değişkeni
+dbf_ prefix'li sütunlar = demografik değişken → gruplama
+Minimum bilgiyle bile makul bir plan öner.
 """
 
 

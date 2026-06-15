@@ -407,9 +407,10 @@ def parse_etik_kurul_docx(file_bytes: bytes) -> dict:
     try:
         lines = _docx_paragraphs(file_bytes)
         if not lines:
-            return {"parse_error": True}
+            return {"parse_error": True, "raw_text": ""}
 
         blob = "\n".join(lines)
+        raw_text = blob[:4000]
         aim = _extract_aim(lines)
         hypotheses = _extract_hypotheses(lines)
 
@@ -422,7 +423,7 @@ def parse_etik_kurul_docx(file_bytes: bytes) -> dict:
         date = _extract_date(blob)
 
         if not any([aim, hypotheses, n_val, scale_names, institution, date]):
-            return {"parse_error": True}
+            return {"parse_error": True, "raw_text": raw_text}
 
         return {
             "aim": aim,
@@ -431,9 +432,10 @@ def parse_etik_kurul_docx(file_bytes: bytes) -> dict:
             "scale_names": scale_names or None,
             "institution": institution or None,
             "date": date or None,
+            "raw_text": raw_text,
         }
     except Exception:
-        return {"parse_error": True}
+        return {"parse_error": True, "raw_text": ""}
 
 
 def extract_scale_test_requirements(

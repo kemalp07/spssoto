@@ -232,6 +232,7 @@ export interface EtikKurulParseResult {
   hypotheses?: string[];
   aim?: string;
   scale_names?: string[];
+  raw_text?: string;
 }
 
 export interface UploadDocumentsResponse {
