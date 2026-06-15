@@ -308,21 +308,21 @@ def table_frequency(
         for cat in _ordered_category_labels(value_labels):
             if cat not in counts.index:
                 continue
-            cnt = int(counts[cat])
+            cnt = _safe_int(counts[cat])
             rows.append([label, cat, str(cnt), ""])
             seen_cats.add(cat)
 
     for val, cnt in counts.items():
         cat = format_category_value(val)
         if cat == "Kayıp Veri":
-            missing_n += int(cnt)
+            missing_n += _safe_int(cnt)
             continue
         if cat in seen_cats:
             continue
-        rows.append([label, cat, str(int(cnt)), ""])
-    valid_n = sum(int(cnt) for val, cnt in counts.items() if format_category_value(val) != "Kayıp Veri")
+        rows.append([label, cat, str(_safe_int(cnt)), ""])
+    valid_n = sum(_safe_int(cnt) for val, cnt in counts.items() if format_category_value(val) != "Kayıp Veri")
     for i, row in enumerate(rows):
-        cnt = int(row[2])
+        cnt = _safe_int(row[2])
         pct = round(cnt / valid_n * 100, 1) if valid_n else 0
         rows[i][3] = fmt_num(pct, 1)
     if missing_n > 0:
