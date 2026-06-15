@@ -5,6 +5,7 @@ import { classifyColumns } from './classify';
 import { computeMissingData } from './derivedVariables';
 import { normalizeDataDecimals } from './fileParse';
 import { buildMissingCodesFromRead, type InferredMissingCodes } from './missingCodes';
+import { getAppState } from './storeAccess';
 import { documentContextPayload } from './wizardSkip';
 import type { DataRow, DetectItemsResponse, ScaleMatch } from '../types';
 
@@ -136,18 +137,19 @@ export async function loadVariablesData(input: VariablesLoadInput): Promise<Vari
   const unlabeled = getUnlabeledColumns(userLabels, nonItemColumns);
   if (unlabeled.length > 0) {
     try {
+      const researchTopic = getAppState().wizard.researchTopic ?? '';
       const aiResult = await apiCall<{ labels?: Record<string, string> }>(
         '/generate-labels',
         {
           columns: unlabeled,
           scale_names: documentScaleNames.length > 0 ? documentScaleNames : undefined,
-          research_topic: '',
+          research_topic: researchTopic,
         },
         { timeout: 15_000 },
       );
       if (aiResult.labels) {
         for (const [col, label] of Object.entries(aiResult.labels)) {
-          if (label && userLabels[col] === col) {
+          if (label && label.trim() && (!userLabels[col] || userLabels[col] === col)) {
             userLabels[col] = label;
           }
         }
