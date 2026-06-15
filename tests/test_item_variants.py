@@ -10,6 +10,7 @@ from data_cleaning import (
     apply_scale_item_resolution,
     normalize_item_root,
     partition_item_variants,
+    prefer_original_items,
 )
 
 
@@ -40,9 +41,19 @@ def test_apply_scale_item_resolution_variant_map():
     resolved = apply_scale_item_resolution(["item_1", "item_1_ters", "item_2"])
     assert resolved["item_count"] == 2
     assert resolved["items"] == ["item_1", "item_2"]
-    assert resolved["cronbach_items"] == ["item_1_ters", "item_2"]
-    assert resolved["item_variant_map"]["item_1"] == "item_1_ters"
+    assert resolved["cronbach_items"] == ["item_1", "item_2"]
+    assert resolved["item_variant_map"]["item_1"] == "item_1"
     assert resolved["item_variant_map"]["item_2"] == "item_2"
+
+
+def test_prefer_original_items_skips_reversed_when_original_present():
+    cols = ["neq_1_ters", "neq_1", "neq_2"]
+    assert prefer_original_items(["neq_1_ters", "neq_2"], cols) == ["neq_1", "neq_2"]
+
+
+def test_prefer_original_items_keeps_reversed_when_no_original():
+    cols = ["neq_1_ters", "neq_2"]
+    assert prefer_original_items(cols) == ["neq_1_ters", "neq_2"]
 
 
 @pytest.mark.parametrize("suffix", [

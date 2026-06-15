@@ -202,6 +202,33 @@ ITEM_COLUMN_PATTERN = re.compile(
     re.I,
 )
 
+REVERSED_SUFFIX = re.compile(r"(_ters|_t|_rev|_r|_reversed|_rc|_inv)$", re.I)
+
+
+def prefer_original_items(cols: List[str], all_cols: Optional[List[str]] = None) -> List[str]:
+    """_ters suffix'li yerine orijinal sütunu tercih et."""
+    source = all_cols if all_cols is not None else cols
+    originals = {
+        REVERSED_SUFFIX.sub("", c).lower(): c
+        for c in source
+        if not REVERSED_SUFFIX.search(c)
+    }
+    result: List[str] = []
+    seen: set = set()
+    for col in cols:
+        if REVERSED_SUFFIX.search(col):
+            base = REVERSED_SUFFIX.sub("", col).lower()
+            if base in originals:
+                orig = originals[base]
+                if orig not in seen:
+                    result.append(orig)
+                    seen.add(orig)
+                continue
+        if col not in seen:
+            result.append(col)
+            seen.add(col)
+    return result
+
 
 def normalize_item_root(name: str) -> str:
     """Türev ön/son ekleri temizlenmiş madde kökü."""
@@ -271,9 +298,11 @@ def partition_item_variants(
 def apply_scale_item_resolution(items: List[str]) -> dict:
     """Ölçek maddelerini gösterim ve cronbach için ayır."""
     display, cronbach, count = partition_item_variants(items)
+    cronbach = prefer_original_items(cronbach, items)
     variant_map: Dict[str, str] = {}
     for _, cols in group_item_variants(items).items():
         group_display, group_cronbach, _ = partition_item_variants(cols)
+        group_cronbach = prefer_original_items(group_cronbach, cols)
         if group_display and group_cronbach:
             variant_map[group_display[0]] = group_cronbach[0]
         elif group_display:

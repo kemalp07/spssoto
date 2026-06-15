@@ -97,7 +97,7 @@ from hypothesis_engine import (
 
 limiter = Limiter(key_func=get_remote_address)
 ALREADY_REVERSED_RE = re.compile(
-    r"(_ters|_rev|_r|_t|_reversed|_recoded|_inv|_rc)$",
+    r"(_ters|_rev|_r(?=\b|_)|_t(?=\b|_)|_reversed|_recoded|_inv|_rc)$",
     re.I,
 )
 app = FastAPI(title="StatAI - Akademik Analiz API")
@@ -417,12 +417,22 @@ async def analyze_cronbach_batch(req: CronbachBatchRequest):
 
         valid_items = []
         for col in items:
-            if col in df.columns:
+            if col in df.columns and not ALREADY_REVERSED_RE.search(col):
                 df[col] = pd.to_numeric(
                     df[col].astype(str).str.replace(",", ".", regex=False),
                     errors="coerce",
                 )
                 valid_items.append(col)
+
+        if not valid_items:
+            for col in items:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(
+                        df[col].astype(str).str.replace(",", ".", regex=False),
+                        errors="coerce",
+                    )
+                    valid_items.append(col)
+            reverse_set = set()
 
         if len(valid_items) < 2:
             continue
