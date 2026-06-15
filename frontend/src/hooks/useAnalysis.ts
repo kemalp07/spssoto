@@ -50,7 +50,10 @@ export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
       missing_data?: unknown[];
     }>('/analyze', buildAnalyzePayload(fresh, enabledTests));
 
-    let results = [...fresh.results.cronbach, ...(json.results ?? [])];
+    let results = [
+      ...fresh.results.cronbach,
+      ...(json.results ?? []).filter((r: AnalysisResult) => r.type !== 'cronbach'),
+    ];
 
     if (fresh.scales.detected.length > 0) {
       try {

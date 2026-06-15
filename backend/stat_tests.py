@@ -1312,19 +1312,7 @@ def run_analyze(
             labels = ", ".join(v.label for v in outcome_cont) or "—"
             record_error("Normallik testi", labels, e)
 
-    # 3. Cronbach
-    if enabled("cronbach"):
-        for cols in detect_scale_groups(list(df.columns)).values():
-            if granular and not genabled("cronbach", cols):
-                continue
-            try:
-                if all(c in df.columns for c in cols):
-                    no, _ = tc.next("Ölçek Güvenilirlik Analizi (Cronbach α)")
-                    cb = cronbach_analysis(df, cols, table_no=no)
-                    if cb:
-                        results.append(cb)
-            except Exception as e:
-                record_error("Cronbach α", ", ".join(cols), e)
+    # 3. Cronbach devre dışı — ters madde için /analyze/cronbach-batch kullanılıyor
 
     # 4. Frekans
     freq_vars = grouping_cat + outcome_cat if enabled("frequency") else []

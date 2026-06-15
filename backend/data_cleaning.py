@@ -83,7 +83,7 @@ def _ordered_category_labels(value_labels: Optional[Dict[str, str]]) -> List[str
         return []
     keys = sorted(
         value_labels.keys(),
-        key=lambda x: int(x) if str(x).replace(".", "").isdigit() else str(x),
+        key=lambda x: int(float(x)) if str(x).replace(".", "", 1).replace("-", "", 1).isdigit() else str(x),
     )
     return [str(value_labels[k]) for k in keys]
 
