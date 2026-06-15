@@ -37,6 +37,7 @@ export function PlanStep({ onBack }: PlanStepProps) {
   const handleProfileChange = (profile: PlanProfileId) => {
     const userTouched = getAppState().plan.userTouched;
     if (userTouched && !window.confirm('Seçimleriniz sıfırlanacak, devam?')) return;
+    useAppStore.getState().resetUserTouched();
     setProfile(profile);
     void loadAnalysisPlan();
   };

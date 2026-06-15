@@ -821,19 +821,22 @@
       "Gece Yeme Anketi",
       "Night Eating Questionnaire",
       "NEQ",
-      "GYA"
+      "GYA",
+      "Night Eating Questionnaire-16",
+      "NEQ-16"
     ],
     "domain": [
       "beslenme",
       "psikoloji",
       "hemşirelik"
     ],
-    "item_count": 14,
+    "item_count": 16,
     "subscales": [],
     "reverse_items": [
       1,
       4,
-      14
+      14,
+      15
     ],
     "scale_range": [
       0,
@@ -841,7 +844,7 @@
     ],
     "total_range": [
       0,
-      56
+      64
     ],
     "cutoff": {
       "value": 25,
@@ -3422,6 +3425,8 @@
       "Sağlıklı Beslenmeye İlişkin Tutum Ölçeği",
       "Attitude Scale for Healthy Nutrition",
       "SBİTÖ",
+      "SBİTO",
+      "SBITO",
       "ASHN"
     ],
     "domain": [
@@ -3492,7 +3497,8 @@
       "ashn_",
       "sbit_",
       "sbito_",
-      "sbn_"
+      "sbn_",
+      "shbn_"
     ],
     "item_sample": [
       "Sağlıklı beslenmek benim için bir zorunluluktur"

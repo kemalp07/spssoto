@@ -250,6 +250,7 @@ export interface AppState {
   togglePlanCatalogItem: (index: number, enabled: boolean) => void;
   togglePlanTier: (tier: string, enabled: boolean) => void;
   setPlanProfile: (profile: PlanProfileId) => void;
+  resetUserTouched: () => void;
   setPlanActiveFilter: (filter: string | null) => void;
   setAnalysisResults: (results: AnalysisResult[], meta?: Record<string, unknown>) => void;
   appendAnalysisResult: (result: AnalysisResult) => void;
@@ -826,6 +827,9 @@ export const useAppStore = create<AppState>()(
     set((s) => ({
       plan: { ...s.plan, profile, userTouched: false },
     })),
+
+  resetUserTouched: () =>
+    set((s) => ({ plan: { ...s.plan, userTouched: false } })),
 
   setPlanActiveFilter: (filter) =>
     set((s) => ({ hypotheses: { ...s.hypotheses, activeFilter: filter } })),

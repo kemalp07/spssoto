@@ -27,7 +27,7 @@ export function normalizeCatalogItem(t: PlanCatalogItem): PlanCatalogItem {
   return {
     ...t,
     tier,
-    enabled: t.enabled ?? enabledDefault,
+    enabled: enabledDefault,
     enabled_default: enabledDefault,
     recommended: tier === 'kesin_onerilen' || tier === 'onerilen',
     cekirdek: Boolean(t.cekirdek),

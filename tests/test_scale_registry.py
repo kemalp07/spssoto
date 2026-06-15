@@ -14,6 +14,7 @@ from scale_registry import (
     match_by_item_text,
     match_by_prefix,
     match_scale,
+    resolve_scale_id,
     validate_turkish,
 )
 
@@ -30,6 +31,16 @@ def test_load_registry_missing_file(tmp_path, monkeypatch):
     monkeypatch.setattr("scale_registry._REGISTRY_PATH", missing)
     clear_registry_cache()
     assert load_registry() == []
+
+
+def test_resolve_scale_id_nutrition_scales():
+    assert resolve_scale_id("Sağlıklı Beslenmeye İlişkin Tutum Ölçeği") == "ashn"
+    assert resolve_scale_id("SBİTO") == "ashn"
+    assert resolve_scale_id("SBITO") == "ashn"
+    assert resolve_scale_id("Gece Yeme Anketi") == "neq"
+    assert resolve_scale_id("GYA") == "neq"
+    assert resolve_scale_id("Online Yemek Siparişlerine Yönelik Tutum Ölçeği") == "oysto"
+    assert resolve_scale_id("BES") == "bes"
 
 
 def test_match_by_prefix_oysto():

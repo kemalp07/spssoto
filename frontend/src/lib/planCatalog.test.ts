@@ -6,7 +6,7 @@ describe('planCatalog', () => {
     const catalog = [
       normalizeCatalogItem({ id: 'a', merge_key: 'a', enabled: true, cekirdek: true }),
       normalizeCatalogItem({ id: 'b', merge_key: 'b', enabled: true }),
-      normalizeCatalogItem({ id: 'c', merge_key: 'c', enabled: false }),
+      normalizeCatalogItem({ id: 'c', merge_key: 'c', enabled_default: false }),
     ];
     expect(estimatePlanTableCount(catalog)).toBe(2);
   });

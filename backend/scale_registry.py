@@ -103,8 +103,16 @@ def resolve_scale_id(name: str) -> Optional[str]:
             return scale["id"]
         for n in scale.get("names") or []:
             n_norm = normalize_col(n)
-            if n_norm == norm or norm in n_norm or n_norm in norm:
+            if n_norm == norm:
                 return scale["id"]
+            # Substring sadece kısa kısaltmalar için (≤6 karakter)
+            if len(norm) <= 6 and (norm == n_norm or norm in n_norm.split("_")):
+                return scale["id"]
+            # Uzun isimler için token Jaccard benzerliği
+            if len(norm) > 6:
+                score = _jaccard(_tokenize(norm), _tokenize(n_norm))
+                if score >= 0.5:
+                    return scale["id"]
     return None
 
 
