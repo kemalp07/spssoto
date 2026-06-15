@@ -411,14 +411,19 @@ def _build_comparison_decision_log(
     is_parametric = bool(norm_info.get("is_parametric", normal))
     p_str = f"{norm_p:.3f}" if norm_p is not None else "—"
     norm_label = "Shapiro-Wilk" if norm_key == "shapiro-wilk" else "Lilliefors düzeltmeli KS"
+    p_display = f"p={p_str}" if norm_p is not None else ""
+    norm_verdict = (
+        "normallik sağlandı" if normal else "normallik varsayımı sağlanamadı"
+    )
+    norm_reason = (
+        f"{norm_label} {p_display}, {norm_verdict}"
+        if p_display else f"{norm_label}, {norm_verdict}"
+    )
 
     if not is_parametric:
         test = "mann_whitney" if n_groups == 2 else "kruskal_wallis"
         display = _planner_test_display(test)
-        reason = (
-            f"{norm_label} p={p_str} < 0.05, normallik varsayımı sağlanamadı "
-            f"→ {display} seçildi"
-        )
+        reason = f"{norm_reason} → {display} seçildi"
         return test, {
             "normality_test": norm_key,
             "normality_p": norm_p,
@@ -433,20 +438,18 @@ def _build_comparison_decision_log(
     welch = levene_passed is False
     test = "ttest" if n_groups == 2 else "anova"
     display = _planner_test_display(test, welch=welch)
-    reason = (
-        f"{norm_label} p={p_str} ≥ 0.05, normallik sağlandı"
-    )
+    reason = norm_reason
     if levene_p is not None:
-        lev_cmp = "≥" if levene_passed else "<"
-        reason += (
-            f"; Levene p={levene_p:.3f} {lev_cmp} 0.05, "
-            f"varyans homojenliği {'sağlandı' if levene_passed else 'sağlanamadı'}"
+        lev_verdict = (
+            "varyans homojenliği sağlandı"
+            if levene_passed else "varyans homojenliği sağlanamadı"
         )
+        reason += f"; Levene p={levene_p:.3f}, {lev_verdict}"
     reason += f" → {display} seçildi"
     return test, {
         "normality_test": norm_key,
         "normality_p": norm_p,
-        "normality_passed": True,
+        "normality_passed": normal,
         "levene_p": levene_p,
         "levene_passed": levene_passed,
         "selected_test": test,

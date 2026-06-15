@@ -165,6 +165,24 @@ def test_word_export_methodology_section_from_decision_log():
     assert "statistiksel" in xml.lower() or "Mann-Whitney" in xml
 
 
+def test_normality_reason_uses_normal_flag_not_p_threshold():
+    """n>200 skew/kurt kuralında p düşük olsa bile normal=True ise ≥ 0.05 yazılmamalı."""
+    norm_map = {
+        "sonuc": {
+            "normal": True,
+            "is_parametric": True,
+            "p": 0.005,
+            "test": "Kolmogorov-Smirnov",
+        },
+    }
+    df, vars_ = _group_df(150, 2, lambda rng, g: rng.normal(50, 5, 150).tolist())
+    _, log = _build_comparison_decision_log(df, vars_[0], vars_[1], norm_map, 2)
+    assert "≥ 0.05" not in log["reason"]
+    assert "< 0.05" not in log["reason"]
+    assert "p=0.005" in log["reason"]
+    assert "normallik sağlandı" in log["reason"]
+
+
 def test_build_candidate_tests_includes_decision_log(planner_df=None):
     rng = np.random.default_rng(1)
     n = 60

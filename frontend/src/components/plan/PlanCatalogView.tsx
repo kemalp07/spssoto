@@ -90,10 +90,10 @@ export function PlanCatalogView({
   const indexed = catalog.map((t, i) => ({ ...t, catalogIndex: i }));
   const core = indexed.filter((t) => t.cekirdek);
   const primary = indexed.filter(
-    (t) => !t.cekirdek && (t.display_section ?? 'primary') !== 'accordion',
+    (t) => !t.cekirdek && t.display_section !== 'accordion',
   );
   const accordion = indexed.filter(
-    (t) => !t.cekirdek && (t.display_section === 'accordion' || t.relevance_flag === 'düşük_öncelik'),
+    (t) => !t.cekirdek && t.display_section === 'accordion',
   );
   const tableCount = estimatePlanTableCount(catalog);
 

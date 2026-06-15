@@ -34,12 +34,17 @@ export function normalizeCatalogItem(t: PlanCatalogItem): PlanCatalogItem {
     butce_disi: Boolean(t.butce_disi),
     merge_key: t.merge_key ?? t.id,
     hypothesis_id: t.hypothesis_id ?? null,
-    display_section: t.display_section ?? (relevance === 'düşük_öncelik' ? 'accordion' : 'primary'),
+    display_section: t.display_section ?? 'primary',
     relevance_flag: relevance,
     relevance_score: t.relevance_score ?? 0,
   };
 }
 
+/**
+ * Aktif planda üretilecek tablo sayısı.
+ * Seçili aday sayısından düşük olabilir: birden fazla aday aynı merge_key ile
+ * tek tabloda birleşir (ör. korelasyon matrisi, birleştirilmiş frekanslar).
+ */
 export function estimatePlanTableCount(catalog: PlanCatalogItem[]): number {
   const keys = new Set<string>();
   catalog.forEach((t) => {
@@ -79,7 +84,6 @@ export function planTotalBarText(
   catalog: PlanCatalogItem[],
   meta: Record<string, unknown>,
 ): string {
-  const selected = catalog.filter((t) => t.cekirdek || t.enabled !== false);
   const tableCount = estimatePlanTableCount(catalog);
   const catalogTotal = (meta.catalog_count as number) ?? catalog.length;
   const kesinCount = (meta.kesin_count as number)
@@ -96,11 +100,9 @@ export function planTotalBarText(
     ? ` · ~${meta.approx_input_tokens} token`
     : '';
   return (
-    `📋 ${catalogTotal} uygun aday · `
-    + `${kesinCount} kesin · `
-    + `${onerilenCount} önerilen · `
-    + `${selected.length} seçili · `
-    + `${tableCount} / ${budget} tablo bütçesi`
+    `📋 ${tableCount} tablo · ${budget} tablo bütçesi`
+    + ` · ${catalogTotal} uygun aday`
+    + ` · ${kesinCount} kesin · ${onerilenCount} önerilen`
     + `${aiNote}${tok}`
   );
 }
