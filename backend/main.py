@@ -565,6 +565,12 @@ async def upload_documents(
 @app.post("/analiz-oneri")
 @limiter.limit("10/minute")
 async def analiz_oneri_endpoint(request: Request, req: AnalizeOneriRequest):
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.warning(
+        f"[ONERİ] anket_text len={len(req.anket_text or '')}, "
+        f"etik_text len={len(req.etik_text or '')}, columns={len(req.columns)}"
+    )
     oneri = await gemini_analiz_oneri(
         req.columns,
         req.labels or {},
