@@ -128,7 +128,7 @@ def _gemini_json(system: str, user: str, max_tokens: int) -> Tuple[str, dict]:
         config=types.GenerateContentConfig(
             system_instruction=system,
             max_output_tokens=max_tokens,
-            temperature=0,
+            temperature=0.0,
             response_mime_type="application/json",
         ),
     )
@@ -195,7 +195,7 @@ def claude_decide(system: str, user: str, max_tokens: int = 1000) -> Tuple[str, 
     msg = client.messages.create(
         model=ANTHROPIC_MODEL,
         max_tokens=max_tokens,
-        temperature=0,
+        temperature=0.0,
         system=system,
         messages=[{"role": "user", "content": user}],
     )

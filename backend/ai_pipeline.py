@@ -261,6 +261,7 @@ def run_variable_ai_pipeline(
                     categorical.append(col)
                 else:
                     continuous.append(col)
+                # recommended yalnızca UI badge'i; role analiz yerleşimini belirler
                 recommendations[col] = {
                     "status": "recommended" if rec else "optional",
                     "role": role,

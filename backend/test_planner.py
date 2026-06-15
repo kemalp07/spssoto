@@ -713,6 +713,7 @@ def build_candidate_tests(
         and is_numeric_continuous(df, v, norm_map)
         and not _is_demographic_continuous(v)
         and not is_scale_item_name(v.name, scale_groups)
+        # recommended field'ı burada kullanılmamalı
     ]
     model_groupings = [
         v for v in grouping_cat

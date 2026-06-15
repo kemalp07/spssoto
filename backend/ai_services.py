@@ -912,6 +912,52 @@ Bu değişkenler için istatistiksel analiz planı oluştur."""
         return None
 
 
+TOPLAM_RE = re.compile(r"_(TOPLAM|TOTAL|PUAN|SCORE|SUM)$", re.I)
+
+
+def _locked_outcome_column_names(columns: List[str]) -> List[str]:
+    return [c for c in columns if TOPLAM_RE.search(c)]
+
+
+def _apply_toplam_outcome_to_variables(variables: Optional[List[Variable]]) -> None:
+    """_TOPLAM suffix'li değişkenler her zaman outcome/continuous."""
+    if not variables:
+        return
+    for var in variables:
+        if TOPLAM_RE.search(var.name):
+            var.type = "continuous"
+            var.role = "outcome"
+
+
+def _apply_toplam_outcome_to_classify(
+    columns: List[str],
+    categorical: List[str],
+    continuous: List[str],
+    exclude: List[str],
+    recommendations: Dict[str, dict],
+) -> Tuple[List[str], List[str], List[str], Dict[str, dict]]:
+    cat = list(categorical)
+    cont = list(continuous)
+    excl = list(exclude)
+    recs = dict(recommendations)
+    for col in _locked_outcome_column_names(columns):
+        if col in excl:
+            excl.remove(col)
+        if col in cat:
+            cat.remove(col)
+        if col not in cont:
+            cont.append(col)
+        prev = recs.get(col, {})
+        recs[col] = {
+            **prev,
+            "role": "outcome",
+            "status": prev.get("status") or "recommended",
+            "ai_status": "approved",
+            "reason": prev.get("reason") or "Ölçek toplam puanı",
+        }
+    return cat, cont, excl, recs
+
+
 def run_classify(req: ClassifyRequest) -> dict:
     from ai_pipeline import run_variable_ai_pipeline
     from data_cleaning import normalize_variable_labels, prepare_analysis_df
@@ -934,6 +980,7 @@ def run_classify(req: ClassifyRequest) -> dict:
         ]
         variables = normalize_variable_labels(variables)
         df = prepare_analysis_df(df, variables, req.missing_codes)
+        _apply_toplam_outcome_to_variables(variables)
 
     result = run_variable_ai_pipeline(req, df=df, variables=variables)
 
@@ -944,11 +991,19 @@ def run_classify(req: ClassifyRequest) -> dict:
                 detail="AI katmanı kullanılamıyor — manuel sınıflandırma kullanın",
             )
 
+    categorical, continuous, exclude, recommendations = _apply_toplam_outcome_to_classify(
+        req.columns,
+        result.get("categorical") or [],
+        result.get("continuous") or [],
+        result.get("exclude") or [],
+        result.get("recommendations") or {},
+    )
+
     return {
-        "categorical": result.get("categorical") or [],
-        "continuous": result.get("continuous") or [],
-        "exclude": result.get("exclude") or [],
-        "recommendations": result.get("recommendations") or {},
+        "categorical": categorical,
+        "continuous": continuous,
+        "exclude": exclude,
+        "recommendations": recommendations,
         "derived": result.get("derived") or [],
         "derived_approved": result.get("derived_approved") or [],
         "derived_review": result.get("derived_review") or [],
