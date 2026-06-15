@@ -7,6 +7,7 @@ import type {
 } from '../types';
 
 export function anketTextFromContext(anket?: AnketParseResult | null): string {
+  console.log('[ANKET] sections:', anket?.sections?.length, 'first items:', anket?.sections?.[0]?.items?.length, 'first item text:', anket?.sections?.[0]?.items?.[0]?.text);
   if (!anket) return '';
   if (anket.sections?.length) {
     const text = anket.sections
