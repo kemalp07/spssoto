@@ -165,22 +165,44 @@ def test_word_export_methodology_section_from_decision_log():
     assert "statistiksel" in xml.lower() or "Mann-Whitney" in xml
 
 
-def test_normality_reason_uses_normal_flag_not_p_threshold():
-    """n>200 skew/kurt kuralında p düşük olsa bile normal=True ise ≥ 0.05 yazılmamalı."""
+def test_clt_normality_reason_when_n_large_and_low_p():
+    """n>200 ve p<0.05 iken CLT gerekçesi; çelişkili p≥0.05 ifadesi yok."""
     norm_map = {
         "sonuc": {
             "normal": True,
             "is_parametric": True,
             "p": 0.005,
+            "n": 300,
+            "skewness": -1.064,
+            "kurtosis": 0.120,
             "test": "Kolmogorov-Smirnov",
         },
     }
-    df, vars_ = _group_df(150, 2, lambda rng, g: rng.normal(50, 5, 150).tolist())
-    _, log = _build_comparison_decision_log(df, vars_[0], vars_[1], norm_map, 2)
+    df, vars_ = _group_df(150, 3, lambda rng, g: rng.normal(40 + g, 5, 150).tolist())
+    _, log = _build_comparison_decision_log(df, vars_[0], vars_[1], norm_map, 3)
+    assert "Merkezi Limit Teoremi" in log["reason"]
+    assert "n=300" in log["reason"]
+    assert "çarpıklık=-1.064" in log["reason"]
     assert "≥ 0.05" not in log["reason"]
-    assert "< 0.05" not in log["reason"]
-    assert "p=0.005" in log["reason"]
+    assert "p=0.005" not in log["reason"]
+
+
+def test_normality_reason_shapiro_when_n_small():
+    """n≤200 için klasik p tabanlı gerekçe."""
+    norm_map = {
+        "sonuc": {
+            "normal": True,
+            "is_parametric": True,
+            "p": 0.31,
+            "n": 40,
+            "test": "Shapiro-Wilk",
+        },
+    }
+    df, vars_ = _group_df(20, 2, lambda rng, g: rng.normal(50, 5, 20).tolist())
+    _, log = _build_comparison_decision_log(df, vars_[0], vars_[1], norm_map, 2)
+    assert "Shapiro-Wilk p=0.310" in log["reason"]
     assert "normallik sağlandı" in log["reason"]
+    assert "Merkezi Limit" not in log["reason"]
 
 
 def test_build_candidate_tests_includes_decision_log(planner_df=None):

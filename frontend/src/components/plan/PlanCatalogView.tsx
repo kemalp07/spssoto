@@ -96,6 +96,9 @@ export function PlanCatalogView({
     (t) => !t.cekirdek && t.display_section === 'accordion',
   );
   const tableCount = estimatePlanTableCount(catalog);
+  const activeProfile = PLAN_PROFILES.find((p) => p.id === profile);
+  const profileApprox = activeProfile?.approx ?? tableCount;
+  const belowTarget = tableCount < profileApprox;
 
   return (
     <>
@@ -114,7 +117,14 @@ export function PlanCatalogView({
           ))}
         </div>
         <div className="planTableCounterCard">
-          Bu plan <strong>{tableCount}</strong> tablo üretecek
+          {belowTarget ? (
+            <>
+              Bu veri seti için <strong>{tableCount}</strong> tablo üretilebilir
+              <span className="planTableCounterNote"> (≈{profileApprox} hedeflendi)</span>
+            </>
+          ) : (
+            <>Bu plan <strong>{tableCount}</strong> tablo üretecek</>
+          )}
         </div>
       </div>
 

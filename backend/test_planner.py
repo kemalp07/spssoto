@@ -409,16 +409,36 @@ def _build_comparison_decision_log(
     norm_p = norm_info.get("p")
     normal = bool(norm_info.get("normal", True))
     is_parametric = bool(norm_info.get("is_parametric", normal))
+    n_obs = int(norm_info.get("n", 0))
     p_str = f"{norm_p:.3f}" if norm_p is not None else "—"
     norm_label = "Shapiro-Wilk" if norm_key == "shapiro-wilk" else "Lilliefors düzeltmeli KS"
-    p_display = f"p={p_str}" if norm_p is not None else ""
-    norm_verdict = (
-        "normallik sağlandı" if normal else "normallik varsayımı sağlanamadı"
+
+    # n>200'de assess_normality p değerini değil çarpıklık/basıklık kriterini kullanır.
+    # p<0.05 olsa bile CLT gereği normal=True dönebilir → reason çelişkili görünür.
+    clt_override = (
+        n_obs > 200
+        and normal
+        and norm_p is not None
+        and float(norm_p) < 0.05
     )
-    norm_reason = (
-        f"{norm_label} {p_display}, {norm_verdict}"
-        if p_display else f"{norm_label}, {norm_verdict}"
-    )
+    if clt_override:
+        skew = norm_info.get("skewness")
+        kurt = norm_info.get("kurtosis")
+        skew_str = f"{skew:.3f}" if skew is not None else "?"
+        kurt_str = f"{kurt:.3f}" if kurt is not None else "?"
+        norm_reason = (
+            f"n={n_obs} > 200, Merkezi Limit Teoremi gereği normallik varsayımı "
+            f"karşılandı (çarpıklık={skew_str}, basıklık={kurt_str})"
+        )
+    else:
+        p_display = f"p={p_str}" if norm_p is not None else ""
+        norm_verdict = (
+            "normallik sağlandı" if normal else "normallik varsayımı sağlanamadı"
+        )
+        norm_reason = (
+            f"{norm_label} {p_display}, {norm_verdict}"
+            if p_display else f"{norm_label}, {norm_verdict}"
+        )
 
     if not is_parametric:
         test = "mann_whitney" if n_groups == 2 else "kruskal_wallis"

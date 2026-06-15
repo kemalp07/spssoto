@@ -1014,6 +1014,12 @@ code, .mono {
   font-size: 13px;
 }
 
+.planTableCounterNote {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-left: 4px;
+}
+
 .planCard {
   display: flex;
   align-items: center;
