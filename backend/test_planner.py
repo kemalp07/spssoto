@@ -3,6 +3,7 @@
 Not: Kural/sezgisel fonksiyonlar büyüdükçe plan_rules.py modülüne taşınabilir.
 """
 import json
+import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -98,6 +99,113 @@ _TEST_DISPLAY_PLANNER = {
 TIER_KESIN = "kesin_onerilen"
 TIER_ONERILEN = "onerilen"
 TIER_ONERILMEYEN = "onerilmeyen"
+
+_logger = logging.getLogger(__name__)
+
+# test_adı: (min_grup, max_grup, bagimsiz_tip, bagimli_tip)
+TEST_RULES: Dict[str, Tuple[Optional[int], Optional[int], Optional[str], Optional[str]]] = {
+    "ttest": (2, 2, "categorical", "continuous"),
+    "welch": (2, 2, "categorical", "continuous"),
+    "mann_whitney": (2, 2, "categorical", "continuous"),
+    "anova": (3, 99, "categorical", "continuous"),
+    "kruskal_wallis": (3, 99, "categorical", "continuous"),
+    "chi_square": (2, 99, "categorical", "categorical"),
+    "correlation": (None, None, "continuous", "continuous"),
+    "paired_ttest": (2, 2, "categorical", "continuous"),
+    "wilcoxon": (2, 2, "categorical", "continuous"),
+    "regression": (None, None, "continuous", "continuous"),
+    "cronbach": (None, None, None, "continuous"),
+    "frequency": (None, None, None, "categorical"),
+    "descriptive": (None, None, None, "continuous"),
+}
+
+
+def validate_test_selection(
+    test: str,
+    grouping_var: Optional[Variable],
+    outcome_var: Variable,
+    n_groups: Optional[int] = None,
+) -> Tuple[bool, str]:
+    """Test seçiminin istatistiksel olarak geçerli olup olmadığını kontrol et."""
+    rule = TEST_RULES.get(test)
+    if not rule:
+        return False, f"Bilinmeyen test: {test}"
+
+    min_g, max_g, req_indep, req_dep = rule
+
+    if req_dep and outcome_var.type != req_dep:
+        return False, (
+            f"{test} için bağımlı değişken {req_dep} olmalı, "
+            f"'{outcome_var.name}' {outcome_var.type} tipinde"
+        )
+
+    if req_indep:
+        if not grouping_var:
+            return False, f"{test} için bağımsız değişken gerekli"
+        if grouping_var.type != req_indep:
+            return False, (
+                f"{test} için bağımsız değişken {req_indep} olmalı, "
+                f"'{grouping_var.name}' {grouping_var.type} tipinde"
+            )
+
+    gname = grouping_var.name if grouping_var else "—"
+    if min_g and n_groups is not None and n_groups < min_g:
+        return False, (
+            f"{test} için en az {min_g} grup gerekli, "
+            f"'{gname}' {n_groups} gruba sahip"
+        )
+    if max_g and n_groups is not None and n_groups > max_g:
+        return False, (
+            f"{test} için en fazla {max_g} grup olabilir, "
+            f"'{gname}' {n_groups} gruba sahip → ANOVA kullan"
+        )
+
+    return True, ""
+
+
+def _validate_candidate_for_add(
+    test: str,
+    vars: List[str],
+    vmap: Dict[str, Variable],
+    n_groups: Optional[int] = None,
+) -> Tuple[bool, str]:
+    """build_candidate_tests add() öncesi kural doğrulaması."""
+    if not vars:
+        return False, "Değişken listesi boş"
+
+    if test == "cronbach":
+        for vname in vars:
+            var = vmap.get(vname)
+            if var is None:
+                continue
+            ok, msg = validate_test_selection(test, None, var, n_groups)
+            if not ok:
+                return ok, msg
+        return True, ""
+
+    if test in ("descriptive", "frequency"):
+        var = vmap.get(vars[0])
+        if var is None:
+            return True, ""
+        return validate_test_selection(test, None, var, n_groups)
+
+    if test == "correlation":
+        v1 = vmap.get(vars[0])
+        v2 = vmap.get(vars[-1]) if len(vars) > 1 else None
+        if v1 and v2:
+            return validate_test_selection(test, v1, v2, n_groups)
+        return True, ""
+
+    if len(vars) >= 2:
+        grouping = vmap.get(vars[0])
+        outcome = vmap.get(vars[-1])
+        if grouping and outcome:
+            return validate_test_selection(test, grouping, outcome, n_groups)
+
+    var = vmap.get(vars[0])
+    if var:
+        return validate_test_selection(test, None, var, n_groups)
+    return True, ""
 
 
 def _norm_var(name: str) -> str:
@@ -647,11 +755,20 @@ def build_candidate_tests(
 
     scale_groups = detect_scale_groups(list(df.columns))
     col_names = _column_names(active)
+    vmap = _var_by_name(variables)
     candidates: List[dict] = []
     seq = 0
 
     def add(test: str, vars: List[str], **extra: Any) -> None:
         nonlocal seq
+        n_groups = extra.get("n_groups")
+        ok, reason = _validate_candidate_for_add(test, vars, vmap, n_groups)
+        if not ok:
+            _logger.warning(
+                "[TEST VALIDATOR] Geçersiz aday reddedildi: %s %s (%s)",
+                test, vars, reason,
+            )
+            return
         seq += 1
         cid = make_candidate_id(test, vars)
         candidates.append({
@@ -1207,13 +1324,37 @@ async def plan_tests(
     layout_config: Optional[LayoutConfig] = None,
     hypotheses: Optional[List[dict]] = None,
     variable_measure: Optional[Dict[str, str]] = None,
+    document_context: Optional[dict] = None,
 ) -> Tuple[List[dict], List[dict], List[dict], dict]:
     """Önerilen ve elenen test listeleri + meta döndürür."""
+    from document_parser import apply_scale_test_requirements, resolve_scale_test_requirements
     from hypothesis_engine import translate_decision_reasons
 
     norm_map = build_norm_map(df, variables)
     candidates = build_candidate_tests(df, variables, norm_map, variable_measure)
+    if document_context:
+        requirements = resolve_scale_test_requirements(
+            document_context, list(df.columns), variables,
+        )
+        candidates = apply_scale_test_requirements(candidates, requirements, df)
     candidates = apply_deterministic_flags(df, variables, candidates)
+    if not hypotheses and document_context:
+        from etik_parser import parse_etik_to_hypotheses
+        from document_context import effective_research_text
+
+        etik = document_context.get("etik_kurul") or {}
+        if not etik.get("parse_error"):
+            etik_text = effective_research_text(document_context, "")
+            uygun_for_etik = [c for c in candidates if c.get("auto_flag") == "uygun"]
+            if etik_text.strip() and uygun_for_etik:
+                from hypothesis_engine import filter_ai_hypothesis_matches
+
+                raw_hyps = parse_etik_to_hypotheses(
+                    etik_text, variables, uygun_for_etik,
+                )
+                hypotheses = filter_ai_hypothesis_matches(
+                    raw_hyps, variables, uygun_for_etik,
+                )
     by_id = {c["id"]: c for c in candidates}
 
     auto_excluded = [c for c in candidates if c["auto_flag"] != "uygun"]

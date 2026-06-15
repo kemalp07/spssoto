@@ -171,9 +171,16 @@ async def parse_hypotheses_endpoint(request: Request, req: ParseHypothesesReques
     df = prepare_analysis_df(df, variables, req.missing_codes)
     norm_map = build_norm_map(df, variables)
     candidates = build_candidate_tests(df, variables, norm_map)
+    doc_ctx = resolve_document_context(req.document_context, req.session_id)
+    if doc_ctx:
+        from document_parser import apply_scale_test_requirements, resolve_scale_test_requirements
+
+        requirements = resolve_scale_test_requirements(
+            doc_ctx, list(df.columns), variables,
+        )
+        candidates = apply_scale_test_requirements(candidates, requirements, df)
     candidates = apply_deterministic_flags(df, variables, candidates)
     uygun = [c for c in candidates if c.get("auto_flag") == "uygun"]
-    doc_ctx = resolve_document_context(req.document_context, req.session_id)
     research_text = effective_research_text(doc_ctx, req.research_aim)
     parsed, meta = await parse_research_questions(
         research_text,
@@ -213,6 +220,7 @@ async def plan_tests_endpoint(request: Request, req: PlanTestsRequest):
         use_ai=req.use_ai if req.use_ai is not None else True,
         profile=req.profile or "standart",
         hypotheses=[h.model_dump() for h in req.hypotheses] if req.hypotheses else None,
+        document_context=doc_ctx,
     )
     return sanitize({
         "recommended": recommended,

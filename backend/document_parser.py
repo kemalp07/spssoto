@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from docx import Document
 
+from schemas import Variable
+
 _ITEM_RE = re.compile(
     r"^\s*(?:"
     r"(?P<num>\d+)\s*[.)]\s*|"
@@ -432,3 +434,101 @@ def parse_etik_kurul_docx(file_bytes: bytes) -> dict:
         }
     except Exception:
         return {"parse_error": True}
+
+
+def extract_scale_test_requirements(
+    anket_result: dict,
+    registry_matches: List[dict],
+) -> dict:
+    """
+    Anket dosyasından doğrudan test gereksinimlerini çıkar.
+    AI'a gerek yok — ölçek yapısı her şeyi söylüyor.
+    """
+    requirements: dict = {
+        "cronbach_scales": [],
+        "descriptive_vars": [],
+        "correlation_pairs": [],
+    }
+
+    for match in registry_matches or []:
+        scale = match.get("scale") or {}
+        names = scale.get("names") or []
+        requirements["cronbach_scales"].append({
+            "id": scale.get("id"),
+            "name": names[0] if names else scale.get("id"),
+            "items": match.get("matched_cols") or [],
+            "reverse_items": scale.get("reverse_items") or [],
+            "scale_range": scale.get("scale_range") or [0, 4],
+            "test": "cronbach",
+            "reason": "Ölçek güvenilirliği — anket dosyasından tespit edildi",
+        })
+
+    return requirements
+
+
+def resolve_scale_test_requirements(
+    document_context: dict,
+    column_names: List[str],
+    variables: List[Variable],
+) -> dict:
+    """document_context içindeki anket + sütun eşleşmesinden gereksinimleri üret."""
+    stored = (document_context or {}).get("test_requirements")
+    if stored and stored.get("cronbach_scales"):
+        return stored
+
+    anket = (document_context or {}).get("anket") or {}
+    if anket.get("parse_error"):
+        return {"cronbach_scales": [], "descriptive_vars": [], "correlation_pairs": []}
+
+    from scale_registry import match_scale
+
+    labels = {
+        v.name: v.label or v.name
+        for v in variables
+        if v.included
+    }
+    registry_matches = match_scale(column_names, labels)
+    return extract_scale_test_requirements(anket, registry_matches)
+
+
+def apply_scale_test_requirements(
+    candidates: List[dict],
+    requirements: dict,
+    df: "pd.DataFrame",
+) -> List[dict]:
+    """Anket/registry gereksinimlerinden eksik Cronbach adaylarını ekle."""
+    from test_planner import make_candidate_id
+
+    existing = {
+        tuple(sorted(c.get("vars") or []))
+        for c in candidates
+        if c.get("test") == "cronbach"
+    }
+    out = list(candidates)
+    seq = max(
+        (int(str(c.get("seq", "t0"))[1:]) for c in candidates if c.get("seq")),
+        default=0,
+    )
+
+    for scale in requirements.get("cronbach_scales") or []:
+        items = scale.get("items") or []
+        if len(items) < 2:
+            continue
+        if not all(c in df.columns for c in items):
+            continue
+        key = tuple(sorted(items))
+        if key in existing:
+            continue
+        seq += 1
+        out.append({
+            "id": make_candidate_id("cronbach", items),
+            "seq": f"t{seq}",
+            "test": "cronbach",
+            "vars": items,
+            "auto_flag": "uygun",
+            "reason": scale.get("reason", "Ölçek güvenilirliği"),
+            "scale_id": scale.get("id"),
+        })
+        existing.add(key)
+
+    return out

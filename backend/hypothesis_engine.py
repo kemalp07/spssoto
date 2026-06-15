@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Dict, List, Optional, Tuple
 
@@ -121,6 +122,57 @@ def _normalize_hypothesis_response(
         if str(u).strip()
     ]
     return hypotheses, unmatched
+
+
+def filter_ai_hypothesis_matches(
+    hypotheses: List[dict],
+    variables: List[Variable],
+    candidates: List[dict],
+) -> List[dict]:
+    """
+    AI'ın önerdiği hipotez-test eşleştirmelerini istatistik kurallarıyla filtrele.
+    Geçersiz test önerileri reddedilir ve loglanır.
+    """
+    from test_planner import validate_test_selection
+
+    vmap = {v.name: v for v in variables}
+    filtered: List[dict] = []
+    logger = logging.getLogger(__name__)
+
+    for hyp in hypotheses or []:
+        valid_candidates: List[str] = []
+        for cid in hyp.get("candidate_ids") or []:
+            cand = next((c for c in candidates if c["id"] == cid), None)
+            if not cand:
+                continue
+            vars_ = cand.get("vars") or []
+            if not vars_:
+                continue
+
+            outcome = vmap.get(vars_[-1])
+            grouping = vmap.get(vars_[0]) if len(vars_) > 1 else None
+            n_groups = cand.get("n_groups")
+
+            if outcome:
+                ok, reason = validate_test_selection(
+                    cand["test"], grouping, outcome, n_groups,
+                )
+                if ok:
+                    valid_candidates.append(str(cid))
+                else:
+                    logger.warning(
+                        "[AI VALİDATOR] Geçersiz test reddedildi: "
+                        f"{cand['test']} ({reason})"
+                    )
+            else:
+                valid_candidates.append(str(cid))
+
+        if valid_candidates:
+            item = dict(hyp)
+            item["candidate_ids"] = valid_candidates
+            filtered.append(item)
+
+    return filtered
 
 
 def _gemini_split_questions(text: str, labels: Dict[str, str]) -> Tuple[list, dict]:
@@ -251,6 +303,7 @@ async def parse_research_questions(
     document_context: Optional[dict] = None,
 ) -> Tuple[dict, dict]:
     """Kural tabanlı puanlama + AI yalnızca gerekçe çevirisi."""
+    from etik_parser import parse_etik_to_hypotheses
     from test_planner import (
         candidate_display_label,
         partition_scored_candidates,
@@ -264,6 +317,26 @@ async def parse_research_questions(
     labels = compact_labels(variables)
     scored = score_candidates_from_context(uygun_candidates, text or "", labels)
     primary, accordion = partition_scored_candidates(scored)
+
+    hypotheses: List[dict] = []
+    unmatched: List[str] = []
+    if document_context:
+        etik = document_context.get("etik_kurul") or {}
+        if not etik.get("parse_error"):
+            etik_parts = etik.get("hypotheses") or []
+            aim = etik.get("aim") or ""
+            etik_text = "\n".join(str(h) for h in etik_parts if h)
+            if aim:
+                etik_text = f"{etik_text}\n{aim}".strip()
+            if not etik_text.strip():
+                etik_text = text or ""
+            if etik_text.strip():
+                raw_hyps = parse_etik_to_hypotheses(
+                    etik_text, variables, uygun_candidates,
+                )
+                hypotheses = filter_ai_hypothesis_matches(
+                    raw_hyps, variables, uygun_candidates,
+                )
 
     reason_targets = primary + accordion
     reasons = [
@@ -314,8 +387,8 @@ async def parse_research_questions(
     ]
 
     return {
-        "hypotheses": [],
-        "unmatched": [],
+        "hypotheses": hypotheses,
+        "unmatched": unmatched,
         "candidates": preview,
         "low_priority": low_priority,
         "primary_count": len(preview),
