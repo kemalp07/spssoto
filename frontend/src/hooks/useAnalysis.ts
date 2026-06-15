@@ -40,6 +40,9 @@ export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
   }
 
   getAppState().clearBulgu();
+  useAppStore.setState((s) => ({
+    results: { ...s.results, analysis: [], bulgular: {}, bulguSummary: '' },
+  }));
   getAppState().setAnalyzing(true);
 
   try {
@@ -50,10 +53,7 @@ export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
       missing_data?: unknown[];
     }>('/analyze', buildAnalyzePayload(fresh, enabledTests));
 
-    let results = [
-      ...fresh.results.cronbach,
-      ...(json.results ?? []).filter((r: AnalysisResult) => r.type !== 'cronbach'),
-    ];
+    let results = (json.results ?? []).filter((r: AnalysisResult) => r.type !== 'cronbach');
 
     if (fresh.scales.detected.length > 0) {
       try {
@@ -71,9 +71,13 @@ export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
               || m.name === scale.name,
           );
 
+          const cronbachItems =
+            (scale as { cronbach_items?: string[] }).cronbach_items ?? items ?? [];
+
           return {
             ...scale,
-            items: (scale as { cronbach_items?: string[] }).cronbach_items ?? items,
+            cronbach_items: cronbachItems,
+            items: cronbachItems,
             name: (matchingCol && fresh.variables.userLabels[matchingCol] !== matchingCol)
               ? fresh.variables.userLabels[matchingCol]
               : scale.name,
@@ -88,6 +92,11 @@ export async function runAnalysis(enabledTests: string[]): Promise<boolean> {
         const cbData = await apiCall<{ results?: AnalysisResult[] }>('/analyze/cronbach-batch', {
           scales: scalesToSend,
           data: fresh.parsedData.map((row) => ({ values: row })),
+          missing_codes: getMissingCodesFromState(
+            fresh.wizard.detectedMissingCodes,
+            fresh.wizard.manualMissingCodesText,
+            fresh.wizard.missingCodesEditOpen,
+          ),
         });
         if (cbData.results?.length) {
           const normIdx = results.findIndex((r) => r.type === 'normality');

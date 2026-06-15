@@ -112,6 +112,49 @@ def main() -> int:
     print(f"[OK] POST /layout-results: {len(laid)} tablo")
     steps += 1
 
+    r = client.post(
+        "/detect-scales",
+        json={
+            "columns": cols,
+            "labels": labels,
+            "data": [DataRow(values=row).model_dump() for row in rows[:5]],
+        },
+    )
+    assert r.status_code == 200, r.text[:400]
+    scales = r.json().get("scales") or []
+    assert scales, "detect-scales ölçek döndürmedi"
+    scales_send = []
+    for scale in scales:
+        cronbach_items = scale.get("cronbach_items") or scale.get("items") or []
+        scales_send.append({
+            **scale,
+            "cronbach_items": cronbach_items,
+            "items": cronbach_items,
+            "reverse_items": scale.get("reverse_items") or [],
+            "scale_range": scale.get("scale_range") or [0, 4],
+        })
+    r = client.post(
+        "/analyze/cronbach-batch",
+        json={
+            "scales": scales_send,
+            "data": [DataRow(values=row).model_dump() for row in rows],
+            "missing_codes": ["99"],
+        },
+    )
+    assert r.status_code == 200, r.text[:400]
+    cb = r.json().get("results") or []
+    assert cb, "cronbach-batch sonuç üretmedi"
+    merged_rows = cb[0].get("rows") or []
+    alphas = {
+        str(row[0]): float(str(row[3]).replace(",", "."))
+        for row in merged_rows
+        if len(row) >= 4
+    }
+    gya_alpha = next((a for name, a in alphas.items() if "Gece" in name or "GYA" in name), None)
+    assert gya_alpha is not None and 0.68 <= gya_alpha <= 0.82, f"GYA α SPSS aralığı dışında: {alphas}"
+    print(f"[OK] POST /cronbach-batch: {alphas}")
+    steps += 1
+
     print(f"\nAPI entegrasyon tamam ({steps} adim).")
     return 0
 

@@ -915,6 +915,7 @@ Bu değişkenler için istatistiksel analiz planı oluştur."""
 TOPLAM_RE = re.compile(r"_(TOPLAM|TOTAL|PUAN|SCORE|SUM)$", re.I)
 BINARY_RE = re.compile(r"_(BINARY|IKILI|İKİLİ|RISK_BINARY)$", re.I)
 GRUP_RE = re.compile(r"_(GRUBU?|GROUP|KATEGORI|KAT|CATEGORY)$", re.I)
+ANTHRO_RE = re.compile(r"^(dbf_)?(boy|kilo|weight|height|bmi|vki|bki)$", re.I)
 DBF_PREFIX = re.compile(r"^dbf_", re.I)
 
 
@@ -944,6 +945,14 @@ def _deterministic_classify(col: str, label: str = "") -> Optional[dict]:
             "role": "outcome",
             "recommended": True,
             "reason": "Kategorik outcome",
+        }
+
+    if ANTHRO_RE.match(col):
+        return {
+            "type": "continuous",
+            "role": "outcome",
+            "recommended": False,
+            "reason": "Antropometrik ölçüm, tanımlayıcıda gösterilir",
         }
 
     if DBF_PREFIX.match(col):

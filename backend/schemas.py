@@ -172,6 +172,7 @@ class DetectScalesRequest(BaseModel):
 class CronbachBatchRequest(BaseModel):
     scales: List[dict]
     data: List[DataRow]
+    missing_codes: Optional[List[str]] = None
 
 
 class SpssTableRequest(BaseModel):

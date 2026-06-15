@@ -96,10 +96,6 @@ from hypothesis_engine import (
 )
 
 limiter = Limiter(key_func=get_remote_address)
-ALREADY_REVERSED_RE = re.compile(
-    r"(_ters|_rev|_r(?=\b|_)|_t(?=\b|_)|_reversed|_recoded|_inv|_rc)$",
-    re.I,
-)
 app = FastAPI(title="StatAI - Akademik Analiz API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -403,6 +399,8 @@ async def detect_scales(request: Request, req: DetectScalesRequest):
 
 @app.post("/analyze/cronbach-batch")
 async def analyze_cronbach_batch(req: CronbachBatchRequest):
+    from data_cleaning import build_cronbach_dataframe
+
     df = pd.DataFrame([r.values for r in req.data])
     results = []
     tc = TableCounter()
@@ -412,44 +410,18 @@ async def analyze_cronbach_batch(req: CronbachBatchRequest):
         items = scale.get("cronbach_items") or scale.get("items", [])
         reverse_items = scale.get("reverse_items") or []
         scale_range = scale.get("scale_range") or [0, 4]
-        scale_max = scale_range[1] if len(scale_range) > 1 else 4
-        reverse_set = {int(x) for x in reverse_items if x is not None}
-
-        valid_items = []
-        for col in items:
-            if col in df.columns and not ALREADY_REVERSED_RE.search(col):
-                df[col] = pd.to_numeric(
-                    df[col].astype(str).str.replace(",", ".", regex=False),
-                    errors="coerce",
-                )
-                valid_items.append(col)
-
-        if not valid_items:
-            for col in items:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(
-                        df[col].astype(str).str.replace(",", ".", regex=False),
-                        errors="coerce",
-                    )
-                    valid_items.append(col)
-            reverse_set = set()
-
-        if len(valid_items) < 2:
-            continue
 
         try:
-            items_df = df[valid_items].copy().dropna()
+            items_df, valid_items = build_cronbach_dataframe(
+                df,
+                items,
+                reverse_items=reverse_items,
+                scale_range=scale_range,
+                missing_codes=req.missing_codes,
+            )
             k = len(valid_items)
-            if len(items_df) < 3:
+            if k < 2 or len(items_df) < 3:
                 continue
-
-            if reverse_set:
-                for col in valid_items:
-                    if ALREADY_REVERSED_RE.search(col):
-                        continue
-                    match = re.search(r"_(\d+)", col)
-                    if match and int(match.group(1)) in reverse_set:
-                        items_df[col] = scale_max - items_df[col]
 
             item_vars = items_df.var(axis=0, ddof=1).sum()
             total_var = items_df.sum(axis=1).var(ddof=1)

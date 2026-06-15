@@ -15,6 +15,7 @@ import type {
   HypothesesSlice,
   LabelMeta,
   DetectScalesResponse,
+  DetectedScale,
   MatchScalesResponse,
   PlanProfileId,
   PlanSlice,
@@ -230,6 +231,7 @@ export interface AppState {
   setResearchTopic: (topic: string) => void;
   setScaleNames: (names: string) => void;
   setScaleDetection: (response: DetectScalesResponse) => void;
+  updateDetectedScale: (index: number, patch: Partial<DetectedScale>) => void;
   setScaleMatches: (response: MatchScalesResponse) => void;
   recomputeAutoSkips: () => void;
   loadVariablesStepData: () => Promise<void>;
@@ -536,6 +538,14 @@ export const useAppStore = create<AppState>()(
       },
       wizard: { ...s.wizard, detectScalesRan: true },
     })),
+
+  updateDetectedScale: (index, patch) =>
+    set((s) => {
+      const detected = s.scales.detected.map((scale, i) => (
+        i === index ? { ...scale, ...patch } : scale
+      ));
+      return { scales: { ...s.scales, detected } };
+    }),
 
   setScaleMatches: (response) =>
     set((s) => ({

@@ -53,6 +53,22 @@ def apply_missing_codes(
         df.loc[mask, v.name] = np.nan
     return df
 
+
+def apply_missing_codes_to_columns(
+    df: pd.DataFrame,
+    columns: List[str],
+    codes: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    """Belirtilen sütunlarda eksik veri kodlarını (99 vb.) NaN'a çevir."""
+    code_set = parse_missing_codes(codes)
+    df = df.copy()
+    for col in columns:
+        if col not in df.columns:
+            continue
+        mask = df[col].apply(lambda x: matches_missing_code(x, code_set))
+        df.loc[mask, col] = np.nan
+    return df
+
 def is_missing_value(val, code_set: Optional[set] = None) -> bool:
     if val is None or (isinstance(val, float) and np.isnan(val)):
         return True
@@ -314,6 +330,104 @@ def apply_scale_item_resolution(items: List[str]) -> dict:
         "all_items": list(items),
         "item_variant_map": variant_map,
     }
+
+
+def extract_item_number(col: str) -> Optional[int]:
+    """Madde numarasını sütun adından çıkar (sbito_10_ters → 10)."""
+    base = normalize_item_root(col)
+    match = re.search(r"(\d+)$", base)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"_(\d+)", col or "")
+    return int(match.group(1)) if match else None
+
+
+def resolve_cronbach_column(col: str, df_columns: List[str]) -> str:
+    """Veri setindeki gerçek sütun adını bul (büyük/küçük harf duyarsız)."""
+    col_set = {str(c): c for c in df_columns}
+    if col in col_set:
+        return col_set[col]
+    lower_map = {str(c).lower(): c for c in df_columns}
+    return lower_map.get(str(col).lower(), col)
+
+
+def pick_cronbach_column(
+    col: str,
+    df_columns: List[str],
+    reverse_set: set,
+) -> str:
+    """
+    Madde sütunu seç — çift ters önlenir.
+
+    Ters madde + _ters/_T türevi varsa: hazır puanlı türevi kullan (formül yok).
+    Aksi halde orijinal sütun; ters kodlama ayrıca uygulanır.
+    """
+    actual = resolve_cronbach_column(col, df_columns)
+    if has_item_deriv_affix(actual):
+        return actual
+    num = extract_item_number(actual)
+    if num is not None and num in reverse_set:
+        root = normalize_item_root(actual)
+        derivs = sorted(
+            c for c in df_columns
+            if normalize_item_root(c) == root and has_item_deriv_affix(c)
+        )
+        if derivs:
+            return derivs[0]
+    return actual
+
+
+def build_cronbach_dataframe(
+    df: pd.DataFrame,
+    items: List[str],
+    reverse_items: Optional[List[int]] = None,
+    scale_range: Optional[List[float]] = None,
+    missing_codes: Optional[List[str]] = None,
+) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Cronbach veri matrisi.
+
+    Liste düzeyinde orijinal maddeler tercih edilir; ters maddelerde _ters varsa
+  o sütun alınır (çift ters yok), yoksa orijinale min+max−x uygulanır.
+    """
+    bounds = scale_range if scale_range and len(scale_range) >= 2 else [0, 4]
+    lo = float(bounds[0])
+    hi = float(bounds[1])
+    reverse_set = {int(x) for x in (reverse_items or []) if x is not None}
+    df_columns = list(df.columns)
+
+    picked = prefer_original_items(items, df_columns)
+    resolved: List[str] = []
+    seen_roots: set = set()
+    for col in picked:
+        actual = pick_cronbach_column(col, df_columns, reverse_set)
+        root = normalize_item_root(actual)
+        if root in seen_roots or actual not in df_columns:
+            continue
+        seen_roots.add(root)
+        resolved.append(actual)
+
+    if len(resolved) < 2:
+        return pd.DataFrame(), []
+
+    work = df.copy()
+    for col in resolved:
+        work[col] = pd.to_numeric(
+            work[col].astype(str).str.replace(",", ".", regex=False),
+            errors="coerce",
+        )
+
+    work = apply_missing_codes_to_columns(work, resolved, missing_codes)
+    items_df = work[resolved].copy()
+
+    for col in resolved:
+        if has_item_deriv_affix(col):
+            continue
+        num = extract_item_number(col)
+        if num is not None and num in reverse_set:
+            items_df[col] = lo + hi - items_df[col]
+
+    return items_df.dropna(), resolved
 
 
 def _likert_bounds_from_scale_info(si: dict) -> Tuple[Optional[float], Optional[float]]:

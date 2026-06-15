@@ -63,7 +63,7 @@ _BINNED_DEMO_RE = re.compile(
     r"(grup|group|kategori|category|sinif|class|level|duzey|düzey)",
     re.I,
 )
-_MAX_AUTO_GROUPING_CHI = 2
+_MAX_AUTO_GROUPING_CHI = 6
 _MAX_THESIS_RECOMMENDED = 28
 _MAX_CHI_SQUARE = 5
 _MAX_FREQ_TABLES = 10
@@ -71,9 +71,11 @@ _MAX_KESIN_FREQ = 6
 _MAX_KESIN_CHI = 3
 _VISIBLE_CANDIDATE_CAP = 12
 
-_COMPARISON_KEYWORDS = (
-    "fark", "karsilastir", "karsilastirma", "gruplar arasi", "gruplararas",
-)
+_COMPARISON_KEYWORDS = frozenset({
+    "karsilastir", "karsilastirma", "fark", "gruplar", "gruplar arasi", "gruplararas",
+    "farklilik", "etkisi",
+    "sigara", "alkol", "gelir", "medeni", "egitim", "ilac",
+})
 _CORRELATION_KEYWORDS = ("iliski", "korelasyon", "baglanti")
 _REGRESSION_KEYWORDS = ("yordama", "etki", "tahmin", "regresyon")
 _COMPARISON_TESTS = frozenset({
