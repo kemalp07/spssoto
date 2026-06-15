@@ -4,9 +4,8 @@ import { STEP_ICONS, STEPS } from '../../lib/constants';
 import { WizardStepper } from '../layout/WizardStepper';
 import { AnketStep } from './AnketStep';
 import { EtikKurulStep } from './EtikKurulStep';
+import { OneriStep } from './OneriStep';
 import { PlanStep, ResultsStep, ReviewStep, VariablesStep } from './steps';
-import { ScalesStep } from './ScalesStep';
-import { TopicStep } from './TopicStep';
 import { UploadStep } from './UploadStep';
 
 export function WizardShell() {
@@ -44,10 +43,8 @@ export function WizardShell() {
         return <AnketStep {...nav} />;
       case 'etikkurul':
         return <EtikKurulStep {...nav} onProceed={preparePostUploadWizard} />;
-      case 'scales':
-        return <ScalesStep {...nav} />;
-      case 'topic':
-        return <TopicStep {...nav} />;
+      case 'oneri':
+        return <OneriStep {...nav} />;
       case 'variables':
         return <VariablesStep onBack={prevStep} />;
       case 'plan':
@@ -62,7 +59,7 @@ export function WizardShell() {
   };
 
   const wide = ['variables', 'plan', 'results', 'review'].includes(currentStepId);
-  const center = ['upload', 'anket', 'etikkurul', 'scales', 'topic'].includes(currentStepId);
+  const center = ['upload', 'anket', 'etikkurul', 'oneri'].includes(currentStepId);
 
   return (
     <>

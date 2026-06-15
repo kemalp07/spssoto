@@ -12,7 +12,6 @@ export function TopicStep({ onBack }: TopicStepProps) {
   const { nextStep } = useWizard();
   const researchTopic = useAppStore((s) => s.wizard.researchTopic);
   const setResearchTopic = useAppStore((s) => s.setResearchTopic);
-  const autoSkipped = useAppStore((s) => s.wizard.autoSkippedSteps);
   const context = useAppStore((s) => s.documents.context);
   const optional = isTopicStepOptional(context);
 
@@ -28,7 +27,7 @@ export function TopicStep({ onBack }: TopicStepProps) {
         {optional ? ' (Opsiyonel)' : ''}
       </p>
 
-      {autoSkipped.has('topic') ? (
+      {false ? (
         <div className="alert alertSuccess textSm" role="status">
           Etik kurul raporundan otomatik dolduruldu — isterseniz düzenleyin.
         </div>

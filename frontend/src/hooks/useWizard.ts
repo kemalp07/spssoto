@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import { STEPS } from '../lib/constants';
-import { topicFromEtikKurul } from '../lib/wizardSkip';
-import { detectScalesInline, scaleMatchingInline } from '../lib/scaleApi';
+import { detectScalesInline } from '../lib/scaleApi';
 import { getAppState } from '../lib/storeAccess';
 import { useAppStore } from '../stores/useAppStore';
 import type { WizardStepId } from '../types';
@@ -19,13 +18,9 @@ export async function resolveForwardStepAsync(fromIdx: number): Promise<number> 
   while (next < STEPS.length) {
     const stepId = STEPS[next];
     const state = getAppState();
-    if (SKIP_RULES[stepId]?.(state)) {
-      getAppState().markStepSkipped(stepId);
-      if (stepId === 'scales') await scaleMatchingInline();
-      if (stepId === 'topic') {
-        const text = topicFromEtikKurul(state.documents.context?.etik_kurul);
-        if (text) getAppState().setResearchTopic(text);
-      }
+    const skipRule = SKIP_RULES[stepId as WizardStepId];
+    if (skipRule?.(state)) {
+      getAppState().markStepSkipped(stepId as WizardStepId);
       next += 1;
       continue;
     }
@@ -62,8 +57,6 @@ export function useWizard() {
       if (!validateVariablesStep()) return;
     }
 
-    if (stepId === 'scales') await scaleMatchingInline();
-
     const next = await resolveForwardStepAsync(currentStep);
     if (STEPS[next] === 'variables') {
       await enterVariablesStep();
@@ -95,11 +88,7 @@ export function useWizard() {
   const preparePostUploadWizard = useCallback(async () => {
     await detectScalesInline();
     recomputeAutoSkips();
-    const next = await resolveForwardStepAsync(STEPS.indexOf('etikkurul'));
-    if (STEPS[next] === 'variables') {
-      await enterVariablesStep();
-    }
-    goToStep(next);
+    goToStep(STEPS.indexOf('oneri'));
   }, [goToStep, recomputeAutoSkips]);
 
   return {

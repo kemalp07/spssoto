@@ -168,3 +168,21 @@ def test_estimate_matches_normalize_table_layout():
     assert estimated == len(normalized), (
         f"tahmin={estimated}, normalize={len(normalized)}"
     )
+
+
+def test_core_frequency_only_primary_demographics():
+    uygun = [
+        {"id": "frequency:bolum", "test": "frequency", "vars": ["bolum"]},
+        {"id": "frequency:cinsiyet", "test": "frequency", "vars": ["cinsiyet"]},
+        {"id": "frequency:yas", "test": "frequency", "vars": ["yas"]},
+        {"id": "frequency:sigara", "test": "frequency", "vars": ["sigara"]},
+        {"id": "frequency:gelir", "test": "frequency", "vars": ["gelir"]},
+        {"id": "frequency:alkol", "test": "frequency", "vars": ["alkol"]},
+    ]
+    core_ids = core_candidate_ids(uygun)
+    assert "frequency:bolum" in core_ids
+    assert "frequency:cinsiyet" in core_ids
+    assert "frequency:yas" in core_ids
+    assert "frequency:sigara" not in core_ids
+    assert "frequency:gelir" not in core_ids
+    assert "frequency:alkol" not in core_ids

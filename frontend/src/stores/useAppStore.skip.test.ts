@@ -6,7 +6,7 @@ describe('recomputeAutoSkips', () => {
     useAppStore.getState().reset();
   });
 
-  it('marks scales and topic skipped with high-confidence detection + etik hypotheses', () => {
+  it('prefills research topic and scale names without skipping wizard steps', () => {
     useAppStore.setState((s) => ({
       scales: {
         ...s.scales,
@@ -29,14 +29,8 @@ describe('recomputeAutoSkips', () => {
     useAppStore.getState().recomputeAutoSkips();
     const { wizard } = useAppStore.getState();
 
-    expect(wizard.autoSkippedSteps.has('scales')).toBe(true);
-    expect(wizard.autoSkippedSteps.has('topic')).toBe(true);
+    expect(wizard.autoSkippedSteps.size).toBe(0);
     expect(wizard.scaleNames).toBe('OYŞTÖ');
     expect(wizard.researchTopic).toContain('Cinsiyet');
-  });
-
-  it('does not skip topic without etik kurul', () => {
-    useAppStore.getState().recomputeAutoSkips();
-    expect(useAppStore.getState().wizard.autoSkippedSteps.has('topic')).toBe(false);
   });
 });

@@ -1,17 +1,11 @@
 import { useState } from 'react';
-import {
-  countHypothesisTables,
-  estimatePlanTableCount,
-  planTotalBarText,
-  PLAN_PROFILES,
-} from '../../lib/planCatalog';
+import { countHypothesisTables } from '../../lib/planCatalog';
 import { useAppStore } from '../../stores/useAppStore';
 import type { PlanCatalogItem } from '../../types';
 
 interface PlanCatalogProps {
   onToggleItem: (index: number, enabled: boolean) => void;
   onToggleTier: (tier: string, enabled: boolean) => void;
-  onSetProfile: (profile: typeof PLAN_PROFILES[number]['id']) => void;
   onFilterHypothesis: (id: string | null) => void;
 }
 
@@ -77,12 +71,9 @@ function PlanCard({
 export function PlanCatalogView({
   onToggleItem,
   onToggleTier,
-  onSetProfile,
   onFilterHypothesis,
 }: PlanCatalogProps) {
   const catalog = useAppStore((s) => s.plan.catalog);
-  const meta = useAppStore((s) => s.plan.meta);
-  const profile = useAppStore((s) => s.plan.profile);
   const activeFilter = useAppStore((s) => s.hypotheses.activeFilter);
   const approved = useAppStore((s) => s.hypotheses.approved);
   const [accordionOpen, setAccordionOpen] = useState(false);
@@ -95,36 +86,37 @@ export function PlanCatalogView({
   const accordion = indexed.filter(
     (t) => !t.cekirdek && t.display_section === 'accordion',
   );
-  const tableCount = estimatePlanTableCount(catalog);
-  const activeProfile = PLAN_PROFILES.find((p) => p.id === profile);
-  const profileApprox = activeProfile?.approx ?? tableCount;
-  const belowTarget = tableCount < profileApprox;
+  const selectedCount = catalog.filter((item) => item.enabled === true).length;
+
+  const selectAll = () => {
+    catalog.forEach((item, index) => {
+      if (!item.cekirdek) {
+        onToggleItem(index, true);
+      }
+    });
+  };
+
+  const clearAll = () => {
+    catalog.forEach((item, index) => {
+      if (!item.cekirdek) {
+        onToggleItem(index, false);
+      }
+    });
+  };
 
   return (
     <>
       <div className="planToolbar">
-        <div className="planProfileSegments">
-          {PLAN_PROFILES.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className={`planProfileBtn${profile === p.id ? ' active' : ''}`}
-              onClick={() => onSetProfile(p.id)}
-            >
-              <span>{p.label}</span>
-              <span className="planProfileApprox">≈{p.approx} tablo</span>
-            </button>
-          ))}
-        </div>
-        <div className="planTableCounterCard">
-          {belowTarget ? (
-            <>
-              Bu veri seti için <strong>{tableCount}</strong> tablo üretilebilir
-              <span className="planTableCounterNote"> (≈{profileApprox} hedeflendi)</span>
-            </>
-          ) : (
-            <>Bu plan <strong>{tableCount}</strong> tablo üretecek</>
-          )}
+        <span className="planSummary">
+          Seçili analizler: <strong>{selectedCount}</strong>
+        </span>
+        <div className="planToolbarActions">
+          <button type="button" onClick={selectAll} className="btnGhost btnSm">
+            Tümünü Seç
+          </button>
+          <button type="button" onClick={clearAll} className="btnGhost btnSm">
+            Temizle
+          </button>
         </div>
       </div>
 
@@ -151,10 +143,6 @@ export function PlanCatalogView({
           </div>
         </div>
       ) : null}
-
-      <div className="alert alertInfo textSm planTotalBar">
-        {planTotalBarText(catalog, meta)}
-      </div>
 
       {core.length ? (
         <>

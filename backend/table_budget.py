@@ -92,6 +92,21 @@ def estimate_table_count(
     return total
 
 
+_PRIMARY_DEMO_FREQ = frozenset({
+    "bolum", "cinsiyet", "gender", "yas", "age",
+    "dbf_cinsiyet", "dbf_yas", "department", "dept",
+})
+
+
+def _is_primary_demographic_frequency(c: dict) -> bool:
+    var_name = ((c.get("vars") or [""])[0] or "").lower()
+    return (
+        var_name in _PRIMARY_DEMO_FREQ
+        or "bolum" in var_name
+        or "cinsiyet" in var_name
+    )
+
+
 def core_candidate_ids(uygun: List[dict]) -> set:
     """Her profilde zorunlu çekirdek aday kimlikleri."""
     ids: set = set()
@@ -101,7 +116,7 @@ def core_candidate_ids(uygun: List[dict]) -> set:
         test = c.get("test")
         if test == "descriptive":
             ids.add(c["id"])
-        elif test == "frequency":
+        elif test == "frequency" and _is_primary_demographic_frequency(c):
             ids.add(c["id"])
         elif test == "cronbach" and has_cronbach:
             ids.add(c["id"])

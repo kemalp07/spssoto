@@ -2,8 +2,7 @@ export type WizardStepId =
   | 'upload'
   | 'anket'
   | 'etikkurul'
-  | 'scales'
-  | 'topic'
+  | 'oneri'
   | 'variables'
   | 'plan'
   | 'results'
@@ -187,7 +186,45 @@ export interface DocumentContext {
 
 export interface AnketParseResult {
   parse_error?: boolean;
-  sections?: Array<{ items?: unknown[] }>;
+  sections?: Array<{
+    title?: string;
+    items?: Array<{ no?: number | string; text?: string; reverse_hint?: boolean }>;
+  }>;
+}
+
+export interface AnalizOneriGerekce {
+  analiz?: string;
+  neden?: string;
+  degiskenler?: string[];
+  tip?: string;
+}
+
+export interface AnalizOneriScale {
+  ad?: string;
+  maddeler_prefix?: string;
+  neden?: string;
+}
+
+export interface AnalizOneriResult {
+  ozet?: string;
+  gerekceler?: AnalizOneriGerekce[];
+  olcekler?: AnalizOneriScale[];
+  gruplama_degiskenleri?: string[];
+  outcome_degiskenleri?: string[];
+}
+
+export interface AnalizOneriResponse {
+  oneri?: AnalizOneriResult;
+  yorum?: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface OneriSlice {
+  loading: boolean;
+  error: string | null;
+  data: AnalizOneriResult | null;
+  yorum: string | null;
+  fetched: boolean;
 }
 
 export interface EtikKurulParseResult {

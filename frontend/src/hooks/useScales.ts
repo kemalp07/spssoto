@@ -7,7 +7,6 @@ export function useScales() {
   const detected = useAppStore((s) => s.scales.detected);
   const registryMeta = useAppStore((s) => s.scales.registryMeta);
   const scaleNames = useAppStore((s) => s.wizard.scaleNames);
-  const autoSkipped = useAppStore((s) => s.wizard.autoSkippedSteps);
 
   const runDetectScalesEarly = useCallback(() => detectScalesInline(), []);
   const runScaleMatching = useCallback(() => scaleMatchingInline(), []);
@@ -16,7 +15,7 @@ export function useScales() {
     detected,
     registryMeta,
     scaleNames,
-    isAutoSkipped: autoSkipped.has('scales'),
+    isAutoSkipped: false,
     setScaleNames,
     runDetectScalesEarly,
     runScaleMatching,

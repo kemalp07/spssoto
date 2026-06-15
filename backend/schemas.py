@@ -200,3 +200,10 @@ class GenerateLabelsRequest(BaseModel):
     columns: List[str]
     scale_names: Optional[List[str]] = None
     research_topic: Optional[str] = None
+
+
+class AnalizeOneriRequest(BaseModel):
+    columns: List[str]
+    labels: Optional[Dict[str, str]] = None
+    anket_text: Optional[str] = None
+    etik_text: Optional[str] = None

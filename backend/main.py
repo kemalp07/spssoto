@@ -29,6 +29,7 @@ from schemas import (
     GenerateLabelsRequest,
     ParseHypothesesRequest,
     PlanTestsRequest,
+    AnalizeOneriRequest,
     BulguSummaryRequest,
     RegressionRequest,
     ScaleMatchRequest,
@@ -60,6 +61,7 @@ from stat_tests import (
 from word_export import build_word_document
 from file_io import read_uploaded_file
 from document_parser import parse_anket_docx, parse_etik_kurul_docx
+from analiz_oneri import gemini_analiz_oneri, haiku_gozden_gecir
 from document_context import (
     resolve_document_context,
     save_document_context,
@@ -555,6 +557,23 @@ async def upload_documents(
         "anket": anket_result,
         "etik_kurul": etik_result,
         "document_context": document_context,
+    })
+
+
+@app.post("/analiz-oneri")
+@limiter.limit("10/minute")
+async def analiz_oneri_endpoint(request: Request, req: AnalizeOneriRequest):
+    oneri = await gemini_analiz_oneri(
+        req.columns,
+        req.labels or {},
+        req.anket_text or "",
+        req.etik_text or "",
+    )
+    yorum = await haiku_gozden_gecir(oneri.get("oneri") or {})
+    return sanitize({
+        "oneri": oneri["oneri"],
+        "yorum": yorum,
+        "meta": oneri.get("meta") or {},
     })
 
 

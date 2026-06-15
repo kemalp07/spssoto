@@ -28,6 +28,8 @@ import type {
   ReviewSlice,
   SavMetadata,
   ScalesSlice,
+  OneriSlice,
+  AnalizOneriResponse,
   ToastMessage,
   UploadDocumentsResponse,
   VariableSlice,
@@ -52,9 +54,12 @@ import {
 } from '../lib/planCatalog';
 import { loadVariablesData } from '../lib/variablesLoad';
 import {
+  matchColumnHint,
+  researchTopicFromOneri,
+  scalesFromOneriOlcekler,
+} from '../lib/analizOneri';
+import {
   scalesFromDetection,
-  shouldSkipScalesStep,
-  shouldSkipTopicStep,
   topicFromEtikKurul,
 } from '../lib/wizardSkip';
 import {
@@ -171,6 +176,16 @@ function emptyReviewSlice(): ReviewSlice {
   };
 }
 
+function emptyOneriSlice(): OneriSlice {
+  return {
+    loading: false,
+    error: null,
+    data: null,
+    yorum: null,
+    fetched: false,
+  };
+}
+
 function emptyWizardSlice(): WizardSlice {
   return {
     currentStep: 0,
@@ -211,6 +226,7 @@ export interface AppState {
   plan: PlanSlice;
   results: ResultsSlice;
   review: ReviewSlice;
+  oneri: OneriSlice;
   wizard: WizardSlice;
   toasts: ToastMessage[];
 
@@ -234,6 +250,10 @@ export interface AppState {
   updateDetectedScale: (index: number, patch: Partial<DetectedScale>) => void;
   setScaleMatches: (response: MatchScalesResponse) => void;
   recomputeAutoSkips: () => void;
+  setOneriLoading: (loading: boolean) => void;
+  setOneriError: (error: string | null) => void;
+  applyAnalizOneriResponse: (response: AnalizOneriResponse) => void;
+  applyAnalizOneriEffects: () => void;
   loadVariablesStepData: () => Promise<void>;
   applyClassifyResult: (cls: ClassifyResponse) => void;
   applyDerivedList: (derived: DerivedVariable[]) => void;
@@ -290,6 +310,7 @@ const initialState = {
   plan: emptyPlanSlice(),
   results: emptyResultsSlice(),
   review: emptyReviewSlice(),
+  oneri: emptyOneriSlice(),
   wizard: emptyWizardSlice(),
   toasts: [] as ToastMessage[],
 };
@@ -358,6 +379,7 @@ export const useAppStore = create<AppState>()(
       results: emptyResultsSlice(),
       plan: emptyPlanSlice(),
       hypotheses: emptyHypothesesSlice(),
+      oneri: emptyOneriSlice(),
     });
     if (hadPrior) get().showToast('Önceki analiz temizlendi', 'info');
   },
@@ -558,35 +580,75 @@ export const useAppStore = create<AppState>()(
 
   recomputeAutoSkips: () => {
     const state = get();
-    const skipped = new Set<WizardStepId>();
     let scaleNames = state.wizard.scaleNames;
     let researchTopic = state.wizard.researchTopic;
 
-    if (shouldSkipScalesStep(
-      state.scales.registryMeta.registry_matched,
-      state.scales.detected,
-    )) {
-      skipped.add('scales');
-      const fromDetection = scalesFromDetection(state.scales.detected);
-      if (fromDetection) scaleNames = fromDetection;
-    } else if (state.scales.detected.length) {
-      const fromDetection = scalesFromDetection(state.scales.detected);
-      if (fromDetection) scaleNames = fromDetection;
-    }
+    const fromDetection = scalesFromDetection(state.scales.detected);
+    if (fromDetection) scaleNames = fromDetection;
 
     const etik = state.documents.context?.etik_kurul;
-    if (shouldSkipTopicStep(etik)) {
-      skipped.add('topic');
-      const topic = topicFromEtikKurul(etik);
-      if (topic) researchTopic = topic;
+    const topic = topicFromEtikKurul(etik);
+    if (topic) researchTopic = topic;
+
+    set((s) => ({
+      wizard: {
+        ...s.wizard,
+        autoSkippedSteps: new Set(),
+        scaleNames,
+        researchTopic,
+      },
+    }));
+  },
+
+  setOneriLoading: (loading) =>
+    set((s) => ({ oneri: { ...s.oneri, loading } })),
+
+  setOneriError: (error) =>
+    set((s) => ({ oneri: { ...s.oneri, error, loading: false } })),
+
+  applyAnalizOneriResponse: (response) =>
+    set((s) => ({
+      oneri: {
+        ...s.oneri,
+        loading: false,
+        error: null,
+        data: response.oneri ?? null,
+        yorum: response.yorum ?? null,
+        fetched: true,
+      },
+    })),
+
+  applyAnalizOneriEffects: () => {
+    const state = get();
+    const oneri = state.oneri.data;
+    if (!oneri) return;
+
+    const researchTopic = researchTopicFromOneri(
+      oneri,
+      state.documents.context?.etik_kurul,
+    );
+    const scaleNames = (oneri.olcekler ?? [])
+      .map((o) => o.ad?.trim())
+      .filter(Boolean)
+      .join(', ');
+    const oneriScales = scalesFromOneriOlcekler(oneri.olcekler ?? [], state.columns);
+    const mergedDetected = [...state.scales.detected];
+    for (const scale of oneriScales) {
+      const exists = mergedDetected.some(
+        (item) => item.name === scale.name || item.id === scale.id,
+      );
+      if (!exists) mergedDetected.push(scale);
     }
 
     set((s) => ({
       wizard: {
         ...s.wizard,
-        autoSkippedSteps: skipped,
-        scaleNames,
-        researchTopic,
+        researchTopic: researchTopic || s.wizard.researchTopic,
+        scaleNames: scaleNames || s.wizard.scaleNames,
+      },
+      scales: {
+        ...s.scales,
+        detected: mergedDetected,
       },
     }));
   },
@@ -669,6 +731,17 @@ export const useAppStore = create<AppState>()(
         return !rec || rec.status !== 'skip';
       }),
     );
+
+    for (const hint of state.oneri.data?.gruplama_degiskenleri ?? []) {
+      const col = matchColumnHint(mapped.groupingCols, hint)
+        || matchColumnHint(state.columns, hint);
+      if (col && mapped.groupingCols.includes(col)) selectedCat.add(col);
+    }
+    for (const hint of state.oneri.data?.outcome_degiskenleri ?? []) {
+      const col = matchColumnHint(mapped.outcomeCols, hint)
+        || matchColumnHint(state.columns, hint);
+      if (col && mapped.outcomeCols.includes(col)) selectedCont.add(col);
+    }
 
     const missingData = computeMissingData(
       [...mapped.groupingCols, ...mapped.outcomeCols],
@@ -1034,7 +1107,7 @@ export const useAppStore = create<AppState>()(
 
   reset: () => {
     clearBulguPersistStorage();
-    set({ ...initialState, wizard: emptyWizardSlice(), toasts: [] });
+    set({ ...initialState, wizard: emptyWizardSlice(), oneri: emptyOneriSlice(), toasts: [] });
   },
     }),
     {

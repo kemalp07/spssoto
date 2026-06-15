@@ -1097,6 +1097,66 @@ code, .mono {
   text-align: left;
 }
 
+.planSummary {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.planToolbarActions {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.oneriCard {
+  text-align: left;
+  margin-bottom: var(--space-3);
+}
+
+.oneriOzet {
+  font-size: 15px;
+  line-height: 1.5;
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.oneriYorum {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.oneriYorum .badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-muted);
+  color: var(--accent);
+  margin-bottom: var(--space-1);
+}
+
+.oneriSectionTitle {
+  font-size: 14px;
+  margin: var(--space-2) 0 var(--space-1);
+}
+
+.oneriItem,
+.oneriOlcek {
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-1);
+  background: var(--card);
+}
+
+.oneriNeden {
+  font-size: 13px;
+  color: var(--muted);
+  margin: var(--space-1) 0 0;
+}
+
 .planProfileSegments {
   display: flex;
   gap: var(--space-1);

@@ -6,8 +6,6 @@ import { useAppStore } from '../../stores/useAppStore';
 import { LoadingButton } from '../shared/LoadingButton';
 import { WizardNav } from '../wizard/StepPlaceholder';
 import { PlanCatalogView } from '../plan/PlanCatalogView';
-import type { PlanProfileId } from '../../types';
-
 interface PlanStepProps {
   onBack: () => void;
 }
@@ -20,7 +18,6 @@ export function PlanStep({ onBack }: PlanStepProps) {
   const researchTopic = useAppStore((s) => s.wizard.researchTopic);
   const toggleItem = useAppStore((s) => s.togglePlanCatalogItem);
   const toggleTier = useAppStore((s) => s.togglePlanTier);
-  const setProfile = useAppStore((s) => s.setPlanProfile);
   const setFilter = useAppStore((s) => s.setPlanActiveFilter);
 
   useEffect(() => {
@@ -33,14 +30,6 @@ export function PlanStep({ onBack }: PlanStepProps) {
       void loadAnalysisPlan();
     }
   }, [catalog.length, researchTopic]);
-
-  const handleProfileChange = (profile: PlanProfileId) => {
-    const userTouched = getAppState().plan.userTouched;
-    if (userTouched && !window.confirm('Seçimleriniz sıfırlanacak, devam?')) return;
-    useAppStore.getState().resetUserTouched();
-    setProfile(profile);
-    void loadAnalysisPlan();
-  };
 
   let body: ReactNode;
   if (!researchTopic.trim()) {
@@ -77,7 +66,6 @@ export function PlanStep({ onBack }: PlanStepProps) {
       <PlanCatalogView
         onToggleItem={toggleItem}
         onToggleTier={toggleTier}
-        onSetProfile={handleProfileChange}
         onFilterHypothesis={setFilter}
       />
     );

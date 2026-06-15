@@ -6,7 +6,7 @@ import type { UploadDocumentsResponse } from '../types';
 describe('documents helpers', () => {
   it('counts anket items across sections', () => {
     expect(countAnketItems({
-      sections: [{ items: [1, 2] }, { items: [3] }],
+      sections: [{ items: [{ no: 1 }, { no: 2 }] }, { items: [{ no: 3 }] }],
     })).toBe(3);
   });
 
