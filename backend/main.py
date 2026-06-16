@@ -588,6 +588,16 @@ async def analiz_oneri_endpoint(request: Request, req: AnalizeOneriRequest):
         meta["haiku_inceleme"] = haiku_note
         print(f"[ONERİ] Haiku (arka plan): {haiku_note[:300]}", flush=True)
         logger.warning(f"[ONERİ] Haiku inceleme: {haiku_note[:300]}")
+    gem_meta = oneri.get("meta") or {}
+    meta_line = (
+        f"[ONERİ META] plan_source={gem_meta.get('plan_source')} "
+        f"gemini_ok={gem_meta.get('gemini_ok')} "
+        f"anket_len={gem_meta.get('anket_text_len')} "
+        f"etik_len={gem_meta.get('etik_text_len')} "
+        f"llm_calls={meta.get('llm_calls')}"
+    )
+    print(meta_line, flush=True)
+    logger.warning(meta_line)
     return sanitize({
         "oneri": plan,
         "meta": meta,
