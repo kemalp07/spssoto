@@ -14,6 +14,10 @@ _REGISTRY_PATH = Path(__file__).resolve().parent / "scale_registry.json"
 _REGISTRY_CACHE: Optional[List[dict]] = None
 
 _CONF_RANK = {"high": 2, "medium": 1, "low": 0}
+_DERIVED_SUFFIX = re.compile(
+    r"_(toplam|total|puan|score|sum|risk|binary|grubu?|kategori|category|mean|ort|avg)$",
+    re.I,
+)
 
 
 def normalize_col(name: str) -> str:
@@ -122,6 +126,8 @@ def match_by_prefix(col_names: List[str]) -> List[dict]:
     col_owner: Dict[str, Tuple[dict, int]] = {}
 
     for col in col_names:
+        if _DERIVED_SUFFIX.search(col):
+            continue
         norm = normalize_col(col)
         best_scale: Optional[dict] = None
         best_len = -1

@@ -44,7 +44,7 @@ export function WizardShell() {
       case 'etikkurul':
         return <EtikKurulStep {...nav} onProceed={preparePostUploadWizard} />;
       case 'oneri':
-        return <OneriStep {...nav} />;
+        return <OneriStep onBack={prevStep} />;
       case 'variables':
         return <VariablesStep onBack={prevStep} />;
       case 'plan':

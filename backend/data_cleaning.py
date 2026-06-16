@@ -186,16 +186,33 @@ def sanitize_invalid_categorical_codes(
     return df
 
 def detect_scale_groups(columns: List[str]) -> Dict[str, List[str]]:
-    pattern = re.compile(r"^([a-zA-Z]+)(\d+)$", re.IGNORECASE)
+    """NEQ_1, OYS1 gibi madde sütunlarını prefix gruplarına ayır.
+
+    Türetilmiş sütunlar (_TOPLAM, _RISK, _BINARY, _GRUBU, _KATEGORI, vb.)
+    madde olarak sayılmaz.
+    """
+    pattern = re.compile(r"^([a-zA-Z][a-zA-Z0-9]*)_(\d+)([a-z]*)$", re.IGNORECASE)
+    derived_suffix = re.compile(
+        r"_(toplam|total|puan|score|sum|risk|binary|grubu?|kategori|category|mean|ort|avg)$",
+        re.I,
+    )
     groups: Dict[str, List[str]] = {}
     for col in columns:
+        if derived_suffix.search(col):
+            continue
         m = pattern.match(col)
         if m:
             groups.setdefault(m.group(1).lower(), []).append(col)
-    return {
-        p: sorted(c, key=lambda x: int(re.search(r"\d+", x).group()))
-        for p, c in groups.items() if len(c) >= 2
-    }
+
+    result: Dict[str, List[str]] = {}
+    for prefix, cols in groups.items():
+        base_cols = [c for c in cols if not derived_suffix.search(c)]
+        if len(base_cols) >= 2:
+            result[prefix] = sorted(
+                base_cols,
+                key=lambda x: int(re.search(r"\d+", x).group()),
+            )
+    return result
 
 
 # Madde türev ekleri — ters/kodlanmış versiyonlar ayrı madde sayılmaz

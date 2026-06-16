@@ -1,16 +1,19 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useWizard } from '../../hooks/useWizard';
 import { fetchAnalizOneri } from '../../lib/analizOneriApi';
-import { useAppStore } from '../../stores/useAppStore';
 import { detectScalesInline, scaleMatchingInline } from '../../lib/scaleApi';
+import { useAppStore } from '../../stores/useAppStore';
 import { ErrorBanner } from '../shared/ErrorBanner';
+import { LoadingButton } from '../shared/LoadingButton';
 import { WizardNav } from './StepPlaceholder';
 
 interface OneriStepProps {
-  onNext: () => void;
   onBack: () => void;
 }
 
-export function OneriStep({ onBack, onNext }: OneriStepProps) {
+export function OneriStep({ onBack }: OneriStepProps) {
+  const { nextStep } = useWizard();
+  const [proceeding, setProceeding] = useState(false);
   const loading = useAppStore((s) => s.oneri.loading);
   const error = useAppStore((s) => s.oneri.error);
   const oneri = useAppStore((s) => s.oneri.data);
@@ -36,32 +39,54 @@ export function OneriStep({ onBack, onNext }: OneriStepProps) {
   ]);
 
   const handleNext = async () => {
-    applyAnalizOneriEffects();
-    await detectScalesInline();
-    await scaleMatchingInline();
-    onNext();
+    if (proceeding || loading) return;
+    setProceeding(true);
+    try {
+      applyAnalizOneriEffects();
+      await detectScalesInline();
+      await scaleMatchingInline();
+      await nextStep();
+    } finally {
+      setProceeding(false);
+    }
   };
+
+  const nextButton = (
+    <LoadingButton
+      variant="primary"
+      loading={proceeding}
+      loadingText="Hazırlanıyor..."
+      disabled={loading && !oneri}
+      onClick={() => void handleNext()}
+    >
+      Değişkenlere Git →
+    </LoadingButton>
+  );
 
   if (loading && !oneri) {
     return (
       <>
-        <h2 className="wizardTitle">Analiz Önerisi</h2>
+        <h2 className="wizardTitle">Analiz Planı Önerisi</h2>
+        <p className="wizardSubtitle">Anket ve etik kurul belgeleriniz inceleniyor…</p>
         <div className="planLoadingState">
           <span className="spinner" style={{ width: 24, height: 24, borderWidth: 2 }} aria-hidden />
-          <p className="planLoadingText">Anket ve etik kurulunuz inceleniyor…</p>
+          <p className="planLoadingText">Önerilen analiz planı hazırlanıyor…</p>
         </div>
-        <WizardNav onBack={onBack} showNext={false} />
+        <WizardNav onBack={onBack} showNext={false} extra={<span />} />
       </>
     );
   }
 
   return (
     <>
+      <h2 className="wizardTitle">Analiz Planı Önerisi</h2>
+      <p className="wizardSubtitle">
+        Anket ve etik kurul belgelerinize göre önerilen analizler
+      </p>
+
+      {error ? <ErrorBanner message={error} /> : null}
+
       <div className="oneriCard">
-        <h3 className="wizardTitle">Analiz Planı Önerisi</h3>
-
-        {error ? <ErrorBanner message={error} /> : null}
-
         {oneri?.ozet ? (
           <p className="oneriOzet">{oneri.ozet}</p>
         ) : null}
@@ -90,8 +115,8 @@ export function OneriStep({ onBack, onNext }: OneriStepProps) {
 
       <WizardNav
         onBack={onBack}
-        onNext={() => void handleNext()}
-        nextLabel="Değişkenlere Git →"
+        showNext={false}
+        extra={nextButton}
       />
     </>
   );
