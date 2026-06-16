@@ -12,17 +12,14 @@ interface PlanCatalogProps {
 function PlanCard({
   item,
   index,
-  activeFilter,
   onToggle,
 }: {
   item: PlanCatalogItem & { catalogIndex: number };
   index: number;
-  activeFilter: string | null;
   onToggle: (index: number, enabled: boolean) => void;
 }) {
   const locked = item.cekirdek;
   const disabled = !locked && item.enabled === false;
-  const highlight = activeFilter && item.hypothesis_id === activeFilter;
   const relevance = item.relevance_flag ?? 'uygun';
 
   return (
@@ -31,7 +28,6 @@ function PlanCard({
         'planCard',
         item.cekirdek ? 'planCardCore' : '',
         disabled ? 'disabled' : '',
-        highlight ? 'planCardHypHighlight' : '',
       ].filter(Boolean).join(' ')}
     >
       {locked ? (
@@ -52,9 +48,6 @@ function PlanCard({
           <div className="planDetail textMuted">{item.reason}</div>
         ) : null}
       </div>
-      {item.hypothesis_id ? (
-        <span className="planBadgeHyp">{item.hypothesis_id}</span>
-      ) : null}
       {item.cekirdek ? (
         <span className="planBadgeKesin">Çekirdek</span>
       ) : item.butce_disi ? (
@@ -153,7 +146,6 @@ export function PlanCatalogView({
               key={t.catalogIndex}
               item={t}
               index={t.catalogIndex}
-              activeFilter={activeFilter}
               onToggle={onToggleItem}
             />
           ))}
@@ -177,7 +169,6 @@ export function PlanCatalogView({
               key={t.catalogIndex}
               item={t}
               index={t.catalogIndex}
-              activeFilter={activeFilter}
               onToggle={onToggleItem}
             />
           ))}
@@ -201,7 +192,6 @@ export function PlanCatalogView({
               key={t.catalogIndex}
               item={t}
               index={t.catalogIndex}
-              activeFilter={activeFilter}
               onToggle={onToggleItem}
             />
           ))}

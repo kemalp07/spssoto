@@ -66,7 +66,7 @@ def test_profile_budgets_not_exceeded_on_synthetic_catalog():
 
     enrich_catalog_metadata(catalog, DEFAULT_LAYOUT_CONFIG, core_ids)
 
-    for profile, limit in (("oz", 8), ("standart", 12)):
+    for profile, limit in (("oz", 10), ("standart", 18)):
         working = [dict(c) for c in catalog]
         _, estimated = build_plan(working, profile)
         assert estimated <= limit, f"{profile} profili {estimated} tablo (> {limit})"

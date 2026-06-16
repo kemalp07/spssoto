@@ -329,12 +329,18 @@ def etik_text_from_parse(etik: Optional[dict]) -> str:
     aim = (etik.get("aim") or "").strip()
     if aim:
         parts.append(f"Amaç: {aim}")
-    for h in etik.get("hypotheses") or []:
-        if isinstance(h, str) and h.strip():
-            parts.append(h.strip())
+    hyps = etik.get("hypotheses") or []
+    if hyps:
+        parts.append("Araştırma soruları:")
+        for h in hyps:
+            if isinstance(h, str) and h.strip():
+                parts.append(f"- {h.strip()}")
+    stat_methods = (etik.get("statistical_methods") or "").strip()
+    if stat_methods:
+        parts.append(f"\nİstatistiksel yöntemler: {stat_methods}")
     scale_names = etik.get("scale_names") or []
     if scale_names:
-        parts.append(f"Ölçekler: {', '.join(str(s) for s in scale_names if s)}")
+        parts.append(f"Kullanılan ölçekler: {', '.join(str(s) for s in scale_names if s)}")
     structured = "\n".join(parts).strip()
     raw = (etik.get("raw_text") or "").strip()
     if structured and raw:
@@ -551,6 +557,18 @@ def parse_etik_kurul_docx(file_bytes: bytes) -> dict:
         institution = _extract_institution(lines)
         date = _extract_date(blob)
 
+        STAT_KEYWORDS = [
+            "istatistiksel yöntem", "shapiro", "t testi", "t-test",
+            "anova", "mann-whitney", "kruskal", "pearson", "spearman",
+            "korelasyon analizi", "normallik",
+        ]
+        statistical_methods = ""
+        for para in lines:
+            text = para.strip()
+            if any(k in text.lower() for k in STAT_KEYWORDS) and len(text) > 50:
+                statistical_methods = text[:800]
+                break
+
         if not any([aim, hypotheses, n_val, scale_names, institution, date]):
             return {"parse_error": True, "raw_text": raw_text}
 
@@ -561,6 +579,7 @@ def parse_etik_kurul_docx(file_bytes: bytes) -> dict:
             "scale_names": scale_names or None,
             "institution": institution or None,
             "date": date or None,
+            "statistical_methods": statistical_methods or None,
             "raw_text": raw_text,
         }
     except Exception:

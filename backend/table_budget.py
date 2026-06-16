@@ -6,9 +6,9 @@ from typing import Dict, List, Optional, Tuple
 from layout_config import DEFAULT_LAYOUT_CONFIG, LayoutConfig
 
 PLAN_PROFILES: Dict[str, int] = {
-    "oz": 8,
-    "standart": 12,
-    "kapsamli": 18,
+    "oz": 10,
+    "standart": 18,
+    "kapsamli": 28,
 }
 
 MERGE_GROUP_TEST_TYPES = ("ttest", "mann_whitney", "anova")
