@@ -8,7 +8,12 @@ from docx import Document
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from document_parser import parse_anket_docx, parse_etik_kurul_docx
+from document_parser import (
+    anket_text_from_parse,
+    etik_text_from_parse,
+    parse_anket_docx,
+    parse_etik_kurul_docx,
+)
 
 
 def _docx_bytes(paragraphs: list) -> bytes:
@@ -32,6 +37,57 @@ def _docx_bytes_with_styles(entries: list) -> bytes:
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+def test_anket_table_row_items():
+    raw = _docx_bytes([
+        "Ölçek",
+        "1 | Kendimi iyi hissediyorum | 1 2 3 4 5",
+        "2 | Enerjim yüksek (R) | 1 2 3 4 5",
+    ])
+    result = parse_anket_docx(raw)
+    items = result["sections"][0]["items"]
+    assert len(items) == 2
+    assert items[0]["no"] == 1
+
+
+def test_anket_numbered_without_punctuation():
+    raw = _docx_bytes([
+        "Yaşam Kalitesi",
+        "1 Kendimi iyi hissediyorum",
+        "2 Enerjim yüksek",
+    ])
+    result = parse_anket_docx(raw)
+    items = result["sections"][0]["items"]
+    assert len(items) == 2
+    assert items[0]["text"].startswith("Kendimi")
+
+
+def test_anket_includes_raw_text():
+    raw = _docx_bytes([
+        "Bölüm 1: Test",
+        "1. Madde bir",
+        "2. Madde iki",
+    ])
+    result = parse_anket_docx(raw)
+    assert result.get("raw_text")
+    assert "Madde bir" in result["raw_text"]
+
+
+def test_anket_text_from_parse_uses_raw_when_no_items():
+    text = anket_text_from_parse({
+        "sections": [{"title": "Kapak", "items": []}],
+        "raw_text": "Tam anket metni satir 1\nSatir 2",
+    })
+    assert "Tam anket metni" in text
+
+
+def test_etik_text_from_parse_includes_raw():
+    text = etik_text_from_parse({
+        "hypotheses": ["H1: Fark vardir."],
+        "raw_text": "Ek etik kurul metni burada.",
+    })
+    assert "Fark vardir" in text
 
 
 def test_anket_numbered_items_parsed():
@@ -114,6 +170,18 @@ def test_etik_kurul_hypothesis_pattern():
     result = parse_etik_kurul_docx(raw)
     assert result["hypotheses"]
     assert any("Cinsiyet" in h for h in result["hypotheses"])
+
+
+def test_etik_ignores_methodology_bullets():
+    raw = _docx_bytes([
+        "Araştırma Soruları",
+        "- Evren ve örneklem seçimi yapılacaktır",
+        "- Veri toplama formu uygulanacaktır",
+        "H1: Cinsiyet ile OYS puanı arasında anlamlı fark vardır.",
+    ])
+    result = parse_etik_kurul_docx(raw)
+    assert len(result["hypotheses"]) == 1
+    assert "Cinsiyet" in result["hypotheses"][0]
 
 
 def test_empty_docx_returns_parse_error():

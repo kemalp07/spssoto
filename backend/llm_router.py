@@ -221,6 +221,39 @@ def gemini_json_task(system: str, user: str, max_tokens: int = 1200) -> Tuple[st
         return "", _empty_meta()
 
 
+def gemini_text_task(system: str, user: str, max_tokens: int = 600) -> Tuple[str, dict]:
+    """Gemini'den düz metin döndürür (plan analizi, özet yorum)."""
+    if not has_gemini_enrich():
+        return "", _empty_meta()
+    try:
+        from google.genai import types
+
+        client = _make_gemini_client()
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=user,
+            config=types.GenerateContentConfig(
+                system_instruction=system,
+                max_output_tokens=max_tokens,
+                temperature=0.2,
+            ),
+        )
+        text = (response.text or "").strip()
+        meta = _empty_meta()
+        meta["llm_calls"] = 1
+        meta["enrich_provider"] = "vertex" if gemini_api_mode().startswith("vertex") else "gemini"
+        meta["enrich_model"] = GEMINI_MODEL
+        meta["enrich_api_mode"] = gemini_api_mode()
+        usage = getattr(response, "usage_metadata", None)
+        if usage:
+            meta["approx_input_tokens"] = int(getattr(usage, "prompt_token_count", 0) or 0)
+            meta["approx_output_tokens"] = int(getattr(usage, "candidates_token_count", 0) or 0)
+        return text, meta
+    except Exception as exc:
+        logger.warning("Gemini text task failed: %s", exc)
+        return "", _empty_meta()
+
+
 def format_enrichment_block(enrichment: dict) -> str:
     if not enrichment:
         return ""

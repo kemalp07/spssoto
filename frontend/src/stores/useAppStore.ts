@@ -183,6 +183,7 @@ function emptyOneriSlice(): OneriSlice {
     error: null,
     data: null,
     yorum: null,
+    meta: null,
     fetched: false,
   };
 }
@@ -619,7 +620,8 @@ export const useAppStore = create<AppState>()(
         loading: false,
         error: null,
         data: response.oneri ?? null,
-        yorum: response.yorum ?? null,
+        yorum: null,
+        meta: response.meta ?? null,
         fetched: true,
       },
     })),

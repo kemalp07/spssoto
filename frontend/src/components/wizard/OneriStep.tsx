@@ -14,7 +14,6 @@ export function OneriStep({ onBack, onNext }: OneriStepProps) {
   const loading = useAppStore((s) => s.oneri.loading);
   const error = useAppStore((s) => s.oneri.error);
   const oneri = useAppStore((s) => s.oneri.data);
-  const yorum = useAppStore((s) => s.oneri.yorum);
   const fetched = useAppStore((s) => s.oneri.fetched);
   const setOneriLoading = useAppStore((s) => s.setOneriLoading);
   const setOneriError = useAppStore((s) => s.setOneriError);
@@ -65,17 +64,6 @@ export function OneriStep({ onBack, onNext }: OneriStepProps) {
 
         {oneri?.ozet ? (
           <p className="oneriOzet">{oneri.ozet}</p>
-        ) : (
-          <p className="oneriOzet textMuted">
-            Belge bağlamına göre otomatik bir analiz planı oluşturuldu.
-          </p>
-        )}
-
-        {yorum ? (
-          <div className="oneriYorum">
-            <span className="badge">Claude Haiku incelemesi</span>
-            <p>{yorum}</p>
-          </div>
         ) : null}
 
         {(oneri?.gerekceler?.length ?? 0) > 0 ? (
@@ -84,24 +72,19 @@ export function OneriStep({ onBack, onNext }: OneriStepProps) {
             {oneri!.gerekceler!.map((g, i) => (
               <div key={`${g.analiz ?? 'g'}-${i}`} className="oneriItem">
                 <strong>{g.analiz}</strong>
-                {g.neden ? <p className="oneriNeden">{g.neden}</p> : null}
+                <p className="oneriNeden">{g.neden}</p>
               </div>
             ))}
           </>
         ) : null}
 
         {(oneri?.olcekler?.length ?? 0) > 0 ? (
-          <>
-            <h4 className="oneriSectionTitle">Tespit edilen ölçekler</h4>
-            {oneri!.olcekler!.map((o, i) => (
-              <div key={`${o.ad ?? 'o'}-${i}`} className="oneriOlcek">
-                <strong>{o.ad}</strong>
-                {o.neden ? (
-                  <span className="textMuted"> — {o.neden}</span>
-                ) : null}
-              </div>
+          <div className="oneriOlcekler">
+            <span className="label">Tespit edilen ölçekler:</span>
+            {oneri!.olcekler!.map((o) => (
+              <span key={o.ad} className="olcekBadge">{o.ad}</span>
             ))}
-          </>
+          </div>
         ) : null}
       </div>
 

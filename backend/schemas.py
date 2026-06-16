@@ -207,3 +207,4 @@ class AnalizeOneriRequest(BaseModel):
     labels: Optional[Dict[str, str]] = None
     anket_text: Optional[str] = None
     etik_text: Optional[str] = None
+    document_context: Optional[dict] = None

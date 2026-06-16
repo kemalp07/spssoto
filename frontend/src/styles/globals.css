@@ -1157,6 +1157,30 @@ code, .mono {
   margin: var(--space-1) 0 0;
 }
 
+.oneriOlcekler {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+}
+
+.oneriOlcekler .label {
+  font-size: 13px;
+  color: var(--muted);
+  margin-right: var(--space-1);
+}
+
+.olcekBadge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
 .planProfileSegments {
   display: flex;
   gap: var(--space-1);

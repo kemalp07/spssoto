@@ -14,7 +14,6 @@ export function AnketStep({ onNext, onBack }: AnketStepProps) {
     uploadAnket,
     clearAnket,
     error,
-    partialWarn,
     hasAnketLoaded,
   } = useDocuments();
 
@@ -32,13 +31,9 @@ export function AnketStep({ onNext, onBack }: AnketStepProps) {
         loading={anket.loading}
         uploaded={hasAnketLoaded}
         fileName={anket.fileName}
-        fileMeta={hasAnketLoaded ? `${anket.itemCount} madde bulundu` : undefined}
+        fileMeta={hasAnketLoaded ? 'Yüklendi' : undefined}
         onReset={clearAnket}
       />
-
-      {anket.partial && hasAnketLoaded ? (
-        <div className="alert alertWarn textSm" role="status">{partialWarn}</div>
-      ) : null}
 
       {error ? <ErrorBanner message={error} /> : null}
 

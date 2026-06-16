@@ -61,7 +61,7 @@ from stat_tests import (
 from word_export import build_word_document
 from file_io import read_uploaded_file
 from document_parser import parse_anket_docx, parse_etik_kurul_docx
-from analiz_oneri import gemini_analiz_oneri, haiku_gozden_gecir
+from analiz_oneri import gemini_analiz_oneri, haiku_incele_plan
 from document_context import (
     get_document_context,
     resolve_document_context,
@@ -567,21 +567,30 @@ async def upload_documents(
 async def analiz_oneri_endpoint(request: Request, req: AnalizeOneriRequest):
     import logging
     logger = logging.getLogger(__name__)
-    logger.warning(
+    msg = (
         f"[ONERİ] anket_text len={len(req.anket_text or '')}, "
         f"etik_text len={len(req.etik_text or '')}, columns={len(req.columns)}"
     )
+    print(msg, flush=True)
+    logger.warning(msg)
     oneri = await gemini_analiz_oneri(
         req.columns,
         req.labels or {},
         req.anket_text or "",
         req.etik_text or "",
+        req.document_context,
     )
-    yorum = await haiku_gozden_gecir(oneri.get("oneri") or {})
+    plan = oneri.get("oneri") or {}
+    haiku_note, haiku_meta = await haiku_incele_plan(plan)
+    from llm_router import merge_meta
+    meta = merge_meta(oneri.get("meta") or {}, haiku_meta)
+    if haiku_note:
+        meta["haiku_inceleme"] = haiku_note
+        print(f"[ONERİ] Haiku (arka plan): {haiku_note[:300]}", flush=True)
+        logger.warning(f"[ONERİ] Haiku inceleme: {haiku_note[:300]}")
     return sanitize({
-        "oneri": oneri["oneri"],
-        "yorum": yorum,
-        "meta": oneri.get("meta") or {},
+        "oneri": plan,
+        "meta": meta,
     })
 
 

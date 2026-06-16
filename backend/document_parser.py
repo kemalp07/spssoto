@@ -53,6 +53,9 @@ _BULLET_ITEM = re.compile(
 _NUMBERED_ITEM = re.compile(
     r"^\s*(\d+)\s*[.):\-]\s*(.+)$",
 )
+_NUMBERED_LOOSE = re.compile(
+    r"^\s*(\d{1,3})\s+([\dA-Za-zÇçĞğİıÖöŞşÜü].{4,})$",
+)
 _SAMPLE_N = re.compile(
     r"(\d{2,5})\s*(?:katılımcı|öğrenci|kişi|denek|gönüllü)",
     re.IGNORECASE,
@@ -70,6 +73,24 @@ _INSTITUTION_EXCLUDE = re.compile(
     r"amaç|amacı|hipotez|araştırma\s+sorusu|purpose",
     re.IGNORECASE,
 )
+_METHODOLOGY_KW = re.compile(
+    r"\b(evren|örneklem|yöntem|veri\s+topla|katılımcı|gönüllü|"
+    r"etik\s+onay|bilgilendirilmiş\s+onam|materyal|araç\s+ve\s+yöntem)\b",
+    re.IGNORECASE,
+)
+_RESEARCH_Q_HINT = re.compile(
+    r"(?:\?"
+    r"|\bfark\b|\bfarkl"
+    r"|\bilişki\b|\betki\b|\bdüzey\b|\boran\b"
+    r"|\bkarşılaştır|\bincelen|\bbelirlen|\bsaptan|\bdeğerlendir"
+    r"|\byordam|\btahmin|\baçıklar)\b",
+    re.IGNORECASE,
+)
+_LIKERT_ANCHOR = re.compile(
+    r"^(?:hiç|tamamen|katıl|kararsız|never|always|strongly|never|rarely|often)",
+    re.IGNORECASE,
+)
+_MAX_HYPOTHESES = 8
 
 
 def _docx_paragraphs(file_bytes: bytes) -> List[str]:
@@ -110,20 +131,74 @@ def _is_heading_style(style_name: Optional[str]) -> bool:
 
 
 def _parse_item_line(line: str) -> Optional[Tuple[int, str, bool]]:
-    m = _ITEM_RE.match(line.strip())
-    if not m:
+    line = line.strip()
+    if not line:
         return None
-    num_raw = m.group("num") or m.group("num_m") or m.group("letter")
-    try:
-        no = int(num_raw) if num_raw and num_raw.isdigit() else ord(num_raw.upper()) - 64
-    except (TypeError, ValueError):
-        no = 0
-    text = (m.group("text") or "").strip()
+
+    num_raw: Optional[str] = None
+    text = ""
+
+    m = _ITEM_RE.match(line)
+    if m:
+        num_raw = m.group("num") or m.group("num_m") or m.group("letter")
+        text = (m.group("text") or "").strip()
+    else:
+        m = _NUMBERED_ITEM.match(line)
+        if m:
+            num_raw, text = m.group(1), (m.group(2) or "").strip()
+        else:
+            m = _NUMBERED_LOOSE.match(line)
+            if m:
+                num_raw, text = m.group(1), (m.group(2) or "").strip()
+            elif "|" in line:
+                cells = [c.strip() for c in line.split("|") if c.strip()]
+                if len(cells) >= 2 and cells[0].isdigit():
+                    num_raw, text = cells[0], cells[1]
+
     if not text:
         return None
+
+    try:
+        if num_raw and str(num_raw).isdigit():
+            no = int(num_raw)
+        elif num_raw:
+            no = ord(str(num_raw).upper()[0]) - 64
+        else:
+            no = 0
+    except (TypeError, ValueError):
+        no = 0
+
     reverse = bool(_REVERSE_HINT.search(text))
     text = _REVERSE_HINT.sub("", text).strip(" -–—")
+    if not text or len(text) < 8:
+        return None
+    if _LIKERT_ANCHOR.match(text):
+        return None
     return no, text, reverse
+
+
+def _is_plausible_hypothesis(text: str) -> bool:
+    t = (text or "").strip()
+    if len(t) < 25:
+        return False
+    if _METHODOLOGY_KW.search(t):
+        return False
+    if t.endswith("?"):
+        return True
+    return bool(_RESEARCH_Q_HINT.search(t))
+
+
+def _append_hypothesis(found: List[str], seen: set, text: str, *, strict: bool) -> bool:
+    text = (text or "").strip().rstrip(".")
+    if not text or text in seen:
+        return False
+    if strict and not _is_plausible_hypothesis(text):
+        return False
+    if len(text) < 15:
+        return False
+    seen.add(text)
+    found.append(text)
+    return True
 
 
 def _detect_likert_scale(block_text: str) -> str:
@@ -207,10 +282,66 @@ def parse_anket_docx(file_bytes: bytes) -> dict:
         flush_section()
 
         if not sections:
-            return {"parse_error": True, "sections": []}
-        return {"sections": sections}
+            return {"parse_error": True, "sections": [], "raw_text": ""}
+        raw_lines = [line for line, _ in entries]
+        return {
+            "sections": sections,
+            "raw_text": "\n".join(raw_lines)[:8000],
+        }
     except Exception:
-        return {"parse_error": True, "sections": []}
+        return {"parse_error": True, "sections": [], "raw_text": ""}
+
+
+def anket_text_from_parse(anket: Optional[dict]) -> str:
+    """Anket parse sonucundan Gemini'ye gidecek metin."""
+    if not anket or anket.get("parse_error"):
+        raw = (anket or {}).get("raw_text") or ""
+        return raw.strip()[:8000]
+
+    parts: List[str] = []
+    for sec in anket.get("sections") or []:
+        title = (sec.get("title") or "").strip()
+        items = sec.get("items") or []
+        item_lines = []
+        for item in items:
+            no = item.get("no")
+            text = (item.get("text") or "").strip()
+            if text:
+                item_lines.append(f"{no}. {text}" if no is not None else text)
+        block = "\n".join([x for x in [title, "\n".join(item_lines)] if x])
+        if block.strip():
+            parts.append(block)
+
+    structured = "\n\n".join(parts).strip()
+    raw = (anket.get("raw_text") or "").strip()
+    if len(structured) >= 80:
+        return structured[:8000]
+    if raw:
+        return raw[:8000]
+    return structured
+
+
+def etik_text_from_parse(etik: Optional[dict]) -> str:
+    """Etik kurul parse sonucundan Gemini'ye gidecek metin."""
+    if not etik:
+        return ""
+    parts: List[str] = []
+    aim = (etik.get("aim") or "").strip()
+    if aim:
+        parts.append(f"Amaç: {aim}")
+    for h in etik.get("hypotheses") or []:
+        if isinstance(h, str) and h.strip():
+            parts.append(h.strip())
+    scale_names = etik.get("scale_names") or []
+    if scale_names:
+        parts.append(f"Ölçekler: {', '.join(str(s) for s in scale_names if s)}")
+    structured = "\n".join(parts).strip()
+    raw = (etik.get("raw_text") or "").strip()
+    if structured and raw:
+        return f"{structured}\n\n{raw[:6000]}"
+    if structured:
+        return structured[:8000]
+    return raw[:8000]
 
 
 def _extract_aim(lines: List[str]) -> Optional[str]:
@@ -244,9 +375,10 @@ def _extract_hypotheses(lines: List[str]) -> List[str]:
     for line in lines:
         stripped = line.strip()
         if not stripped:
-            if in_section and found:
-                in_section = False
             continue
+
+        if len(found) >= _MAX_HYPOTHESES:
+            break
 
         if _HYPOTHESIS_SECTION_HEADER.match(stripped):
             in_section = True
@@ -254,37 +386,25 @@ def _extract_hypotheses(lines: List[str]) -> List[str]:
 
         m = _HYPOTHESIS_RE.match(stripped)
         if m:
-            text = m.group(2).strip()
-            if text and text not in seen:
-                seen.add(text)
-                found.append(text)
-            in_section = True
+            if _append_hypothesis(found, seen, m.group(2), strict=False):
+                in_section = True
             continue
 
         m = _HYPOTHESIS_NUMBERED.match(stripped)
         if m:
-            text = m.group(2).strip()
-            if text and text not in seen:
-                seen.add(text)
-                found.append(text)
-            in_section = True
+            if _append_hypothesis(found, seen, m.group(2), strict=False):
+                in_section = True
             continue
 
         if in_section:
             m = _BULLET_ITEM.match(stripped)
             if m:
-                text = m.group(1).strip()
-                if text and text not in seen and len(text) > 15:
-                    seen.add(text)
-                    found.append(text)
+                _append_hypothesis(found, seen, m.group(1), strict=True)
                 continue
 
             m = _NUMBERED_ITEM.match(stripped)
             if m:
-                text = m.group(2).strip()
-                if text and text not in seen and len(text) > 15:
-                    seen.add(text)
-                    found.append(text)
+                _append_hypothesis(found, seen, m.group(2), strict=True)
                 continue
 
             if _is_section_header(stripped):
@@ -292,11 +412,8 @@ def _extract_hypotheses(lines: List[str]) -> List[str]:
                 continue
 
         m = _HYPOTHESIS_INLINE.search(line)
-        if m:
-            text = m.group(2).strip()
-            if text and text not in seen:
-                seen.add(text)
-                found.append(text)
+        if m and len(stripped) >= 30:
+            _append_hypothesis(found, seen, m.group(2), strict=True)
 
     return found
 
@@ -322,7 +439,9 @@ Kurallar:
 - Her araştırma sorusunu/hipotezi ayrı bir item olarak döndür
 - Sorunun/hipotezin tam metnini yaz, kısaltma
 - Sadece araştırma soruları/hipotezler, başka bilgi ekleme
-- Bulamazsan boş liste döndür
+- Yöntem, örneklem, etik onam gibi metodoloji maddelerini ekleme
+- Genelde 3-6 madde olur; emin değilsen boş liste döndür
+- En fazla 8 madde
 
 SADECE JSON döndür:
 {"hypotheses": ["soru1 metni", "soru2 metni"]}"""
@@ -346,11 +465,21 @@ SADECE JSON döndür:
             parsed = _parse_json_object(text)
             hyps = parsed.get("hypotheses", [])
             if isinstance(hyps, list):
-                return [
-                    h.strip()
-                    for h in hyps
-                    if isinstance(h, str) and len(h.strip()) > 10
-                ]
+                filtered: List[str] = []
+                seen: set = set()
+                for h in hyps:
+                    if not isinstance(h, str):
+                        continue
+                    text = h.strip()
+                    if not text or text in seen:
+                        continue
+                    if not _is_plausible_hypothesis(text):
+                        continue
+                    seen.add(text)
+                    filtered.append(text)
+                    if len(filtered) >= _MAX_HYPOTHESES:
+                        break
+                return filtered
     except Exception:
         pass
 

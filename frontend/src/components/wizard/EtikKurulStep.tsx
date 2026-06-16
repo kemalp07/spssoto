@@ -18,7 +18,6 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
     uploadEtik,
     clearEtik,
     error,
-    partialWarn,
     hasEtikLoaded,
   } = useDocuments();
 
@@ -31,10 +30,6 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
       setProceeding(false);
     }
   };
-
-  const hypothesisMeta = hasEtikLoaded
-    ? `${etikKurul.hypothesisCount} hipotez bulundu`
-    : undefined;
 
   return (
     <>
@@ -50,14 +45,10 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
         loading={etikKurul.loading}
         uploaded={hasEtikLoaded}
         fileName={etikKurul.fileName}
-        fileMeta={hypothesisMeta}
+        fileMeta={hasEtikLoaded ? 'Yüklendi' : undefined}
         onReset={clearEtik}
         disabled={proceeding || etikKurul.loading}
       />
-
-      {etikKurul.partial && hasEtikLoaded && !proceeding ? (
-        <div className="alert alertWarn textSm" role="status">{partialWarn}</div>
-      ) : null}
 
       {error ? <ErrorBanner message={error} /> : null}
 

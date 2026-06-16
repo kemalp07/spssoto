@@ -7,27 +7,25 @@ import type {
 } from '../types';
 
 export function anketTextFromContext(anket?: AnketParseResult | null): string {
-  console.log('[ANKET] sections:', anket?.sections?.length, 'first items:', anket?.sections?.[0]?.items?.length, 'first item text:', anket?.sections?.[0]?.items?.[0]?.text);
   if (!anket) return '';
-  if (anket.sections?.length) {
-    const text = anket.sections
-      .map((sec) => {
-        const title = sec.title?.trim() || '';
-        const items = (sec.items ?? [])
-          .map((item) => {
-            const no = item.no != null ? `${item.no}. ` : '';
-            return `${no}${item.text ?? ''}`.trim();
-          })
-          .filter(Boolean)
-          .join('\n');
-        return [title, items].filter(Boolean).join('\n');
+  const parts: string[] = [];
+  for (const sec of anket.sections ?? []) {
+    const title = sec.title?.trim() || '';
+    const items = (sec.items ?? [])
+      .map((item) => {
+        const no = item.no != null ? `${item.no}. ` : '';
+        return `${no}${item.text ?? ''}`.trim();
       })
       .filter(Boolean)
-      .join('\n\n');
-    if (text.trim()) return text;
+      .join('\n');
+    const block = [title, items].filter(Boolean).join('\n');
+    if (block) parts.push(block);
   }
-  if (!anket.parse_error) return '';
-  return 'Anket formu yüklendi ancak metin çıkarılamadı.';
+  const structured = parts.join('\n\n').trim();
+  const raw = (anket as { raw_text?: string }).raw_text?.trim() ?? '';
+  if (structured.length >= 80) return structured;
+  if (raw) return raw;
+  return structured;
 }
 
 export function etikTextFromContext(etik?: EtikKurulParseResult | null): string {
@@ -40,10 +38,12 @@ export function etikTextFromContext(etik?: EtikKurulParseResult | null): string 
   if (etik.scale_names?.length) {
     parts.push(`Ölçekler: ${etik.scale_names.join(', ')}`);
   }
-  if (!parts.length) {
-    return 'Etik kurul belgesi yüklendi ancak metin çıkarılamadı.';
+  const structured = parts.join('\n').trim();
+  const raw = etik.raw_text?.trim() ?? '';
+  if (structured.length >= 40) {
+    return structured.length < 200 && raw ? `${structured}\n\n${raw.slice(0, 6000)}` : structured;
   }
-  return parts.join('\n');
+  return raw || structured;
 }
 
 export function normalizeColumnHint(hint: string): string {
@@ -68,7 +68,7 @@ export function scalesFromOneriOlcekler(
   const itemPattern = /_\d+(_ters|_T)?$/i;
   const out: DetectedScale[] = [];
   for (const scale of olcekler ?? []) {
-    const prefix = (scale.maddeler_prefix || scale.ad || '').trim();
+    const prefix = (scale.prefix || scale.maddeler_prefix || scale.ad || '').trim();
     if (!prefix) continue;
     const pfx = prefix.toLowerCase();
     const items = columns.filter(

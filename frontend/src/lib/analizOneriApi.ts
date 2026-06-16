@@ -15,16 +15,11 @@ export async function fetchAnalizOneri(): Promise<AnalizOneriResponse> {
   const anketText = anketTextFromContext(anketSource);
   const etikText = etikTextFromContext(etikSource);
 
-  console.log('[ONERİ] ctx:', !!ctx);
-  console.log('[ONERİ] anket:', !!anketSource, 'sections:', anketSource?.sections?.length);
-  console.log('[ONERİ] etik:', !!etikSource, 'aim:', etikSource?.aim?.length, 'hyp:', etikSource?.hypotheses?.length);
-  console.log('[ONERİ] anket_text length:', anketText.length);
-  console.log('[ONERİ] etik_text length:', etikText.length);
-
   return apiCall<AnalizOneriResponse>('/analiz-oneri', {
     columns: state.columns,
     labels: state.savMetadata.pendingLabels ?? {},
     anket_text: anketText,
     etik_text: etikText,
+    document_context: ctx ?? undefined,
   }, { timeout: 120_000 });
 }
