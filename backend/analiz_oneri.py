@@ -92,22 +92,135 @@ KISA YAZ: ozet max 150 karakter; neden max 80 karakter; olcek neden max 50 karak
 """
 
 
-async def haiku_incele_plan(oneri: dict) -> tuple[str, dict]:
-    """Claude Haiku ile planı arka planda değerlendir — kullanıcıya gösterilmez."""
+HAIKU_SYSTEM = """Sen istatistik metodoloji denetçisisin.
+Verilen analiz planını incele ve SADECE JSON döndür:
+
+{
+  "durum": "ok" | "duzelt",
+  "duzeltmeler": [
+    {
+      "alan": "gruplama_degiskenleri" | "outcome_degiskenleri" | "gerekceler" | "olcekler",
+      "deger": "hangi değer veya sütun adı",
+      "aksiyon": "cikar" | "ekle" | "kisalt",
+      "sebep": "neden"
+    }
+  ]
+}
+
+SADECE şu hataları işaretle:
+- Sürekli değişken (boy, kilo, yaş ham değeri) gruplama_degiskenleri'nde → cikar
+- _TOPLAM suffix'li değişken outcome_degiskenleri'nde eksik ama veri seti sütunlarında var → ekle
+- gerekceler 6'dan fazla → {"alan":"gerekceler","deger":"6","aksiyon":"kisalt","sebep":"..."}
+- gerekceler içinde gruplama_degiskenleri'nden çıkarılan değişken geçiyorsa → gerekceler alanında cikar
+
+Hata yoksa: {"durum":"ok","duzeltmeler":[]}
+Başka hiçbir şey yazma."""
+
+
+async def haiku_incele_plan(
+    oneri: dict,
+    columns: List[str] | None = None,
+) -> tuple[str, dict]:
+    """Claude Haiku ile planı arka planda denetle — JSON düzeltme önerisi döner."""
     from llm_router import claude_decide, has_claude
 
     meta: dict = {"llm_calls": 0, "approx_input_tokens": 0, "approx_output_tokens": 0}
     if not has_claude():
         return "", meta
 
-    system = """Sen istatistik metodoloji uzmanısın.
-Verilen analiz planı önerisini iç denetim için gözden geçir.
-2-3 cümle kısa not yaz: mantık hatası, eksik analiz veya tutarsızlık var mı?
-Plan genel olarak uygunsa "Plan uygun" de."""
-
-    user = f"Analiz planı: {json.dumps(oneri, ensure_ascii=False)[:2000]}"
-    result, cmeta = claude_decide(system, user, max_tokens=300)
+    user = f"Analiz planı:\n{json.dumps(oneri, ensure_ascii=False)[:3000]}"
+    if columns:
+        user += f"\n\nVeri seti sütunları: {', '.join(columns[:100])}"
+    result, cmeta = claude_decide(HAIKU_SYSTEM, user, max_tokens=600)
     return (result or "").strip(), cmeta
+
+
+def _apply_haiku_corrections(
+    oneri: dict,
+    haiku_json: dict,
+    columns: List[str] | None = None,
+) -> dict:
+    """Haiku'nun tespit ettiği hataları plana uygula."""
+    durum = (haiku_json or {}).get("durum")
+    if not haiku_json or durum == "ok":
+        return oneri
+
+    fixes = haiku_json.get("duzeltmeler") or haiku_json.get("hatalar") or []
+    if durum not in ("duzelt", "hata") and not fixes:
+        return oneri
+
+    result = dict(oneri)
+    removed_grouping: set[str] = set()
+
+    for fix in fixes:
+        alan = fix.get("alan")
+        deger = fix.get("deger")
+        aksiyon = fix.get("aksiyon")
+        if not alan or not aksiyon:
+            continue
+
+        if aksiyon == "kisalt" and alan == "gerekceler":
+            result["gerekceler"] = list((result.get("gerekceler") or [])[:_MAX_GEREKCE])
+            continue
+
+        if not deger:
+            continue
+
+        if aksiyon == "cikar" and alan == "gerekceler":
+            result["gerekceler"] = [
+                g for g in (result.get("gerekceler") or [])
+                if deger not in (g.get("degiskenler") or [])
+                and deger not in (g.get("analiz") or "")
+            ]
+            continue
+
+        if aksiyon == "cikar" and alan in result and isinstance(result[alan], list):
+            if alan == "olcekler":
+                result[alan] = [
+                    o for o in result[alan]
+                    if deger not in (
+                        o.get("ad", ""),
+                        o.get("prefix", ""),
+                        o.get("maddeler_prefix", ""),
+                    )
+                ]
+            else:
+                result[alan] = [x for x in result[alan] if x != deger]
+                if alan == "gruplama_degiskenleri":
+                    removed_grouping.add(deger)
+
+        elif aksiyon == "ekle" and alan in result and isinstance(result[alan], list):
+            if alan == "olcekler":
+                prefixes = {
+                    (o.get("prefix") or o.get("maddeler_prefix") or o.get("ad") or "").upper()
+                    for o in result[alan]
+                }
+                if deger.upper() not in prefixes:
+                    result[alan].append({
+                        "ad": deger.upper(),
+                        "prefix": deger.upper(),
+                        "maddeler_prefix": deger.upper(),
+                        "neden": fix.get("sebep") or "Haiku denetimi ile eklendi",
+                    })
+            elif deger not in result[alan]:
+                result[alan].append(deger)
+
+    if removed_grouping:
+        result["gerekceler"] = [
+            g for g in (result.get("gerekceler") or [])
+            if not removed_grouping.intersection(g.get("degiskenler") or [])
+        ]
+
+    result["gruplama_degiskenleri"] = _filter_grouping(
+        list(result.get("gruplama_degiskenleri") or []),
+    )
+    if len(result.get("gerekceler") or []) > _MAX_GEREKCE:
+        result["gerekceler"] = result["gerekceler"][:_MAX_GEREKCE]
+
+    if columns and not result.get("olcekler"):
+        result["olcekler"] = _infer_olcekler(columns)
+
+    return result
 
 
 def _is_grouping_column(col: str) -> bool:

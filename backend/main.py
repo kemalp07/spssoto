@@ -61,7 +61,11 @@ from stat_tests import (
 from word_export import build_word_document
 from file_io import read_uploaded_file
 from document_parser import parse_anket_docx, parse_etik_kurul_docx
-from analiz_oneri import gemini_analiz_oneri, haiku_incele_plan
+from analiz_oneri import (
+    _apply_haiku_corrections,
+    gemini_analiz_oneri,
+    haiku_incele_plan,
+)
 from document_context import (
     get_document_context,
     resolve_document_context,
@@ -581,13 +585,20 @@ async def analiz_oneri_endpoint(request: Request, req: AnalizeOneriRequest):
         req.document_context,
     )
     plan = oneri.get("oneri") or {}
-    haiku_note, haiku_meta = await haiku_incele_plan(plan)
-    from llm_router import merge_meta
+    haiku_raw, haiku_meta = await haiku_incele_plan(plan, req.columns)
+    from llm_router import merge_meta, _parse_json_object
     meta = merge_meta(oneri.get("meta") or {}, haiku_meta)
-    if haiku_note:
-        meta["haiku_inceleme"] = haiku_note
-        print(f"[ONERİ] Haiku (arka plan): {haiku_note[:300]}", flush=True)
-        logger.warning(f"[ONERİ] Haiku inceleme: {haiku_note[:300]}")
+
+    if haiku_raw:
+        haiku_json = _parse_json_object(haiku_raw)
+        if haiku_json and haiku_json.get("durum") in ("duzelt", "hata"):
+            fixes = haiku_json.get("duzeltmeler") or haiku_json.get("hatalar") or []
+            plan = _apply_haiku_corrections(plan, haiku_json, req.columns)
+            meta["haiku_duzeltme"] = fixes
+            logger.warning(
+                f"[ONERİ] Haiku {len(fixes)} düzeltme uyguladı",
+            )
+            print(f"[ONERİ] Haiku {len(fixes)} düzeltme uyguladı", flush=True)
     gem_meta = oneri.get("meta") or {}
     meta_line = (
         f"[ONERİ META] plan_source={gem_meta.get('plan_source')} "

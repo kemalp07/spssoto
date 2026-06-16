@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from analiz_oneri import (
+    _apply_haiku_corrections,
     _infer_olcekler,
     _plan_from_belgeler,
     gemini_analiz_oneri,
@@ -171,10 +172,89 @@ async def test_haiku_incele_plan_without_claude():
 
 @pytest.mark.asyncio
 async def test_haiku_incele_plan_with_claude():
+    payload = '{"durum":"ok","duzeltmeler":[]}'
     with patch("llm_router.has_claude", return_value=True), patch(
         "llm_router.claude_decide",
-        return_value=("Plan uygun.", {"llm_calls": 1}),
+        return_value=(payload, {"llm_calls": 1}),
     ):
         text, meta = await haiku_incele_plan({"ozet": "Plan", "gerekceler": []})
-    assert "Plan uygun" in text
+    assert '"durum":"ok"' in text or '"durum": "ok"' in text
     assert meta["llm_calls"] == 1
+
+
+def test_apply_haiku_corrections_removes_invalid_grouping():
+    plan = {
+        "ozet": "Test",
+        "gruplama_degiskenleri": ["bolum", "dbf_boy", "dbf_cinsiyet"],
+        "outcome_degiskenleri": ["OYS_TOPLAM"],
+        "gerekceler": [
+            {
+                "analiz": "dbf_boy gruplarına göre OYS",
+                "neden": "x",
+                "degiskenler": ["dbf_boy", "OYS_TOPLAM"],
+                "tip": "karsilastirma",
+            },
+            {
+                "analiz": "bolum gruplarına göre OYS",
+                "neden": "y",
+                "degiskenler": ["bolum", "OYS_TOPLAM"],
+                "tip": "karsilastirma",
+            },
+        ],
+        "olcekler": [],
+    }
+    haiku_json = {
+        "durum": "duzelt",
+        "duzeltmeler": [
+            {
+                "alan": "gruplama_degiskenleri",
+                "deger": "dbf_boy",
+                "aksiyon": "cikar",
+                "sebep": "Sürekli değişken",
+            },
+        ],
+    }
+    fixed = _apply_haiku_corrections(plan, haiku_json)
+    assert "dbf_boy" not in fixed["gruplama_degiskenleri"]
+    assert all("dbf_boy" not in (g.get("degiskenler") or []) for g in fixed["gerekceler"])
+
+
+def test_apply_haiku_corrections_trims_gerekceler():
+    plan = {
+        "gerekceler": [{"analiz": f"A{i}", "neden": "n", "degiskenler": [], "tip": "x"} for i in range(8)],
+    }
+    haiku_json = {
+        "durum": "duzelt",
+        "duzeltmeler": [
+            {
+                "alan": "gerekceler",
+                "deger": "6",
+                "aksiyon": "kisalt",
+                "sebep": "6'dan fazla",
+            },
+        ],
+    }
+    fixed = _apply_haiku_corrections(plan, haiku_json)
+    assert len(fixed["gerekceler"]) == 6
+
+
+def test_apply_haiku_corrections_adds_missing_outcome():
+    plan = {
+        "outcome_degiskenleri": ["OYS_TOPLAM"],
+        "olcekler": [],
+    }
+    haiku_json = {
+        "durum": "duzelt",
+        "duzeltmeler": [
+            {
+                "alan": "outcome_degiskenleri",
+                "deger": "NEQ_TOPLAM",
+                "aksiyon": "ekle",
+                "sebep": "Eksik ölçek toplamı",
+            },
+        ],
+    }
+    cols = ["OYS_TOPLAM", "NEQ_TOPLAM", "OYS_1", "neq_1", "neq_2"]
+    fixed = _apply_haiku_corrections(plan, haiku_json, cols)
+    assert "NEQ_TOPLAM" in fixed["outcome_degiskenleri"]
+    assert fixed["olcekler"]
