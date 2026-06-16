@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
 from llm_router import (
+    _parse_json_object,
     claude_decide,
     gemini_api_mode,
     gemini_enrich_profile,
@@ -23,6 +24,8 @@ def test_merge_meta_combines_enrich_and_decide():
         "approx_output_tokens": 50,
         "enrich_provider": "gemini",
         "enrich_model": "gemini-2.5-flash",
+        "plan_source": "gemini",
+        "anket_text_len": 1152,
     }
     decide = {
         "llm_calls": 1,
@@ -35,6 +38,8 @@ def test_merge_meta_combines_enrich_and_decide():
     assert merged["llm_calls"] == 2
     assert merged["enrich_provider"] == "gemini"
     assert merged["llm_provider"] == "anthropic"
+    assert merged["plan_source"] == "gemini"
+    assert merged["anket_text_len"] == 1152
 
 
 def test_gemini_enrich_skipped_without_key():
@@ -100,3 +105,26 @@ def test_gemini_api_mode_ai_studio_for_aiza():
 def test_has_claude():
     with patch("llm_router.ANTHROPIC_API_KEY", "x"):
         assert has_claude() is True
+
+
+def test_parse_json_object_trailing_garbage():
+    raw = '{"ozet":"Test"} extra text'
+    assert _parse_json_object(raw)["ozet"] == "Test"
+
+
+def test_parse_json_object_truncated():
+    raw = '{"ozet":"Uzun özet","gerekceler":[{"analiz":"x","neden":"y"}'
+    parsed = _parse_json_object(raw)
+    assert parsed.get("ozet") == "Uzun özet"
+
+
+def test_salvage_partial_json_with_gerekce():
+    from llm_router import _salvage_partial_json
+
+    raw = (
+        '{"ozet":"Kesik özet devam","gerekceler":[{"analiz":"A","neden":"B",'
+        '"degiskenler":["bolum","OYS_TOPLAM"],"tip":"karsilastirma"}'
+    )
+    salvaged = _salvage_partial_json(raw)
+    assert salvaged.get("ozet")
+    assert salvaged.get("gerekceler")

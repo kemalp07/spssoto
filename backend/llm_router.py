@@ -13,6 +13,7 @@ from config import (
     ANTHROPIC_MODEL,
     ENABLE_GEMINI_ENRICH,
     GEMINI_API_KEY,
+    GEMINI_MAX_OUTPUT_TOKENS,
     GEMINI_MODEL,
     GEMINI_USE_VERTEX,
     GOOGLE_CLOUD_LOCATION,
@@ -56,17 +57,11 @@ def merge_meta(*parts: dict) -> dict:
     for p in parts:
         if not p:
             continue
-        out["llm_calls"] += int(p.get("llm_calls", 0) or 0)
-        out["approx_input_tokens"] += int(p.get("approx_input_tokens", 0) or 0)
-        out["approx_output_tokens"] += int(p.get("approx_output_tokens", 0) or 0)
-        if p.get("llm_provider"):
-            out["llm_provider"] = p["llm_provider"]
-        if p.get("llm_model"):
-            out["llm_model"] = p["llm_model"]
-        if p.get("enrich_provider"):
-            out["enrich_provider"] = p["enrich_provider"]
-        if p.get("enrich_model"):
-            out["enrich_model"] = p["enrich_model"]
+        for k, v in p.items():
+            if k in ("llm_calls", "approx_input_tokens", "approx_output_tokens"):
+                out[k] = int(out.get(k, 0) or 0) + int(v or 0)
+            elif v is not None and v != "":
+                out[k] = v
     return out
 
 
@@ -108,28 +103,141 @@ def _make_gemini_client():
     return genai.Client(api_key=GEMINI_API_KEY)
 
 
+def _normalize_json_text(text: str) -> str:
+    raw = (text or "").strip()
+    if not raw:
+        return ""
+    raw = (
+        raw.replace("\u201c", '"')
+        .replace("\u201d", '"')
+        .replace("\u2018", "'")
+        .replace("\u2019", "'")
+    )
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+        raw = re.sub(r"\s*```$", "", raw).strip()
+    return raw
+
+
+def _repair_truncated_json(blob: str) -> str:
+    """Kesik Gemini JSON çıktısını kapatmayı dene."""
+    s = blob.rstrip()
+    # Kesik string değeri (ör. ozet ortasında MAX_TOKENS)
+    if s.count('"') % 2 == 1:
+        s += '"'
+    s = re.sub(r",\s*$", "", s)
+    s = re.sub(r",\s*\"[^\"\\]*(?:\\.[^\"\\]*)*$", "", s)
+    open_brackets = s.count("[") - s.count("]")
+    open_braces = s.count("{") - s.count("}")
+    if open_brackets > 0:
+        s += "]" * open_brackets
+    if open_braces > 0:
+        s += "}" * open_braces
+    return s
+
+
+def _salvage_partial_json(text: str) -> dict:
+    """MAX_TOKENS ile kesilmiş yanıttan ozet ve tam gerekce nesnelerini kurtar."""
+    raw = _normalize_json_text(text)
+    if not raw or not raw.lstrip().startswith("{"):
+        return {}
+    out: dict = {}
+    ozet_m = re.search(r'"ozet"\s*:\s*"((?:[^"\\]|\\.)*)', raw)
+    if ozet_m:
+        out["ozet"] = ozet_m.group(1).replace('\\"', '"').replace("\\n", "\n")
+    elif '"ozet"' in raw:
+        tail = re.search(r'"ozet"\s*:\s*"(.*)$', raw, re.DOTALL)
+        if tail:
+            out["ozet"] = tail.group(1).replace("\\n", "\n").strip()
+    gerekceler: list = []
+    for block in re.finditer(
+        r'\{\s*"analiz"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"neden"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"degiskenler"\s*:\s*\[([^\]]*)\]\s*,\s*"tip"\s*:\s*"([^"]*)"\s*\}',
+        raw,
+    ):
+        vars_raw = block.group(3)
+        degiskenler = [
+            v.strip().strip('"')
+            for v in vars_raw.split(",")
+            if v.strip().strip('"')
+        ]
+        gerekceler.append({
+            "analiz": block.group(1).replace('\\"', '"'),
+            "neden": block.group(2).replace('\\"', '"'),
+            "degiskenler": degiskenler,
+            "tip": block.group(4),
+        })
+    if gerekceler:
+        out["gerekceler"] = gerekceler
+    return out
+
+
 def _parse_json_object(text: str) -> dict:
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        return {}
-    try:
-        return json.loads(match.group())
-    except json.JSONDecodeError:
+    raw = _normalize_json_text(text)
+    if not raw:
         return {}
 
+    attempts = [raw]
+    start = raw.find("{")
+    if start > 0:
+        attempts.append(raw[start:])
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if match:
+        attempts.append(match.group())
 
-def _gemini_json(system: str, user: str, max_tokens: int) -> Tuple[str, dict]:
+    seen: set[str] = set()
+    for blob in attempts:
+        if not blob or blob in seen:
+            continue
+        seen.add(blob)
+        try:
+            obj, _end = json.JSONDecoder().raw_decode(blob)
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            pass
+        try:
+            obj = json.loads(blob)
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            pass
+        cleaned = re.sub(r",\s*([}\]])", r"\1", blob)
+        if cleaned != blob:
+            try:
+                obj = json.loads(cleaned)
+                if isinstance(obj, dict):
+                    return obj
+            except json.JSONDecodeError:
+                pass
+        repaired = _repair_truncated_json(blob)
+        if repaired != blob:
+            try:
+                obj = json.loads(repaired)
+                if isinstance(obj, dict):
+                    return obj
+            except json.JSONDecodeError:
+                pass
+    salvaged = _salvage_partial_json(text)
+    if salvaged:
+        return salvaged
+    return {}
+
+
+def _gemini_json(system: str, user: str, max_tokens: int | None = None) -> Tuple[str, dict]:
     from google.genai import types
 
+    out_limit = max_tokens if max_tokens is not None else GEMINI_MAX_OUTPUT_TOKENS
     client = _make_gemini_client()
     response = client.models.generate_content(
         model=GEMINI_MODEL,
         contents=user,
         config=types.GenerateContentConfig(
             system_instruction=system,
-            max_output_tokens=max_tokens,
+            max_output_tokens=out_limit,
             temperature=0.0,
             response_mime_type="application/json",
+            # 2.5 Flash: thinking + output paylaşımlı bütçe; JSON görevlerinde thinking kapat
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         ),
     )
     text = (response.text or "").strip()
@@ -142,6 +250,14 @@ def _gemini_json(system: str, user: str, max_tokens: int) -> Tuple[str, dict]:
     if usage:
         meta["approx_input_tokens"] = int(getattr(usage, "prompt_token_count", 0) or 0)
         meta["approx_output_tokens"] = int(getattr(usage, "candidates_token_count", 0) or 0)
+        thoughts = getattr(usage, "thoughts_token_count", None)
+        if thoughts is not None:
+            meta["gemini_thought_tokens"] = int(thoughts or 0)
+    candidates = getattr(response, "candidates", None) or []
+    if candidates:
+        finish = getattr(candidates[0], "finish_reason", None)
+        if finish is not None:
+            meta["gemini_finish_reason"] = str(finish)
     return text, meta
 
 
@@ -149,7 +265,7 @@ def gemini_enrich_profile(
     task: str,
     profile: dict,
     research_context: str = "",
-    max_tokens: int = 2000,
+    max_tokens: int | None = None,
 ) -> Tuple[dict, dict]:
     """Gemini: ayrıntılı veri taraması — karar vermez, Claude'a bağlam sağlar."""
     if not has_gemini_enrich():
@@ -210,7 +326,11 @@ def claude_decide(system: str, user: str, max_tokens: int = 1000) -> Tuple[str, 
     return text, meta
 
 
-def gemini_json_task(system: str, user: str, max_tokens: int = 1200) -> Tuple[str, dict]:
+def gemini_json_task(
+    system: str,
+    user: str,
+    max_tokens: int | None = None,
+) -> Tuple[str, dict]:
     """Gemini'den ham JSON metni döndürür (enrich / hipotez ayrıştırma)."""
     if not has_gemini_enrich():
         return "", _empty_meta()
@@ -221,21 +341,27 @@ def gemini_json_task(system: str, user: str, max_tokens: int = 1200) -> Tuple[st
         return "", _empty_meta()
 
 
-def gemini_text_task(system: str, user: str, max_tokens: int = 600) -> Tuple[str, dict]:
+def gemini_text_task(
+    system: str,
+    user: str,
+    max_tokens: int | None = None,
+) -> Tuple[str, dict]:
     """Gemini'den düz metin döndürür (plan analizi, özet yorum)."""
     if not has_gemini_enrich():
         return "", _empty_meta()
     try:
         from google.genai import types
 
+        out_limit = max_tokens if max_tokens is not None else GEMINI_MAX_OUTPUT_TOKENS
         client = _make_gemini_client()
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=user,
             config=types.GenerateContentConfig(
                 system_instruction=system,
-                max_output_tokens=max_tokens,
+                max_output_tokens=out_limit,
                 temperature=0.2,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
         text = (response.text or "").strip()

@@ -40,10 +40,11 @@ export function etikTextFromContext(etik?: EtikKurulParseResult | null): string 
   }
   const structured = parts.join('\n').trim();
   const raw = etik.raw_text?.trim() ?? '';
-  if (structured.length >= 40) {
-    return structured.length < 200 && raw ? `${structured}\n\n${raw.slice(0, 6000)}` : structured;
+  if (structured && raw) {
+    return `${structured}\n\n${raw.slice(0, 6000)}`;
   }
-  return raw || structured;
+  if (structured) return structured;
+  return raw;
 }
 
 export function normalizeColumnHint(hint: string): string {

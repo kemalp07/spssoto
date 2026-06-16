@@ -23,6 +23,8 @@ GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 ENABLE_GEMINI_ENRICH = os.getenv("ENABLE_GEMINI_ENRICH", "true").lower() in (
     "1", "true", "yes", "on",
 )
+# Gemini çıktı üst sınırı (2.5 Flash model max ~65536); düşürmek için .env ile override
+GEMINI_MAX_OUTPUT_TOKENS = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "65536"))
 
 _origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
 ALLOWED_ORIGINS = [o.strip() for o in _origins.split(",") if o.strip()]

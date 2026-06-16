@@ -592,10 +592,15 @@ async def analiz_oneri_endpoint(request: Request, req: AnalizeOneriRequest):
     meta_line = (
         f"[ONERİ META] plan_source={gem_meta.get('plan_source')} "
         f"gemini_ok={gem_meta.get('gemini_ok')} "
+        f"gemini_error={gem_meta.get('gemini_error')} "
         f"anket_len={gem_meta.get('anket_text_len')} "
         f"etik_len={gem_meta.get('etik_text_len')} "
         f"llm_calls={meta.get('llm_calls')}"
     )
+    if gem_meta.get("gemini_finish_reason"):
+        meta_line += f" finish={gem_meta.get('gemini_finish_reason')}"
+    if gem_meta.get("gemini_error") == "json_parse" and gem_meta.get("gemini_raw_preview"):
+        meta_line += f" raw={gem_meta.get('gemini_raw_preview')[:120]!r}"
     print(meta_line, flush=True)
     logger.warning(meta_line)
     return sanitize({
