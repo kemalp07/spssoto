@@ -20,7 +20,7 @@ export function VariableCard({ col, type, rec = {}, checked, onToggle }: Variabl
   const d = derivedVarMap[col];
   const aiStatus = resolveAiStatus(col, rec, derivedVarMap);
   const badge = AI_STATUS_LABELS[aiStatus];
-  const isExcludedDerived = type === 'cont' && (d?.action === 'exclude' || aiStatus === 'not_recommended');
+  const isExcludedDerived = d?.action === 'exclude';
   const reviewOpen = aiStatus === 'review';
   const label = (userLabels[col] ?? '').trim() || col;
   const summary = variableSummaryText(col, parsedData, valueLabels);

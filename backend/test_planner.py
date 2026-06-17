@@ -82,6 +82,7 @@ _REGRESSION_KEYWORDS = ("yordama", "etki", "tahmin", "regresyon")
 _COMPARISON_TESTS = frozenset({
     "ttest", "mann_whitney", "anova", "kruskal_wallis", "chi_square",
 })
+_LIFESTYLE_VARS = frozenset({"dbf_sk", "dbf_ak", "dbf_ik", "dbf_kh"})
 _CORRELATION_TESTS = frozenset({"correlation"})
 
 _TEST_DISPLAY_PLANNER = {
@@ -693,6 +694,10 @@ def score_candidates_from_context(
                 score += 1
             if any(k in etik_blob for k in _REGRESSION_KEYWORDS):
                 score += 1
+
+        vars_lower = {str(v).lower() for v in vars_}
+        if vars_lower & _LIFESTYLE_VARS:
+            score = max(score, 1)
 
         if score >= 2:
             relevance_flag = "uygun"

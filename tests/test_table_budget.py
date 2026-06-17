@@ -66,7 +66,7 @@ def test_profile_budgets_not_exceeded_on_synthetic_catalog():
 
     enrich_catalog_metadata(catalog, DEFAULT_LAYOUT_CONFIG, core_ids)
 
-    for profile, limit in (("oz", 10), ("standart", 18)):
+    for profile, limit in (("oz", PLAN_PROFILES["oz"]), ("standart", PLAN_PROFILES["standart"])):
         working = [dict(c) for c in catalog]
         _, estimated = build_plan(working, profile)
         assert estimated <= limit, f"{profile} profili {estimated} tablo (> {limit})"
@@ -186,3 +186,31 @@ def test_core_frequency_only_primary_demographics():
     assert "frequency:sigara" not in core_ids
     assert "frequency:gelir" not in core_ids
     assert "frequency:alkol" not in core_ids
+
+
+def test_lifestyle_ttest_moves_to_accordion_when_over_budget():
+    catalog = [
+        {"id": "descriptive", "test": "descriptive", "vars": ["o1"], "tier": TIER_KESIN, "cekirdek": True},
+        {"id": "frequency:cinsiyet", "test": "frequency", "vars": ["cinsiyet"], "tier": TIER_KESIN, "cekirdek": True},
+        {"id": "correlation", "test": "correlation", "vars": ["o1", "o2"], "tier": TIER_KESIN, "cekirdek": True},
+    ]
+    for i in range(14):
+        catalog.append({
+            "id": f"ttest:grp{i}:o1",
+            "test": "ttest",
+            "vars": [f"grp{i}", "o1"],
+            "tier": TIER_ONERILEN,
+        })
+    catalog.append({
+        "id": "ttest:dbf_sk:o1",
+        "test": "ttest",
+        "vars": ["dbf_sk", "o1"],
+        "tier": TIER_ONERILMEYEN,
+    })
+    enrich_catalog_metadata(catalog, DEFAULT_LAYOUT_CONFIG, {c["id"] for c in catalog if c.get("cekirdek")})
+    working = [dict(c) for c in catalog]
+    apply_table_budget(working, "oz", DEFAULT_LAYOUT_CONFIG)
+    lifestyle = next(c for c in working if c["id"] == "ttest:dbf_sk:o1")
+    assert lifestyle.get("enabled_default") is False
+    assert lifestyle.get("butce_disi") is False
+    assert lifestyle.get("display_section") == "accordion"

@@ -134,6 +134,22 @@ def test_no_etik_all_uygun_equal_score():
     assert all(c["relevance_score"] == 2 for c in scored)
 
 
+def test_lifestyle_vars_get_minimum_olası_score():
+    candidates = [
+        {
+            "id": "ttest:dbf_sk:oys",
+            "test": "ttest",
+            "vars": ["dbf_sk", "oys"],
+            "auto_flag": "uygun",
+            "seq": "t1",
+        },
+    ]
+    scored = score_candidates_from_context(candidates, "Genel çalışma", {"oys": "OYŞTÖ"})
+    sk = scored[0]
+    assert sk["relevance_score"] >= 1
+    assert sk["relevance_flag"] == "olası"
+
+
 def test_word_export_methodology_section_from_decision_log():
     decision_log = {
         "normality_test": "shapiro-wilk",

@@ -108,9 +108,9 @@ export function planTotalBarText(
 }
 
 export const PLAN_PROFILES = [
-  { id: 'oz' as const, label: 'Öz', approx: 8 },
-  { id: 'standart' as const, label: 'Standart', approx: 12 },
-  { id: 'kapsamli' as const, label: 'Kapsamlı', approx: 18 },
+  { id: 'oz' as const, label: 'Öz', approx: 15 },
+  { id: 'standart' as const, label: 'Standart', approx: 30 },
+  { id: 'kapsamli' as const, label: 'Kapsamlı', approx: 50 },
 ];
 
 export type PlanProfileId = typeof PLAN_PROFILES[number]['id'];

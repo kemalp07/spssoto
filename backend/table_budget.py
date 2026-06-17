@@ -6,12 +6,19 @@ from typing import Dict, List, Optional, Tuple
 from layout_config import DEFAULT_LAYOUT_CONFIG, LayoutConfig
 
 PLAN_PROFILES: Dict[str, int] = {
-    "oz": 10,
-    "standart": 18,
-    "kapsamli": 28,
+    "oz": 15,
+    "standart": 30,
+    "kapsamli": 50,
 }
 
 MERGE_GROUP_TEST_TYPES = ("ttest", "mann_whitney", "anova")
+
+_LIFESTYLE_VARS = frozenset({"dbf_sk", "dbf_ak", "dbf_ik", "dbf_kh"})
+
+
+def _is_lifestyle_candidate(item: dict) -> bool:
+    vars_lower = {str(v).lower() for v in (item.get("vars") or [])}
+    return bool(vars_lower & _LIFESTYLE_VARS)
 
 
 def grouping_merge_key_result(result: dict) -> Tuple[str, str]:
@@ -171,6 +178,10 @@ def apply_table_budget(
             enabled.append(item)
         else:
             item["enabled_default"] = False
-            item["butce_disi"] = True
+            if _is_lifestyle_candidate(item):
+                item["butce_disi"] = False
+                item["display_section"] = "accordion"
+            else:
+                item["butce_disi"] = True
 
     return catalog, estimate_table_count(enabled, cfg)
