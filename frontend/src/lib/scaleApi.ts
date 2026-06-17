@@ -1,13 +1,16 @@
 import { apiCall } from '../api/client';
-import { documentContextPayload, parseScaleNames } from '../lib/wizardSkip';
+import { documentContextPayload, parseScaleNames, scalesFromDetection } from '../lib/wizardSkip';
 import { getAppState } from './storeAccess';
 import { useAppStore } from '../stores/useAppStore';
 import type { DetectScalesResponse, MatchScalesResponse } from '../types';
 
 export async function detectScalesInline(): Promise<void> {
   const state = getAppState();
-  console.log('[DETECT] ran:', state.wizard.detectScalesRan, 'cols:', state.columns.length);
-  if (state.wizard.detectScalesRan || !state.parsedData.length) return;
+  const hasReliableScales = state.scales.detected.some(
+    (s) => s.registry_confidence === 'high',
+  );
+  console.log('[DETECT] reliable:', hasReliableScales, 'cols:', state.columns.length);
+  if (hasReliableScales || !state.parsedData.length) return;
 
   try {
     const res = await apiCall<DetectScalesResponse>('/detect-scales', {
@@ -27,8 +30,13 @@ export async function detectScalesInline(): Promise<void> {
 
 export async function scaleMatchingInline(): Promise<void> {
   const state = getAppState();
-  const scaleNames = parseScaleNames(state.wizard.scaleNames);
-  if (!scaleNames.length || !state.parsedData.length) return;
+  if (!state.wizard.scaleNames?.trim() && !state.scales.detected.length) return;
+  if (!state.parsedData.length) return;
+
+  const scaleNames = parseScaleNames(
+    state.wizard.scaleNames?.trim() || scalesFromDetection(state.scales.detected),
+  );
+  if (!scaleNames.length) return;
 
   try {
     const res = await apiCall<MatchScalesResponse>('/match-scales', {
