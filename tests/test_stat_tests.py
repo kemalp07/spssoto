@@ -24,6 +24,7 @@ from stat_tests import (
     paired_analysis,
     cronbach_analysis,
     table_multiple_regression,
+    table_correlation_matrix,
     mann_whitney_z,
     games_howell_pair,
     kruskal_epsilon_squared,
@@ -193,3 +194,45 @@ def test_multiple_regression(sample_df):
     assert res["type"] == "multiple_regression"
     assert "r_squared" in res
     assert 0 <= res["r_squared"] <= 1
+
+
+def test_correlation_matrix_uses_pearson_when_n_above_200():
+    rng = np.random.default_rng(42)
+    n = 250
+    df = pd.DataFrame({
+        "x": rng.normal(0, 1, n),
+        "y": rng.exponential(1, n),
+    })
+    variables = [
+        Variable(name="x", label="X", type="continuous", role="outcome"),
+        Variable(name="y", label="Y", type="continuous", role="outcome"),
+    ]
+    norm_map = {
+        "x": {"normal": False, "n": n},
+        "y": {"normal": False, "n": n},
+    }
+    tc = TableCounter()
+    res = table_correlation_matrix(tc, variables, df, norm_map=norm_map)
+    assert res is not None
+    assert res["method"] == "Pearson"
+
+
+def test_correlation_matrix_uses_spearman_when_small_n_and_non_normal():
+    rng = np.random.default_rng(7)
+    n = 30
+    df = pd.DataFrame({
+        "x": rng.normal(0, 1, n),
+        "y": rng.exponential(1, n),
+    })
+    variables = [
+        Variable(name="x", label="X", type="continuous", role="outcome"),
+        Variable(name="y", label="Y", type="continuous", role="outcome"),
+    ]
+    norm_map = {
+        "x": {"normal": True, "n": n},
+        "y": {"normal": False, "n": n},
+    }
+    tc = TableCounter()
+    res = table_correlation_matrix(tc, variables, df, norm_map=norm_map)
+    assert res is not None
+    assert res["method"] == "Spearman"

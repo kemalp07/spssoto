@@ -770,16 +770,22 @@ def table_correlation_matrix(
     if n_vars < 2:
         return None
 
-    all_normal = True
-    if norm_map:
-        for v in variables:
-            if v.name in norm_map:
-                nm = norm_map[v.name]
-                if not nm.get("normal", nm.get("is_parametric", True)):
-                    all_normal = False
-                    break
+    sample_sizes = [
+        norm_map.get(v.name, {}).get("n", 0)
+        for v in variables
+        if v.name in (norm_map or {})
+    ]
+    min_n = min(sample_sizes) if sample_sizes else 0
 
-    use_pearson = all_normal
+    if min_n > 200:
+        use_pearson = True
+    else:
+        use_pearson = all(
+            norm_map.get(v.name, {}).get("normal", norm_map.get(v.name, {}).get("is_parametric", True))
+            for v in variables
+            if v.name in (norm_map or {})
+        )
+
     method = "Pearson" if use_pearson else "Spearman"
     corr_fn = stats.pearsonr if use_pearson else spearmanr
     matrix = np.eye(n_vars)
