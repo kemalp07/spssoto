@@ -70,10 +70,10 @@ def _scale_payload(df: pd.DataFrame, scale_id: str) -> dict:
     }
 
 
-def test_apply_scale_item_resolution_prefers_originals():
+def test_apply_scale_item_resolution_prefers_reversed():
     resolved = apply_scale_item_resolution(["neq_1", "neq_1_ters", "neq_2"])
-    assert "neq_1_ters" not in resolved["cronbach_items"]
-    assert "neq_1" in resolved["cronbach_items"]
+    assert "neq_1" not in resolved["cronbach_items"]
+    assert "neq_1_ters" in resolved["cronbach_items"]
 
 
 @pytest.mark.parametrize("scale_id", ["neq", "ashn"])
@@ -136,16 +136,18 @@ def test_cronbach_alpha_not_collapsed_by_double_reverse(scale_id, min_alpha):
     assert alpha >= min_alpha, f"{scale_id}: α={alpha:.3f} çift ters şüphesi"
 
 
-def test_reverse_formula_uses_min_plus_max():
+def test_cronbach_uses_reversed_column_values_as_is():
+    """_ters sütunu SPSS'te zaten ters puanlı — formül uygulanmaz."""
     raw = pd.DataFrame({
         "it_1": [1, 2, 3, 4, 5],
-        "it_2": [5, 4, 3, 2, 1],
+        "it_2_ters": [1, 2, 3, 4, 5],
         "it_3": [1, 1, 2, 2, 3],
     })
-    matrix, _ = build_cronbach_dataframe(
+    matrix, valid = build_cronbach_dataframe(
         raw,
-        ["it_1", "it_2", "it_3"],
+        ["it_1", "it_2_ters", "it_3"],
         reverse_items=[2],
         scale_range=[1, 5],
     )
-    assert matrix["it_2"].tolist() == [1, 2, 3, 4, 5]
+    assert "it_2_ters" in valid
+    assert matrix["it_2_ters"].tolist() == [1, 2, 3, 4, 5]

@@ -62,23 +62,23 @@ def test_match_by_prefix_neq_gya():
     assert set(neq["matched_cols"]) >= {"neq_1", "neq_2", "gya_3", "gya_4"}
 
 
-def test_match_by_prefix_prefers_original_over_reversed():
+def test_match_by_prefix_prefers_reversed_over_original():
     cols = ["neq_1", "neq_1_ters", "neq_2", "neq_2_ters", "neq_3"]
     matches = match_by_prefix(cols)
     neq = next(m for m in matches if m["scale"]["id"] == "neq")
-    assert set(neq["matched_cols"]) == {"neq_1", "neq_2", "neq_3"}
+    assert set(neq["matched_cols"]) == {"neq_1_ters", "neq_2_ters", "neq_3"}
     assert len(neq["matched_cols"]) == 3
 
 
-def test_match_by_prefix_prefers_original_sbito_t_suffix():
+def test_match_by_prefix_prefers_reversed_sbito_t_suffix():
     cols = ["sbito_6", "SBITO_6_T", "sbito_7", "SBITO_7_T"]
     matches = match_by_prefix(cols)
     ashn = next(m for m in matches if m["scale"]["id"] == "ashn")
-    assert set(ashn["matched_cols"]) == {"sbito_6", "sbito_7"}
+    assert set(ashn["matched_cols"]) == {"SBITO_6_T", "SBITO_7_T"}
     assert len(ashn["matched_cols"]) == 2
 
 
-def test_match_by_prefix_keeps_reversed_when_no_original():
+def test_match_by_prefix_keeps_original_when_no_reversed():
     cols = ["neq_1_ters", "neq_2"]
     matches = match_by_prefix(cols)
     neq = next(m for m in matches if m["scale"]["id"] == "neq")

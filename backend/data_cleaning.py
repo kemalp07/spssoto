@@ -238,29 +238,29 @@ ITEM_COLUMN_PATTERN = re.compile(
 REVERSED_SUFFIX = re.compile(r"(_ters|_t|_rev|_r|_reversed|_rc|_inv)$", re.I)
 
 
-def prefer_original_items(cols: List[str], all_cols: Optional[List[str]] = None) -> List[str]:
-    """_ters suffix'li yerine orijinal sütunu tercih et."""
+def prefer_reversed_items(cols: List[str], all_cols: Optional[List[str]] = None) -> List[str]:
+    """_ters/_T suffix'li sütunu orijinal yerine tercih et (SPSS ters puanlı sütun)."""
     source = all_cols if all_cols is not None else cols
-    originals = {
-        REVERSED_SUFFIX.sub("", c).lower(): c
+    reversed_bases = {
+        REVERSED_SUFFIX.sub("", c).lower()
         for c in source
-        if not REVERSED_SUFFIX.search(c)
+        if REVERSED_SUFFIX.search(c)
     }
     result: List[str] = []
     seen: set = set()
     for col in cols:
-        if REVERSED_SUFFIX.search(col):
-            base = REVERSED_SUFFIX.sub("", col).lower()
-            if base in originals:
-                orig = originals[base]
-                if orig not in seen:
-                    result.append(orig)
-                    seen.add(orig)
-                continue
+        base = REVERSED_SUFFIX.sub("", col).lower()
+        if not REVERSED_SUFFIX.search(col) and base in reversed_bases:
+            continue
         if col not in seen:
             result.append(col)
             seen.add(col)
     return result
+
+
+def prefer_original_items(cols: List[str], all_cols: Optional[List[str]] = None) -> List[str]:
+    """Geriye uyumluluk — ters puanlanmış sütunu tercih eder."""
+    return prefer_reversed_items(cols, all_cols)
 
 
 def normalize_item_root(name: str) -> str:
@@ -331,11 +331,11 @@ def partition_item_variants(
 def apply_scale_item_resolution(items: List[str]) -> dict:
     """Ölçek maddelerini gösterim ve cronbach için ayır."""
     display, cronbach, count = partition_item_variants(items)
-    cronbach = prefer_original_items(cronbach, items)
+    cronbach = prefer_reversed_items(cronbach, items)
     variant_map: Dict[str, str] = {}
     for _, cols in group_item_variants(items).items():
         group_display, group_cronbach, _ = partition_item_variants(cols)
-        group_cronbach = prefer_original_items(group_cronbach, cols)
+        group_cronbach = prefer_reversed_items(group_cronbach, cols)
         if group_display and group_cronbach:
             variant_map[group_display[0]] = group_cronbach[0]
         elif group_display:
@@ -404,16 +404,12 @@ def build_cronbach_dataframe(
     """
     Cronbach veri matrisi.
 
-    Liste düzeyinde orijinal maddeler tercih edilir; ters maddelerde _ters varsa
-  o sütun alınır (çift ters yok), yoksa orijinale min+max−x uygulanır.
+    Liste düzeyinde ters puanlanmış (_ters/_T) maddeler tercih edilir; formül uygulanmaz.
     """
-    bounds = scale_range if scale_range and len(scale_range) >= 2 else [0, 4]
-    lo = float(bounds[0])
-    hi = float(bounds[1])
     reverse_set = {int(x) for x in (reverse_items or []) if x is not None}
     df_columns = list(df.columns)
 
-    picked = prefer_original_items(items, df_columns)
+    picked = prefer_reversed_items(items, df_columns)
     resolved: List[str] = []
     seen_roots: set = set()
     for col in picked:
@@ -436,13 +432,6 @@ def build_cronbach_dataframe(
 
     work = apply_missing_codes_to_columns(work, resolved, missing_codes)
     items_df = work[resolved].copy()
-
-    for col in resolved:
-        if has_item_deriv_affix(col):
-            continue
-        num = extract_item_number(col)
-        if num is not None and num in reverse_set:
-            items_df[col] = lo + hi - items_df[col]
 
     return items_df.dropna(), resolved
 
