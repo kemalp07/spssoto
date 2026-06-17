@@ -238,6 +238,29 @@ def test_apply_haiku_corrections_trims_gerekceler():
     assert len(fixed["gerekceler"]) == 6
 
 
+def test_apply_haiku_corrections_removes_tanim_gerekceler():
+    plan = {
+        "gerekceler": [
+            {"analiz": "OYŞTÖ düzeyi", "neden": "n", "degiskenler": ["OYS_TOPLAM"], "tip": "tanim"},
+            {"analiz": "OYŞTÖ ile GYA ilişkisi", "neden": "n", "degiskenler": ["OYS_TOPLAM", "NEQ_TOPLAM"], "tip": "iliski"},
+        ],
+    }
+    haiku_json = {
+        "durum": "duzelt",
+        "duzeltmeler": [
+            {
+                "alan": "gerekceler",
+                "deger": "tanim",
+                "aksiyon": "cikar",
+                "sebep": "Tanımlayıcı analiz zaten frekans tablolarında",
+            },
+        ],
+    }
+    fixed = _apply_haiku_corrections(plan, haiku_json)
+    assert len(fixed["gerekceler"]) == 1
+    assert fixed["gerekceler"][0]["tip"] == "iliski"
+
+
 def test_apply_haiku_corrections_adds_missing_outcome():
     plan = {
         "outcome_degiskenleri": ["OYS_TOPLAM"],

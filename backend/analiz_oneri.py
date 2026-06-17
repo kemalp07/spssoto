@@ -122,6 +122,9 @@ SADECE şu hataları işaretle:
 - _TOPLAM suffix'li değişken outcome_degiskenleri'nde eksik ama veri seti sütunlarında var → ekle
 - gerekceler 6'dan fazla → {"alan":"gerekceler","deger":"6","aksiyon":"kisalt","sebep":"..."}
 - gerekceler içinde gruplama_degiskenleri'nden çıkarılan değişken geçiyorsa → gerekceler alanında cikar
+6. "tanim" tipli analizler gerekceler'de varsa → cikar
+   ("ne düzeydedir?", "nasıldır?", "nedir?" soruları tanımlayıcı analiz gerektirir,
+   bunlar zaten tanımlayıcı istatistik ve frekans tablolarında karşılanır)
 
 Hata yoksa: {"durum":"ok","duzeltmeler":[]}
 Başka hiçbir şey yazma."""
@@ -177,11 +180,17 @@ def _apply_haiku_corrections(
             continue
 
         if aksiyon == "cikar" and alan == "gerekceler":
-            result["gerekceler"] = [
-                g for g in (result.get("gerekceler") or [])
-                if deger not in (g.get("degiskenler") or [])
-                and deger not in (g.get("analiz") or "")
-            ]
+            if str(deger).lower() == "tanim":
+                result["gerekceler"] = [
+                    g for g in (result.get("gerekceler") or [])
+                    if (g.get("tip") or "").lower() != "tanim"
+                ]
+            else:
+                result["gerekceler"] = [
+                    g for g in (result.get("gerekceler") or [])
+                    if deger not in (g.get("degiskenler") or [])
+                    and deger not in (g.get("analiz") or "")
+                ]
             continue
 
         if aksiyon == "cikar" and alan in result and isinstance(result[alan], list):
