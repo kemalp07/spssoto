@@ -6,6 +6,7 @@ import type { DetectScalesResponse, MatchScalesResponse } from '../types';
 
 export async function detectScalesInline(): Promise<void> {
   const state = getAppState();
+  console.log('[DETECT] ran:', state.wizard.detectScalesRan, 'cols:', state.columns.length);
   if (state.wizard.detectScalesRan || !state.parsedData.length) return;
 
   try {
@@ -14,8 +15,10 @@ export async function detectScalesInline(): Promise<void> {
       labels: state.savMetadata.pendingLabels ?? {},
       ...documentContextPayload(state.documents.context, state.documents.sessionId),
     });
+    console.log('[DETECT] scales:', res.scales?.map(s => s.name + ' conf:' + s.registry_confidence));
     getAppState().setScaleDetection(res);
-  } catch {
+  } catch (e) {
+    console.error('[DETECT] hata:', e);
     useAppStore.setState((s) => ({
       wizard: { ...s.wizard, detectScalesRan: true },
     }));
