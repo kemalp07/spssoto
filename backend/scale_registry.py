@@ -18,6 +18,24 @@ _DERIVED_SUFFIX = re.compile(
     r"_(toplam|total|puan|score|sum|risk|binary|grubu?|kategori|category|mean|ort|avg)$",
     re.I,
 )
+_ALREADY_REVERSED_RE = re.compile(
+    r"(_ters|_t|_rev|_reversed|_rc|_inv)$",
+    re.I,
+)
+
+
+def _prefer_originals(cols: List[str]) -> List[str]:
+    """neq_1 ve neq_1_ters ikisi varsa neq_1_ters'i at, neq_1'i kullan."""
+    originals = {
+        _ALREADY_REVERSED_RE.sub("", c).lower()
+        for c in cols
+        if not _ALREADY_REVERSED_RE.search(c)
+    }
+    return [
+        c for c in cols
+        if not _ALREADY_REVERSED_RE.search(c)
+        or _ALREADY_REVERSED_RE.sub("", c).lower() not in originals
+    ]
 
 
 def normalize_col(name: str) -> str:
@@ -150,7 +168,7 @@ def match_by_prefix(col_names: List[str]) -> List[dict]:
     return [
         {
             "scale": scale_by_id[sid],
-            "matched_cols": sorted(grouped[sid]),
+            "matched_cols": sorted(_prefer_originals(grouped[sid])),
             "confidence": "high",
         }
         for sid in grouped
