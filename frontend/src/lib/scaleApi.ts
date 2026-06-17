@@ -7,7 +7,7 @@ import type { DetectScalesResponse, MatchScalesResponse } from '../types';
 export async function detectScalesInline(): Promise<void> {
   const state = getAppState();
   const hasReliableScales = state.scales.detected.some(
-    (s) => s.registry_confidence === 'high',
+    (s) => s.registry_confidence === 'high' || s.registry_confidence == null,
   );
   console.log('[DETECT] reliable:', hasReliableScales, 'cols:', state.columns.length);
   if (hasReliableScales || !state.parsedData.length) return;

@@ -218,7 +218,7 @@ def _registry_match_to_scale(match: dict, min_confidence: str = "high") -> Optio
         "cronbach_items": resolved["cronbach_items"],
         "item_count": resolved["item_count"],
         "registry_id": sid,
-        "registry_confidence": match.get("confidence", "high"),
+        "registry_confidence": match.get("confidence") or "high",
         "source": "registry",
         "reverse_items": get_reverse_items(sid),
         "scale_range": (get_scale_info(sid) or {}).get("scale_range") or [0, 4],
