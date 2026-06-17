@@ -503,6 +503,10 @@ def extract_scale_keywords(scale_name: str) -> List[str]:
         inner = normalize_for_match(paren_match.group(1))
         if inner:
             keywords.append(inner)
+        for token in re.split(r"[\s\-–—/,]+", paren_match.group(1)):
+            norm_token = normalize_for_match(token)
+            if len(norm_token) >= 2:
+                keywords.append(norm_token)
 
     words_raw = re.sub(r"\([^)]*\)", "", raw)
     words_raw = re.sub(r"[^\w\sğüşıöçĞÜŞİÖÇ]", " ", words_raw, flags=re.I)
@@ -583,10 +587,27 @@ def _match_confidence(
         return "low"
     return "low"
 
+def _registry_column_keywords(scale_id: str, entry: dict) -> List[str]:
+    """Registry id, prefix ipuçları ve kısa alias token'ları."""
+    keywords: List[str] = []
+    if scale_id:
+        keywords.append(scale_id)
+    for hint in entry.get("prefix_hints") or []:
+        stem = re.sub(r"[_\s]+$", "", str(hint).strip())
+        if stem:
+            keywords.append(normalize_for_match(stem).replace(" ", ""))
+    for alias in entry.get("names") or []:
+        for token in re.findall(r"[a-zA-Z0-9ğüşıöçĞÜŞİÖÇ]{2,}", str(alias)):
+            norm_token = normalize_for_match(token)
+            if norm_token and " " not in norm_token:
+                keywords.append(norm_token)
+    return keywords
+
 def match_scale_to_columns(
     scale_name: str,
     all_columns: List[str],
     aliases: Optional[List[str]] = None,
+    extra_keywords: Optional[List[str]] = None,
 ) -> dict:
     """Tek ölçeği kolon listesiyle eşleştir. aliases: registry'den alternatif isimler."""
     all_names = [scale_name]
@@ -598,6 +619,11 @@ def match_scale_to_columns(
     for name in all_names:
         for kw in extract_scale_keywords(name):
             if kw not in seen_kw:
+                seen_kw.add(kw)
+                all_keywords.append(kw)
+    if extra_keywords:
+        for kw in extra_keywords:
+            if kw and kw not in seen_kw:
                 seen_kw.add(kw)
                 all_keywords.append(kw)
 
@@ -638,6 +664,7 @@ def match_all_scales(scale_names: List[str], all_columns: List[str]) -> dict:
             continue
         stripped = name.strip()
         aliases: List[str] = []
+        extra_keywords: List[str] = []
         sid = resolve_scale_id(stripped)
         if sid:
             entry = get_scale_info(sid)
@@ -645,7 +672,15 @@ def match_all_scales(scale_names: List[str], all_columns: List[str]) -> dict:
                 reg_names = entry.get("names") or []
                 norm = stripped.lower()
                 aliases = [n for n in reg_names if n.strip().lower() != norm]
-        raw_matches.append(match_scale_to_columns(stripped, all_columns, aliases=aliases or None))
+                extra_keywords = _registry_column_keywords(sid, entry)
+        raw_matches.append(
+            match_scale_to_columns(
+                stripped,
+                all_columns,
+                aliases=aliases or None,
+                extra_keywords=extra_keywords or None,
+            ),
+        )
 
     col_owner: Dict[str, Tuple[int, int]] = {}
     for scale_idx, match in enumerate(raw_matches):

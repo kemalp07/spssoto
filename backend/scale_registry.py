@@ -119,7 +119,8 @@ def resolve_scale_id(name: str) -> Optional[str]:
     """Ölçek adı veya kısaltmadan registry id."""
     if not name:
         return None
-    norm = normalize_col(name)
+    cleaned = re.sub(r"\([^)]*\)", " ", name or "").strip()
+    norm = normalize_col(cleaned)
     for scale in load_registry():
         if normalize_col(scale.get("id", "")) == norm:
             return scale["id"]
