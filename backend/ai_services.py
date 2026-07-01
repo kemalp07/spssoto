@@ -43,6 +43,7 @@ from stat_tests import (
 )
 from schemas import ClassifyRequest, DetectScalesRequest, SpssTableRequest
 from utils import sanitize
+from bulgu_templates import has_bulgu_template
 
 SPSS_CONVERT_SYSTEM = """Sen SPSS çıktı dönüştürme uzmanısın. Ham metin, HTML veya kopyala-yapıştır formatındaki SPSS analiz çıktılarını (çapraz tablolar, ANOVA, Ki-Kare, t-Testi vb.) sıfır veri kaybıyla kusursuz Markdown tablosuna dönüştür.
 

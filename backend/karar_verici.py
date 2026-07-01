@@ -236,7 +236,14 @@ def evaluate_reverse_items(scale: dict) -> dict:
         return out
 
     reg_set = set(registry_rev)
-    gem_set = set(int(x) for x in gemini_rev if x is not None)
+    gem_set = set()
+    for x in gemini_rev:
+        if x is None:
+            continue
+        try:
+            gem_set.add(int(x))
+        except (ValueError, TypeError):
+            pass  # string gelirse sessizce atla
 
     if reg_set == gem_set:
         out["reverse_items"] = list(reg_set)
