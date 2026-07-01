@@ -76,6 +76,7 @@ export async function generateAllBulgu(): Promise<void> {
       if (existing?.isLocked) continue;
       if (existing?.text) continue;
       await generateBulgu(i);
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     const fresh = getAppState();
