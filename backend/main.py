@@ -419,6 +419,7 @@ async def analyze_cronbach_batch(req: CronbachBatchRequest):
 
     df = pd.DataFrame([r.values for r in req.data])
     results = []
+    all_rows = []
     tc = TableCounter()
 
     for scale in req.scales:
@@ -467,18 +468,23 @@ async def analyze_cronbach_batch(req: CronbachBatchRequest):
             else:
                 interp = "Düşük"
 
-            tno, title = tc.next(f"Ölçek Güvenilirlik Analizi — {name}")
-            results.append({
-                "type": "cronbach",
-                "table_number": tno,
-                "title": title,
-                "headers": ["Ölçek", "Madde Sayısı", "Geçerli n", "Cronbach α", "Değerlendirme"],
-                "rows": [[name, k, len(items_df), f"{alpha:.3f}", interp]],
-                "note": "Not. α = Cronbach alfa iç tutarlılık katsayısı. Kabul edilebilir sınır: α ≥ .70.",
-                "significant": None,
-            })
-        except Exception:
+            all_rows.append([name, k, len(items_df), f"{alpha:.3f}", interp])
+        except Exception as e:
+            import logging
+            logging.warning(f"Cronbach hata [{name}]: {e}")
             continue
+
+    if all_rows:
+        tno, title = tc.next("Ölçeklerin Güvenilirlik Analizi (Cronbach α)")
+        results.append({
+            "type": "cronbach",
+            "table_number": tno,
+            "title": title,
+            "headers": ["Ölçek", "Madde Sayısı", "Geçerli n", "Cronbach α", "Değerlendirme"],
+            "rows": all_rows,
+            "note": "Not. α = Cronbach alfa iç tutarlılık katsayısı. Kabul edilebilir sınır: α ≥ .70.",
+            "significant": None,
+        })
 
     return sanitize({"results": normalize_table_layout(results)})
 
