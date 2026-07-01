@@ -425,7 +425,15 @@ async def analyze_cronbach_batch(req: CronbachBatchRequest):
     for scale in req.scales:
         name = scale.get("name", "Ölçek")
         items = scale.get("cronbach_items") or scale.get("items", [])
-        reverse_items = scale.get("reverse_items") or []
+        raw_reverse = scale.get("reverse_items") or []
+        reverse_items = []
+        for x in raw_reverse:
+            if x is None:
+                continue
+            try:
+                reverse_items.append(int(x))
+            except (ValueError, TypeError):
+                pass  # 'neq_1_ters' gibi string gelirse atla
         scale_range = scale.get("scale_range") or [0, 4]
 
         if items:

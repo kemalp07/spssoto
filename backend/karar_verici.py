@@ -211,12 +211,26 @@ def infer_reverse_from_items(items: List[str]) -> List[int]:
     return sorted(set(nums))
 
 
+def _clean_reverse_items(raw_reverse) -> List[int]:
+    reverse_items: List[int] = []
+    for x in raw_reverse or []:
+        if x is None:
+            continue
+        try:
+            reverse_items.append(int(x))
+        except (ValueError, TypeError):
+            pass  # 'neq_1_ters' gibi string gelirse atla
+    return reverse_items
+
+
 def evaluate_reverse_items(scale: dict) -> dict:
     """
     Gemini ters madde önerisini registry ile karşılaştır.
     Uyuşursa reverse_confidence=confirmed; uyuşmazsa conflict.
     """
     out = dict(scale)
+    if out.get("reverse_items"):
+        out["reverse_items"] = _clean_reverse_items(out["reverse_items"])
     sid = out.get("id") or out.get("registry_id") or resolve_scale_id(out.get("name", ""))
     if not sid:
         return out
@@ -236,14 +250,7 @@ def evaluate_reverse_items(scale: dict) -> dict:
         return out
 
     reg_set = set(registry_rev)
-    gem_set = set()
-    for x in gemini_rev:
-        if x is None:
-            continue
-        try:
-            gem_set.add(int(x))
-        except (ValueError, TypeError):
-            pass  # string gelirse sessizce atla
+    gem_set = set(_clean_reverse_items(gemini_rev))
 
     if reg_set == gem_set:
         out["reverse_items"] = list(reg_set)
