@@ -81,6 +81,7 @@ function emptyVariableSlice(): VariableSlice {
     derivedVarMap: {},
     lastRecommendations: {},
     aiExcluded: new Set(),
+    userExcluded: new Set(),
     fileInfoText: '',
     showAllLabelRows: false,
   };

@@ -54,9 +54,11 @@ export function buildAnalyzePayload(
 
 export function buildPlanPayload(state: AnalysisPayloadState) {
   const { variables, data, missing_codes } = getAnalysisContext(state);
+  const excluded = state.variables.userExcluded;
+  const activeVariables = variables.filter((v) => !excluded.has(v.name));
   return {
-    variables,
-    data,
+    variables: activeVariables,
+    data: buildAnalysisData(activeVariables, state.parsedData),
     missing_codes,
     research_aim: state.wizard.researchTopic.trim(),
     use_ai: true,

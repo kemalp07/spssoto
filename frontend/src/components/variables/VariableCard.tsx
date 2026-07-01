@@ -13,27 +13,49 @@ interface VariableCardProps {
 
 type VariableRole = 'grouping' | 'outcome' | 'exclude';
 
-function currentRole(col: string, catColumns: string[], contColumns: string[]): VariableRole {
+function currentRole(
+  col: string,
+  catColumns: string[],
+  contColumns: string[],
+  userExcluded: Set<string>,
+): VariableRole {
+  if (userExcluded.has(col)) return 'exclude';
   if (catColumns.includes(col)) return 'grouping';
   if (contColumns.includes(col)) return 'outcome';
   return 'exclude';
 }
 
-function moveVariableRole(col: string, role: VariableRole) {
+function moveVariableRole(col: string, role: VariableRole, displayType: 'cat' | 'cont') {
   useAppStore.setState((s) => {
-    let catColumns = s.variables.catColumns.filter((c) => c !== col);
-    let contColumns = s.variables.contColumns.filter((c) => c !== col);
+    const userExcluded = new Set(s.variables.userExcluded);
+    let catColumns = [...s.variables.catColumns];
+    let contColumns = [...s.variables.contColumns];
     const selectedCat = new Set(s.variables.selectedCat);
     const selectedCont = new Set(s.variables.selectedCont);
-    selectedCat.delete(col);
-    selectedCont.delete(col);
 
-    if (role === 'grouping') {
-      catColumns = [...catColumns, col];
-      selectedCat.add(col);
-    } else if (role === 'outcome') {
-      contColumns = [...contColumns, col];
-      selectedCont.add(col);
+    if (role === 'exclude') {
+      userExcluded.add(col);
+      selectedCat.delete(col);
+      selectedCont.delete(col);
+      if (displayType === 'cat' && !catColumns.includes(col)) {
+        catColumns.push(col);
+      }
+      if (displayType === 'cont' && !contColumns.includes(col)) {
+        contColumns.push(col);
+      }
+    } else {
+      userExcluded.delete(col);
+      catColumns = catColumns.filter((c) => c !== col);
+      contColumns = contColumns.filter((c) => c !== col);
+      selectedCat.delete(col);
+      selectedCont.delete(col);
+      if (role === 'grouping') {
+        catColumns.push(col);
+        selectedCat.add(col);
+      } else {
+        contColumns.push(col);
+        selectedCont.add(col);
+      }
     }
 
     return {
@@ -43,6 +65,7 @@ function moveVariableRole(col: string, role: VariableRole) {
         contColumns,
         selectedCat,
         selectedCont,
+        userExcluded,
       },
     };
   });
@@ -55,15 +78,17 @@ export function VariableCard({ col, type, rec = {}, checked, onToggle }: Variabl
   const derivedVarMap = useAppStore((s) => s.variables.derivedVarMap) as Record<string, DerivedVariable>;
   const catColumns = useAppStore((s) => s.variables.catColumns);
   const contColumns = useAppStore((s) => s.variables.contColumns);
+  const userExcluded = useAppStore((s) => s.variables.userExcluded);
 
   const d = derivedVarMap[col];
   const aiStatus = resolveAiStatus(col, rec, derivedVarMap);
   const badge = AI_STATUS_LABELS[aiStatus];
   const isExcludedDerived = d?.action === 'exclude';
+  const isUserExcluded = userExcluded.has(col);
   const reviewOpen = aiStatus === 'review';
   const label = (userLabels[col] ?? '').trim() || col;
   const summary = variableSummaryText(col, parsedData, valueLabels);
-  const role = currentRole(col, catColumns, contColumns);
+  const role = currentRole(col, catColumns, contColumns, userExcluded);
 
   return (
     <div
@@ -76,18 +101,35 @@ export function VariableCard({ col, type, rec = {}, checked, onToggle }: Variabl
       style={{
         flexDirection: 'column',
         alignItems: 'stretch',
+        opacity: isUserExcluded ? 0.4 : undefined,
       }}
     >
-      <label className="colCheckboxMain" style={{ display: 'flex', gap: 10, flex: 1, cursor: 'pointer', width: '100%' }}>
+      <label
+        className="colCheckboxMain"
+        style={{
+          display: 'flex',
+          gap: 10,
+          flex: 1,
+          cursor: 'pointer',
+          width: '100%',
+          alignItems: 'flex-start',
+        }}
+      >
         <input
           type="checkbox"
           checked={checked}
           onChange={(e) => onToggle(e.target.checked)}
+          disabled={isUserExcluded}
         />
         <div className="flex1">
           <div className="colName">{label}</div>
           <div className="colCode">{col}</div>
           <div className="colSample">{summary}</div>
+          {isUserExcluded ? (
+            <div className="textXs textMuted" style={{ marginTop: 4, fontWeight: 600 }}>
+              Dahil edilmeyecek
+            </div>
+          ) : null}
           {d && d.action !== 'exclude' ? (
             <div className="derivedSource">Kaynak: {d.source ?? '—'}</div>
           ) : null}
@@ -122,7 +164,7 @@ export function VariableCard({ col, type, rec = {}, checked, onToggle }: Variabl
       >
         <select
           value={role}
-          onChange={(e) => moveVariableRole(col, e.target.value as VariableRole)}
+          onChange={(e) => moveVariableRole(col, e.target.value as VariableRole, type)}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           aria-label={`${col} değişken türü`}

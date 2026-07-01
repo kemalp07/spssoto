@@ -121,6 +121,36 @@ TEST_RULES: Dict[str, Tuple[Optional[int], Optional[int], Optional[str], Optiona
 }
 
 
+def _is_plan_excluded(var: Variable) -> bool:
+    """Classify'da exclude / dahil etme işaretli değişken."""
+    if not var.included:
+        return True
+    return (var.role or "").strip().lower() == "exclude"
+
+
+def _plan_active_variables(variables: List[Variable]) -> List[Variable]:
+    return [v for v in variables if not _is_plan_excluded(v)]
+
+
+def _raw_age_unique_count(df: pd.DataFrame, var_name: str) -> int:
+    if var_name not in df.columns:
+        return 0
+    return int(pd.to_numeric(df[var_name], errors="coerce").dropna().nunique())
+
+
+def _skip_raw_age_frequency(
+    df: pd.DataFrame,
+    var: Variable,
+    has_binned_age: bool = False,
+) -> bool:
+    """Ham yaş >10 benzersiz değer → frekans yerine tanımlayıcı istatistik."""
+    if not is_raw_age_var(var.name, var.label or ""):
+        return False
+    if has_binned_age:
+        return True
+    return _raw_age_unique_count(df, var.name) > 10
+
+
 def validate_test_selection(
     test: str,
     grouping_var: Optional[Variable],
@@ -128,6 +158,10 @@ def validate_test_selection(
     n_groups: Optional[int] = None,
 ) -> Tuple[bool, str]:
     """Test seçiminin istatistiksel olarak geçerli olup olmadığını kontrol et."""
+    for var in (grouping_var, outcome_var):
+        if var and _is_plan_excluded(var):
+            return False, f"'{var.name}' analiz dışı bırakıldı"
+
     rule = TEST_RULES.get(test)
     if not rule:
         return False, f"Bilinmeyen test: {test}"
@@ -173,6 +207,11 @@ def _validate_candidate_for_add(
     """build_candidate_tests add() öncesi kural doğrulaması."""
     if not vars:
         return False, "Değişken listesi boş"
+
+    for vname in vars:
+        var = vmap.get(vname)
+        if var and _is_plan_excluded(var):
+            return False, f"'{vname}' analiz dışı bırakıldı"
 
     if test == "cronbach":
         for vname in vars:
@@ -300,18 +339,22 @@ def is_scale_item_name(name: str, scale_groups: Dict[str, List[str]]) -> bool:
 
 
 def _column_names(variables: List[Variable]) -> set:
-    return {v.name for v in variables if v.included}
+    return {v.name for v in variables if not _is_plan_excluded(v)}
 
 
 def _var_by_name(variables: List[Variable]) -> Dict[str, Variable]:
-    return {v.name: v for v in variables if v.included}
+    return {v.name: v for v in variables if not _is_plan_excluded(v)}
 
 
 def should_include_frequency(
     var: Variable,
     col_names: set,
     scale_groups: Dict[str, List[str]],
+    df: Optional[pd.DataFrame] = None,
+    has_binned_age: bool = False,
 ) -> bool:
+    if df is not None and _skip_raw_age_frequency(df, var, has_binned_age):
+        return False
     if is_redundant_derived_categorical(var.name, col_names, scale_groups):
         return False
     if is_derived_scale_split(var.name, col_names, scale_groups):
@@ -371,7 +414,10 @@ def chi_square_allowed(
 
 def _grouping_rank(variables: List[Variable]) -> Dict[str, int]:
     """Gruplandırıcıları tanım sırasına göre sırala (çoklu gruplandırıcı önceliği)."""
-    grouping = [v.name for v in variables if v.included and v.role == "grouping" and v.type == "categorical"]
+    grouping = [
+        v.name for v in variables
+        if not _is_plan_excluded(v) and v.role == "grouping" and v.type == "categorical"
+    ]
     return {name: idx for idx, name in enumerate(grouping)}
 
 
@@ -749,7 +795,7 @@ def build_candidate_tests(
     variable_measure: Optional[Dict[str, str]] = None,
 ) -> List[dict]:
     norm_map = norm_map or {}
-    active = [v for v in variables if v.included]
+    active = _plan_active_variables(variables)
     cat_vars = [v for v in active if v.type == "categorical"]
     cont_vars = [v for v in active if v.type == "continuous"]
     grouping_cat = [v for v in cat_vars if v.role == "grouping"]
@@ -759,8 +805,11 @@ def build_candidate_tests(
     all_cont = outcome_cont + grouping_cont
 
     scale_groups = detect_scale_groups(list(df.columns))
-    col_names = _column_names(active)
+    col_names = _column_names(variables)
     vmap = _var_by_name(variables)
+    has_binned_age = any(
+        is_binned_age_var(v.name, v.label or "") for v in active
+    )
     candidates: List[dict] = []
     seq = 0
 
@@ -797,7 +846,7 @@ def build_candidate_tests(
     for v in grouping_cat + outcome_cat:
         if v.name not in df.columns:
             continue
-        if not should_include_frequency(v, col_names, scale_groups):
+        if not should_include_frequency(v, col_names, scale_groups, df, has_binned_age):
             continue
         add("frequency", [v.name])
 
@@ -924,7 +973,7 @@ def apply_deterministic_flags(
     grouping_rank = _grouping_rank(variables)
     has_binned_age = any(
         is_binned_age_var(v.name, v.label or "")
-        for v in variables if v.included
+        for v in variables if not _is_plan_excluded(v)
     )
 
     flagged: List[dict] = []
@@ -937,11 +986,11 @@ def apply_deterministic_flags(
             flag == "uygun"
             and test == "frequency"
             and len(vars_) == 1
-            and has_binned_age
             and vars_[0] in vmap
             and is_raw_age_var(vars_[0], vmap[vars_[0]].label or "")
         ):
-            flag = "tekrarli_demografi"
+            if has_binned_age or _raw_age_unique_count(df, vars_[0]) > 10:
+                flag = "tekrarli_demografi"
         if flag == "uygun" and test in (
             "ttest", "mann_whitney", "anova", "kruskal_wallis", "chi_square",
         ) and len(vars_) >= 2:
@@ -989,7 +1038,7 @@ def apply_deterministic_flags(
 def _compact_labels(variables: List[Variable]) -> Dict[str, str]:
     return {
         v.name: _truncate_label(v.label or v.name)
-        for v in variables if v.included
+        for v in variables if not _is_plan_excluded(v)
     }
 
 
@@ -1051,7 +1100,7 @@ def candidate_display_label(candidate: dict, variables: List[Variable]) -> str:
 
 def _var_role(variables: List[Variable], name: str) -> str:
     for v in variables:
-        if v.included and v.name == name:
+        if not _is_plan_excluded(v) and v.name == name:
             return v.role or ""
     return ""
 
@@ -1334,6 +1383,8 @@ async def plan_tests(
     """Önerilen ve elenen test listeleri + meta döndürür."""
     from document_parser import apply_scale_test_requirements, resolve_scale_test_requirements
     from hypothesis_engine import translate_decision_reasons
+
+    variables = _plan_active_variables(variables)
 
     norm_map = build_norm_map(df, variables)
     candidates = build_candidate_tests(df, variables, norm_map, variable_measure)

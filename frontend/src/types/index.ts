@@ -81,6 +81,7 @@ export interface VariableSlice {
   derivedVarMap: Record<string, DerivedVariable>;
   lastRecommendations: Record<string, ColumnRecommendation>;
   aiExcluded: Set<string>;
+  userExcluded: Set<string>;
   fileInfoText: string;
   showAllLabelRows: boolean;
 }
