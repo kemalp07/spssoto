@@ -50,6 +50,7 @@ export function AnketStep({ onNext, onBack }: AnketStepProps) {
         showNext={hasAnketLoaded}
         onNext={onNext}
         nextLabel="İleri →"
+        skipLabel="Anket formum yok, ölçekleri manuel seçeceğim →"
       />
     </>
   );

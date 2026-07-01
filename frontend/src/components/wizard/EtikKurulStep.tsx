@@ -63,6 +63,7 @@ export function EtikKurulStep({ onBack, onProceed }: EtikKurulStepProps) {
         showBack={!proceeding}
         showSkip={!proceeding}
         onSkip={() => void handleProceed()}
+        skipLabel="Etik kurul belgem yok, devam et →"
         showNext={false}
         extra={proceeding ? (
           <div className="wizardNavProceeding" role="status" aria-live="polite">

@@ -1102,13 +1102,14 @@ export const useAppStore = create<AppState>()(
   setReviewForceExport: (v) =>
     set((s) => ({ review: { ...s.review, forceExport: v } })),
 
-  showToast: (text, type = 'info') =>
+  showToast: (text, type = 'info') => {
+    const id = `${Date.now()}-${Math.random()}`;
+    const duration = type === 'error' ? 5000 : 3000;
     set((s) => ({
-      toasts: [
-        ...s.toasts,
-        { id: `${Date.now()}-${Math.random()}`, text, type },
-      ],
-    })),
+      toasts: [...s.toasts, { id, text, type }],
+    }));
+    setTimeout(() => get().dismissToast(id), duration);
+  },
 
   dismissToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),

@@ -283,28 +283,27 @@ code, .mono {
 }
 
 .wizardCard {
-  width: 100%;
-  max-width: 720px;
+  width: 780px;
+  max-width: 780px;
+  min-width: 780px;
+  height: auto;
+  margin: 0 auto;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   box-shadow: var(--shadow-card);
-  min-height: 400px;
   display: flex;
   flex-direction: column;
 }
 
 .wizardCardWide {
-  max-width: var(--layout-max);
-  min-height: 400px;
   display: flex;
   flex-direction: column;
 }
 
 .wizardCardCenter {
   text-align: center;
-  max-width: 640px;
 }
 
 .wizardTitle {
@@ -470,6 +469,9 @@ code, .mono {
 }
 
 .uploadZone {
+  width: 100%;
+  min-height: 260px;
+  height: 260px;
   border: 1px dashed var(--border);
   border-radius: var(--radius-lg);
   padding: 40px var(--space-3);
@@ -487,6 +489,8 @@ code, .mono {
 }
 
 .uploadZoneUploaded {
+  height: 260px;
+  min-height: 260px;
   border-style: solid;
   border-color: var(--success-border);
   background: var(--success-muted);

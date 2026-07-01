@@ -219,7 +219,7 @@ def add_apa_table(doc: Document, result: dict, label_map: Optional[Dict[str, str
         note_p = doc.add_paragraph()
         note_p.paragraph_format.space_before = Pt(6)
         note_text = re.sub(
-            r'(?<!\d)(\d+)\.(\d+)(?!\d)',
+            r'(\d+)\.(\d{1,2})(?!\d)',
             lambda m: m.group(1) + ',' + m.group(2),
             str(note_text),
         )
