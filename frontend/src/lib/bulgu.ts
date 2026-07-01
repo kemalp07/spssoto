@@ -37,12 +37,11 @@ export function normalizeBulguEntry(value: unknown): BulguEntry | null {
 export function bulgularForApi(
   bulgular: Record<string, BulguEntry | string>,
 ): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(bulgular)) {
-    const entry = typeof value === 'string' ? normalizeBulguEntry(value) : value;
-    if (entry?.text) out[key] = entry.text;
-  }
-  return out;
+  return Object.fromEntries(
+    Object.entries(bulgular)
+      .map(([k, v]) => [k, typeof v === 'string' ? v : v.text ?? ''])
+      .filter(([, text]) => Boolean(text)),
+  );
 }
 
 export function bulgularForWordExport(

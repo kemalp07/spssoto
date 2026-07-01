@@ -1,5 +1,5 @@
 import { apiBlob } from '../api/client';
-import { bulgularForApi, bulgularForWordExport } from '../lib/bulgu';
+import { bulgularForApi } from '../lib/bulgu';
 import { buildReviewScaleList } from '../lib/reviewScales';
 import { notifyError } from '../lib/notify';
 import { scaleMatchingInline } from '../lib/scaleApi';
@@ -94,7 +94,7 @@ export async function downloadWord(force = false): Promise<void> {
 
     const blob = await apiBlob('/export/word', {
       results: state.results.analysis,
-      bulgular: bulgularForWordExport(state.results.bulgular),
+      bulgular: bulgularForApi(state.results.bulgular),
       intro: state.results.meta.intro || '',
       label_map: state.variables.userLabels,
       custom_labels: exportCustomLabels,

@@ -1,6 +1,7 @@
 """Akademik rehbere göre test türü bazlı bulgu metni üretimi."""
 from __future__ import annotations
 
+import re
 from typing import List, Optional
 
 from formatting import fmt_r
@@ -252,7 +253,31 @@ def bulgu_mann_whitney(result: dict, all_results: Optional[List[dict]] = None) -
 
 
 def bulgu_anova(result: dict, all_results: Optional[List[dict]] = None) -> Optional[str]:
-    f_val, p, eta = result.get("f"), result.get("p"), result.get("eta_squared")
+    rtype = result.get("type")
+    if rtype not in ("anova", "oneway_anova"):
+        return None
+
+    multi_items = _anova_multi_items(result)
+    if multi_items or (result.get("combined") and result.get("comparison_summaries")):
+        parts: List[str] = []
+        for item in multi_items or result.get("comparison_summaries") or []:
+            outcome = item.get("outcome_label") or item.get("outcome") or "değişken"
+            sent = _anova_outcome_sentence(outcome, item)
+            if sent:
+                parts.append(sent)
+        if parts:
+            grouping = result.get("grouping_label") or "gruplandırıcı değişken"
+            return (
+                f"Katılımcıların {grouping} gruplarına göre tek yönlü ANOVA sonuçları: "
+                + " ".join(parts)
+            )
+
+    f_val = _coerce_anova_stat(result.get("f"))
+    if f_val is None:
+        return None
+
+    p = result.get("p")
+    eta = result.get("eta_squared")
     sig = result.get("significant", False)
     df1, df2 = result.get("df1"), result.get("df2")
     df_part = f"({df1}, {df2})" if df1 is not None and df2 is not None else ""
@@ -276,6 +301,112 @@ def bulgu_anova(result: dict, all_results: Optional[List[dict]] = None) -> Optio
     if levene:
         text += f" {levene}"
     return append_posthoc_to_text(text, result, all_results)
+
+
+def _coerce_anova_stat(val) -> Optional[float]:
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip().replace(",", ".")
+    if not s or s in ("—", "-", ""):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _parse_anova_df_pair(df_txt) -> tuple[Optional[float], Optional[float]]:
+    s = str(df_txt or "").strip()
+    m = re.match(r"\(\s*([^,]+)\s*,\s*([^)]+)\s*\)", s)
+    if not m:
+        return None, None
+    try:
+        return float(m.group(1).strip()), float(m.group(2).strip())
+    except ValueError:
+        return None, None
+
+
+def _anova_multi_items(result: dict) -> List[dict]:
+    if result.get("comparison_summaries"):
+        items = [dict(s) for s in result["comparison_summaries"]]
+        headers = result.get("headers") or []
+        rows = result.get("rows") or result.get("data") or []
+        if rows and "Bağımlı Değişken" in headers:
+            outcome_idx = headers.index("Bağımlı Değişken")
+            df_idx = headers.index("df") if "df" in headers else None
+            for i, item in enumerate(items):
+                if item.get("df1") is not None or i >= len(rows):
+                    continue
+                if df_idx is not None:
+                    d1, d2 = _parse_anova_df_pair(rows[i][df_idx])
+                    if d1 is not None:
+                        item["df1"], item["df2"] = d1, d2
+                if not item.get("outcome_label") and outcome_idx < len(rows[i]):
+                    item["outcome_label"] = rows[i][outcome_idx]
+        return items
+
+    headers = result.get("headers") or []
+    rows = result.get("rows") or result.get("data") or []
+    if "Bağımlı Değişken" not in headers or not rows:
+        return []
+
+    def _col(name: str) -> Optional[int]:
+        return headers.index(name) if name in headers else None
+
+    outcome_idx = _col("Bağımlı Değişken")
+    f_idx = _col("F")
+    df_idx = _col("df")
+    p_idx = _col("p")
+    eta_idx = _col("η²")
+    if outcome_idx is None or f_idx is None:
+        return []
+
+    items: List[dict] = []
+    for row in rows:
+        if outcome_idx >= len(row):
+            continue
+        f_val = _coerce_anova_stat(row[f_idx] if f_idx < len(row) else None)
+        if f_val is None:
+            continue
+        item = {
+            "outcome_label": row[outcome_idx],
+            "f": f_val,
+            "p": _coerce_anova_stat(row[p_idx]) if p_idx is not None and p_idx < len(row) else None,
+            "eta_squared": _coerce_anova_stat(row[eta_idx]) if eta_idx is not None and eta_idx < len(row) else None,
+        }
+        if df_idx is not None and df_idx < len(row):
+            d1, d2 = _parse_anova_df_pair(row[df_idx])
+            item["df1"], item["df2"] = d1, d2
+        if item["p"] is not None:
+            item["significant"] = item["p"] < 0.05
+        items.append(item)
+    return items
+
+
+def _anova_outcome_sentence(outcome: str, item: dict) -> Optional[str]:
+    f_val = _coerce_anova_stat(item.get("f"))
+    if f_val is None:
+        return None
+    p = item.get("p")
+    if p is not None:
+        p = _coerce_anova_stat(p)
+    eta = item.get("eta_squared")
+    if eta is not None:
+        eta = _coerce_anova_stat(eta)
+    sig = item.get("significant")
+    if sig is None and p is not None:
+        sig = p < 0.05
+    sig = bool(sig)
+    df1, df2 = item.get("df1"), item.get("df2")
+    df_part = f"({df1}, {df2})" if df1 is not None and df2 is not None else ""
+    diff = "anlamlı" if sig else "anlamlı değil"
+    eta_part = f", η² = {fmt_r(eta)}" if eta is not None else ""
+    return (
+        f"{outcome} için gruplar arasında {diff} fark saptanmıştır "
+        f"(F{df_part} = {fmt_r(f_val)}, {p_txt(p)}{eta_part})."
+    )
 
 
 def bulgu_tukey(result: dict, all_results: Optional[List[dict]] = None) -> Optional[str]:
@@ -518,6 +649,7 @@ BULGU_BUILDERS = {
     "ttest": bulgu_ttest,
     "mann_whitney": bulgu_mann_whitney,
     "anova": bulgu_anova,
+    "oneway_anova": bulgu_anova,
     "tukey": bulgu_tukey,
     "games_howell": bulgu_games_howell,
     "kruskal_wallis": bulgu_kruskal,
