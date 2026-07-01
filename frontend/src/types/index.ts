@@ -63,6 +63,7 @@ export interface ClassifyResponse {
   recommendations?: Record<string, ColumnRecommendation>;
   derived?: DerivedVariable[];
   manual_required?: boolean;
+  augmented_columns?: Record<string, unknown[]>;
 }
 
 export interface DetectDerivedResponse {

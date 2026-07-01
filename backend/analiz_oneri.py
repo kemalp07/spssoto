@@ -503,6 +503,101 @@ def _build_gerekceler(
     return _fill_pair_grid([], primary, outcomes)
 
 
+def _etik_belgesi_bos(etik_text: str) -> bool:
+    return not (etik_text or "").strip()
+
+
+def _demo_phrase_for_grouping(col: str) -> str:
+    low = col.lower().replace("dbf_", "")
+    if "cinsiyet" in low or "gender" in low:
+        return "cinsiyete"
+    if "bolum" in low or "bölüm" in low or "department" in low or "dept" in low:
+        return "bölüme"
+    if "sinif" in low or low.endswith("_sk") or low == "sk":
+        return "sınıfa"
+    if "yas" in low or "yaş" in low:
+        return "yaşa"
+    return col.replace("_", " ")
+
+
+_PROPOSED_DESC_NO_ETIK = "Veri yapısına göre önerilen analiz"
+_ETIK_KURUL_DESC_RE = re.compile(r"etik\s+kurul", re.I)
+
+
+def _normalize_proposed_item(item: dict, etik_text: str) -> dict:
+    """proposed_analyses öğesini question/description biçimine getir."""
+    row = dict(item)
+    question = str(
+        row.get("question") or row.get("text") or row.get("analiz") or "",
+    ).strip()
+    desc = str(
+        row.get("description") or row.get("subtitle") or row.get("neden") or "",
+    ).strip()
+    if _etik_belgesi_bos(etik_text):
+        if not desc or _ETIK_KURUL_DESC_RE.search(desc):
+            desc = _PROPOSED_DESC_NO_ETIK
+    out: dict = {
+        "id": str(row.get("id") or f"proposed-{len(question)}"),
+        "question": question,
+    }
+    if desc:
+        out["description"] = desc
+    elif _etik_belgesi_bos(etik_text):
+        out["description"] = _PROPOSED_DESC_NO_ETIK
+    return out
+
+
+def _normalize_proposed_analyses(items: List[dict], etik_text: str) -> List[dict]:
+    normalized: List[dict] = []
+    for item in items:
+        question = str(
+            item.get("question") or item.get("text") or item.get("analiz") or "",
+        ).strip()
+        if not question:
+            continue
+        normalized.append(_normalize_proposed_item(item, etik_text))
+    return normalized
+
+
+def _build_proposed_analyses(
+    olcekler: List[dict],
+    grouping: List[str],
+) -> List[dict]:
+    """Ölçek ve demografik yapıdan araştırma soruları üret."""
+    scales = [
+        str(o.get("ad") or "").strip()
+        for o in olcekler
+        if str(o.get("ad") or "").strip()
+    ]
+    if not scales:
+        return []
+
+    items: List[dict] = []
+    idx = 0
+
+    for i, left in enumerate(scales):
+        for right in scales[i + 1:]:
+            items.append({
+                "id": f"proposed-corr-{idx}",
+                "question": f"{left} ile {right} arasında ilişki var mı?",
+                "description": _PROPOSED_DESC_NO_ETIK,
+            })
+            idx += 1
+
+    demo_groupings = _primary_grouping(_filter_grouping(grouping))
+    for scale in scales:
+        for g in demo_groupings:
+            phrase = _demo_phrase_for_grouping(g)
+            items.append({
+                "id": f"proposed-demo-{idx}",
+                "question": f"{scale} puanı {phrase} göre farklılaşıyor mu?",
+                "description": _PROPOSED_DESC_NO_ETIK,
+            })
+            idx += 1
+
+    return items
+
+
 def _enrich_oneri(
     oneri: dict,
     columns: List[str],
@@ -557,6 +652,17 @@ def _enrich_oneri(
         )
         if not (out.get("analiz") or "").strip():
             out["analiz"] = out["ozet"]
+
+    if _etik_belgesi_bos(etik_text) and not (out.get("proposed_analyses") or []):
+        out["proposed_analyses"] = _build_proposed_analyses(
+            out.get("olcekler") or [],
+            out.get("gruplama_degiskenleri") or [],
+        )
+    elif out.get("proposed_analyses"):
+        out["proposed_analyses"] = _normalize_proposed_analyses(
+            out["proposed_analyses"], etik_text,
+        )
+
     return out
 
 

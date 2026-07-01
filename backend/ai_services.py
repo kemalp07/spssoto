@@ -2,6 +2,7 @@
 import base64
 import io
 import json
+import logging
 import re
 from collections import defaultdict
 from typing import List, Optional, Dict, Any, Tuple
@@ -227,6 +228,12 @@ def _generate_bulgu_text_llm(
             ),
         }],
     )
+    if msg.usage:
+        logging.info(
+            f"[TOKEN] generate_bulgu: input={msg.usage.input_tokens} "
+            f"output={msg.usage.output_tokens} "
+            f"total={msg.usage.input_tokens + msg.usage.output_tokens}"
+        )
     return msg.content[0].text.strip(), _llm_meta_from_usage(msg.usage)
 
 
@@ -286,6 +293,12 @@ def generate_bulgu_summary(
         system=BULGU_SUMMARY_SYSTEM,
         messages=[{"role": "user", "content": user_msg}],
     )
+    if msg.usage:
+        logging.info(
+            f"[TOKEN] generate_bulgu_summary: input={msg.usage.input_tokens} "
+            f"output={msg.usage.output_tokens} "
+            f"total={msg.usage.input_tokens + msg.usage.output_tokens}"
+        )
     llm_text = msg.content[0].text.strip()
     meta = _llm_meta_from_usage(msg.usage)
     meta["source"] = "llm"
@@ -941,6 +954,12 @@ Bu değişkenler için istatistiksel analiz planı oluştur."""
             system=PLAN_SYSTEM,
             messages=[{"role": "user", "content": user_msg}],
         )
+        if msg.usage:
+            logging.info(
+                f"[TOKEN] generate_plan_ai: input={msg.usage.input_tokens} "
+                f"output={msg.usage.output_tokens} "
+                f"total={msg.usage.input_tokens + msg.usage.output_tokens}"
+            )
         parsed = _parse_llm_json(msg.content[0].text.strip())
         tests = parsed.get("tests", [])
         return _normalize_ai_plan_tests(tests) if tests else None
@@ -953,6 +972,167 @@ BINARY_RE = re.compile(r"_(BINARY|IKILI|İKİLİ|RISK_BINARY)$", re.I)
 GRUP_RE = re.compile(r"_(GRUBU?|GROUP|KATEGORI|KAT|CATEGORY)$", re.I)
 ANTHRO_RE = re.compile(r"^(dbf_)?(boy|kilo|weight|height|bmi|vki|bki)$", re.I)
 DBF_PREFIX = re.compile(r"^dbf_", re.I)
+_AGE_COL_RE = re.compile(r"(yas|yaş|age)", re.I)
+_AGE_BINNED_RE = re.compile(
+    r"(grup|group|kategori|category|bin|aralik|aralık|gp)",
+    re.I,
+)
+_YAS_GRUBU_COL = "YAS_GRUBU"
+
+
+def _is_raw_age_column(col: str, label: str = "") -> bool:
+    """Ham yaş sütunu (gruplandırılmış yaş türevi değil)."""
+    if col.upper() == _YAS_GRUBU_COL:
+        return False
+    if _AGE_BINNED_RE.search(col) or _AGE_BINNED_RE.search(label or ""):
+        return False
+    text = f"{col} {label or ''}"
+    return bool(_AGE_COL_RE.search(text))
+
+
+def _compute_yas_grubu(series: "pd.Series") -> Tuple["pd.Series", Dict[int, str]]:
+    """Yaş değerlerini 3 gruba ayır: Genç (1), Orta (2), Olgun (3)."""
+    import pandas as pd
+
+    numeric = pd.to_numeric(series, errors="coerce")
+    valid = numeric.dropna()
+    if valid.empty:
+        return pd.Series([pd.NA] * len(series), index=series.index), {
+            1: "Genç", 2: "Orta", 3: "Olgun",
+        }
+
+    min_age = float(valid.min())
+    max_age = float(valid.max())
+
+    def _fixed_bins(value: float) -> int:
+        if value <= 20:
+            return 1
+        if value <= 23:
+            return 2
+        return 3
+
+    if min_age >= 17 and max_age <= 30:
+        grouped = numeric.apply(
+            lambda v: _fixed_bins(float(v)) if pd.notna(v) else pd.NA,
+        )
+    else:
+        t1 = float(valid.quantile(1 / 3))
+        t2 = float(valid.quantile(2 / 3))
+
+        def _tertile_bins(value: float) -> int:
+            if value <= t1:
+                return 1
+            if value <= t2:
+                return 2
+            return 3
+
+        grouped = numeric.apply(
+            lambda v: _tertile_bins(float(v)) if pd.notna(v) else pd.NA,
+        )
+
+    return grouped, {1: "Genç", 2: "Orta", 3: "Olgun"}
+
+
+def _maybe_create_yas_grubu(
+    df: "pd.DataFrame",
+    columns: List[str],
+    labels: Optional[Dict[str, str]],
+) -> Tuple["pd.DataFrame", List[str], Optional[dict]]:
+    """Çok kardinaliteli ham yaş için YAS_GRUBU türev sütunu oluştur."""
+    import pandas as pd
+
+    if _YAS_GRUBU_COL in df.columns:
+        return df, columns, None
+
+    age_col: Optional[str] = None
+    for col in columns:
+        if col not in df.columns:
+            continue
+        if _is_raw_age_column(col, (labels or {}).get(col, "")):
+            age_col = col
+            break
+    if not age_col:
+        return df, columns, None
+
+    nuniq = int(pd.to_numeric(df[age_col], errors="coerce").dropna().nunique())
+    if nuniq <= 10:
+        return df, columns, None
+
+    yas_grubu, _ = _compute_yas_grubu(df[age_col])
+    out_df = df.copy()
+    out_df[_YAS_GRUBU_COL] = yas_grubu
+    new_columns = list(columns)
+    if _YAS_GRUBU_COL not in new_columns:
+        new_columns.append(_YAS_GRUBU_COL)
+
+    derived = {
+        "name": _YAS_GRUBU_COL,
+        "source": age_col,
+        "derived_label": "Yaş Grubu",
+        "confidence": "high",
+        "kind": "categorical",
+        "action": "move_to_grouping",
+        "recommended_role": "grouping",
+        "unique_n": 3,
+        "ai_status": "approved",
+        "source_layer": "python",
+    }
+    return out_df, new_columns, {"derived": derived, "age_col": age_col}
+
+
+def _apply_yas_grubu_classify_overrides(
+    age_col: str,
+    categorical: List[str],
+    continuous: List[str],
+    exclude: List[str],
+    recommendations: Dict[str, dict],
+    derived_list: List[dict],
+    yas_grubu_derived: dict,
+) -> Tuple[List[str], List[str], List[str], Dict[str, dict], List[dict]]:
+    """Ham yaşı gruplamadan çıkar; YAS_GRUBU'nu gruplamaya ekle."""
+    cat = list(categorical)
+    cont = list(continuous)
+    excl = list(exclude)
+    recs = dict(recommendations)
+    derived = list(derived_list)
+
+    for lst, col in ((cat, age_col), (cont, age_col), (excl, age_col)):
+        if col in lst:
+            lst.remove(col)
+
+    if age_col not in cont:
+        cont.append(age_col)
+    recs[age_col] = {
+        **recs.get(age_col, {}),
+        "role": "outcome",
+        "status": "optional",
+        "ai_status": "approved",
+        "reason": "Ham yaş — tanımlayıcı istatistikte kullanılır",
+    }
+
+    yas_name = yas_grubu_derived["name"]
+    if yas_name in excl:
+        excl.remove(yas_name)
+    if yas_name in cont:
+        cont.remove(yas_name)
+    if yas_name not in cat:
+        cat.append(yas_name)
+
+    recs[yas_name] = {
+        **recs.get(yas_name, {}),
+        "role": "grouping",
+        "status": "recommended",
+        "ai_status": "approved",
+        "reason": "Yaş grupları — ANOVA/Kruskal-Wallis için",
+        "derived": True,
+        "source": age_col,
+        "confidence": "high",
+    }
+
+    if not any(d.get("name") == yas_name for d in derived):
+        derived.insert(0, yas_grubu_derived)
+
+    return cat, cont, excl, recs, derived
 
 
 def _deterministic_classify(col: str, label: str = "") -> Optional[dict]:
@@ -1078,9 +1258,17 @@ def run_classify(req: ClassifyRequest) -> dict:
 
     df = None
     variables = None
+    age_meta: Optional[dict] = None
+    augmented_columns: Dict[str, List[Any]] = {}
+
     if req.data:
         rows = [r.values for r in req.data]
         df = pd.DataFrame(rows)
+        columns = list(req.columns)
+        df, columns, age_meta = _maybe_create_yas_grubu(df, columns, req.labels)
+        if age_meta:
+            augmented_columns[_YAS_GRUBU_COL] = df[_YAS_GRUBU_COL].tolist()
+
         variables = [
             Variable(
                 name=c,
@@ -1089,13 +1277,36 @@ def run_classify(req: ClassifyRequest) -> dict:
                 role="outcome",
                 included=True,
             )
-            for c in req.columns
+            for c in columns
         ]
         variables = normalize_variable_labels(variables)
         df = prepare_analysis_df(df, variables, req.missing_codes)
         _apply_deterministic_to_variables(variables, req.labels)
 
+        if age_meta:
+            age_var = next((v for v in variables if v.name == age_meta["age_col"]), None)
+            if age_var:
+                age_var.role = "outcome"
+                age_var.type = "continuous"
+            yas_var = next((v for v in variables if v.name == _YAS_GRUBU_COL), None)
+            if yas_var:
+                yas_var.role = "grouping"
+                yas_var.type = "categorical"
+
+        req = req.model_copy(update={"columns": columns})
+
     result = run_variable_ai_pipeline(req, df=df, variables=variables)
+
+    llm_meta = result.get("llm_meta") or {}
+    if llm_meta.get("llm_calls"):
+        inp = int(llm_meta.get("approx_input_tokens") or 0)
+        out = int(llm_meta.get("approx_output_tokens") or 0)
+        if llm_meta.get("claude_used"):
+            logging.info(
+                f"[TOKEN] run_classify: input={inp} output={out} total={inp + out}"
+            )
+        else:
+            logging.info(f"[TOKEN] run_classify: total={inp + out}")
 
     if result.get("manual_required") and not result.get("categorical") and not result.get("continuous"):
         if not has_claude() and not has_gemini_enrich():
@@ -1113,12 +1324,26 @@ def run_classify(req: ClassifyRequest) -> dict:
         result.get("recommendations") or {},
     )
 
-    return {
+    derived = list(result.get("derived") or [])
+    if age_meta:
+        categorical, continuous, exclude, recommendations, derived = (
+            _apply_yas_grubu_classify_overrides(
+                age_meta["age_col"],
+                categorical,
+                continuous,
+                exclude,
+                recommendations,
+                derived,
+                age_meta["derived"],
+            )
+        )
+
+    response = {
         "categorical": categorical,
         "continuous": continuous,
         "exclude": exclude,
         "recommendations": recommendations,
-        "derived": result.get("derived") or [],
+        "derived": derived,
         "derived_approved": result.get("derived_approved") or [],
         "derived_review": result.get("derived_review") or [],
         "scales": result.get("scales") or [],
@@ -1129,6 +1354,9 @@ def run_classify(req: ClassifyRequest) -> dict:
         "derivative_decision": result.get("derivative_decision"),
         "manual_required": result.get("manual_required", False),
     }
+    if augmented_columns:
+        response["augmented_columns"] = augmented_columns
+    return response
 
 
 def _enrich_scale_with_registry(scale: dict) -> dict:
@@ -1235,6 +1463,11 @@ def run_detect_scales(req: DetectScalesRequest) -> dict:
         prefix_groups=valid_groups,
         document_context=getattr(req, "document_context", None),
     )
+    if llm_meta.get("llm_calls"):
+        total = int(llm_meta.get("approx_input_tokens") or 0) + int(
+            llm_meta.get("approx_output_tokens") or 0
+        )
+        logging.info(f"[TOKEN] run_detect_scales: total={total}")
 
     if not scales and valid_groups:
         registry_matches = registry_matches or []

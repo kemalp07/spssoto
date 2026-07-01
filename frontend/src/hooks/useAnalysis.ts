@@ -205,6 +205,36 @@ export async function runAIClassify(): Promise<boolean> {
 
     const cls = await apiCall<ClassifyResponse>('/classify', payload);
 
+    if (cls.augmented_columns && Object.keys(cls.augmented_columns).length) {
+      const augmented = cls.augmented_columns;
+      const newColNames = Object.keys(augmented).filter(
+        (col) => !getAppState().columns.includes(col),
+      );
+      if (newColNames.length) {
+        const parsedData = getAppState().parsedData.map((row, idx) => {
+          const next = { ...row };
+          for (const col of newColNames) {
+            const values = augmented[col];
+            if (values && idx < values.length) {
+              next[col] = values[idx] as string | number;
+            }
+          }
+          return next;
+        });
+        useAppStore.setState((s) => ({
+          parsedData,
+          columns: [...s.columns, ...newColNames],
+          variables: {
+            ...s.variables,
+            userLabels: {
+              ...s.variables.userLabels,
+              YAS_GRUBU: s.variables.userLabels.YAS_GRUBU || 'Yaş Grubu',
+            },
+          },
+        }));
+      }
+    }
+
     if (cls.derived?.length) {
       getAppState().applyDerivedList(cls.derived);
       cls.derived.forEach((d) => {
