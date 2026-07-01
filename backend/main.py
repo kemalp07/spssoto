@@ -630,7 +630,7 @@ async def classify_columns(request: Request, req: ClassifyRequest):
 
 
 @app.post("/ai/bulgu")
-@limiter.limit("10/minute")
+@limiter.limit("30/minute")
 async def ai_bulgu(request: Request, req: BulguRequest):
     text, source, meta = generate_bulgu(
         req.result,
@@ -646,7 +646,7 @@ async def ai_bulgu(request: Request, req: BulguRequest):
 
 
 @app.post("/ai/bulgu-summary")
-@limiter.limit("10/minute")
+@limiter.limit("30/minute")
 async def ai_bulgu_summary(request: Request, req: BulguSummaryRequest):
     if req.results:
         summaries = compact_summaries_from_results(req.results, req.bulgular)
