@@ -414,7 +414,8 @@ async def detect_scales(request: Request, req: DetectScalesRequest):
 
 @app.post("/analyze/cronbach-batch")
 async def analyze_cronbach_batch(req: CronbachBatchRequest):
-    from data_cleaning import build_cronbach_dataframe
+    import re
+    from data_cleaning import apply_scale_item_resolution, build_cronbach_dataframe, is_item_column_name
 
     df = pd.DataFrame([r.values for r in req.data])
     results = []
@@ -425,6 +426,19 @@ async def analyze_cronbach_batch(req: CronbachBatchRequest):
         items = scale.get("cronbach_items") or scale.get("items", [])
         reverse_items = scale.get("reverse_items") or []
         scale_range = scale.get("scale_range") or [0, 4]
+
+        if items:
+            prefix_match = re.match(r"^([a-zA-Z]+)_", str(items[0]))
+            if prefix_match:
+                prefix = prefix_match.group(1).lower()
+                pool = [
+                    c for c in df.columns
+                    if is_item_column_name(str(c))
+                    and str(c).lower().startswith(f"{prefix}_")
+                ]
+                if pool:
+                    resolved = apply_scale_item_resolution(pool)
+                    items = resolved.get("cronbach_items") or items
 
         try:
             items_df, valid_items = build_cronbach_dataframe(

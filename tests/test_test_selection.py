@@ -178,7 +178,7 @@ def test_word_export_methodology_section_from_decision_log():
     import io as _io
     with zipfile.ZipFile(_io.BytesIO(doc)) as zf:
         xml = zf.read("word/document.xml").decode("utf-8")
-    assert "statistiksel" in xml.lower() or "Mann-Whitney" in xml
+    assert "İstatistiksel Yöntem" not in xml
 
 
 def test_clt_normality_reason_when_n_large_and_low_p():

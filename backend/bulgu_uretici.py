@@ -401,10 +401,16 @@ def _anova_outcome_sentence(outcome: str, item: dict) -> Optional[str]:
     sig = bool(sig)
     df1, df2 = item.get("df1"), item.get("df2")
     df_part = f"({df1}, {df2})" if df1 is not None and df2 is not None else ""
-    diff = "anlamlı" if sig else "anlamlı değil"
     eta_part = f", η² = {fmt_r(eta)}" if eta is not None else ""
+    if sig:
+        return (
+            f"{outcome} için gruplar arasında istatistiksel olarak "
+            f"anlamlı fark saptanmıştır "
+            f"(F{df_part} = {fmt_r(f_val)}, {p_txt(p)}{eta_part})."
+        )
     return (
-        f"{outcome} için gruplar arasında {diff} fark saptanmıştır "
+        f"{outcome} için gruplar arasında istatistiksel olarak "
+        f"anlamlı fark saptanmamıştır "
         f"(F{df_part} = {fmt_r(f_val)}, {p_txt(p)}{eta_part})."
     )
 
@@ -604,7 +610,34 @@ def bulgu_paired_wilcoxon(result: dict, all_results: Optional[List[dict]] = None
 
 def bulgu_cronbach(result: dict, all_results: Optional[List[dict]] = None) -> Optional[str]:
     from karar_verici import enrich_cronbach_bulgu
-    scales = result.get("merged_scales") or []
+
+    def _scale_rows_from_table() -> List[dict]:
+        headers = result.get("headers") or []
+        rows = result.get("rows") or []
+        if not rows or headers and headers[0] != "Ölçek":
+            return []
+        parsed: List[dict] = []
+        for row in rows:
+            if len(row) < 4:
+                continue
+            alpha_raw = None
+            try:
+                alpha_raw = float(str(row[3]).replace(",", "."))
+            except (TypeError, ValueError):
+                pass
+            parsed.append({
+                "name": row[0],
+                "n_items": row[1],
+                "n": row[2],
+                "alpha": alpha_raw,
+                "alpha_display": row[3],
+                "interpretation": row[4] if len(row) > 4 else "",
+            })
+        return parsed
+
+    scales = list(result.get("merged_scales") or [])
+    if len(scales) < len(result.get("rows") or []):
+        scales = _scale_rows_from_table() or scales
     if len(scales) > 1 or result.get("combined"):
         parts, warnings = [], []
         for s in scales:

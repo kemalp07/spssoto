@@ -133,10 +133,12 @@ def _add_word_runs(paragraph, text: str, bold: bool = False, force_italic: bool 
 def _add_apa_table_title(doc: Document, title: str):
     num, caption = _split_table_title(title)
     p_num = doc.add_paragraph()
+    p_num.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
     run = p_num.add_run(num)
     run.bold = True
     if caption:
         p_cap = doc.add_paragraph()
+        p_cap.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
         _add_word_runs(p_cap, caption, force_italic=True)
 
 def _refine_word_header(header: str) -> str:
@@ -231,7 +233,23 @@ def _merge_label_maps(
 
 
 from hypothesis_engine import SAMPLE_SECTION_TYPES
-from test_planner import format_methodology_paragraph
+
+
+def _add_centered_heading(doc: Document, text: str) -> None:
+    p = doc.add_paragraph()
+    p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run(text)
+    run.bold = True
+    run.font.name = "Times New Roman"
+    run.font.size = Pt(12)
+
+
+def _bulgu_decimal_comma(text: str) -> str:
+    return re.sub(
+        r"(\d+)\.(\d{3})",
+        lambda m: m.group(1) + "," + m.group(2),
+        text,
+    )
 
 
 def _parse_bulgu_entry(entry) -> tuple:
@@ -247,30 +265,6 @@ def _parse_bulgu_entry(entry) -> tuple:
         return text, version_int, str(locked_at).strip() or None
     text = str(entry or "").strip()
     return text, None, None
-
-
-def _bulgu_caption(version: Optional[int], locked_at: Optional[str]) -> str:
-    if not version:
-        return ""
-    stamp = locked_at or ""
-    if "T" in stamp:
-        stamp = stamp.split("T", 1)[0]
-    return f"[Bulgu v{version} · {stamp}]" if stamp else f"[Bulgu v{version}]"
-
-
-def _add_bulgu_caption(doc: Document, version: Optional[int], locked_at: Optional[str]) -> None:
-    caption = _bulgu_caption(version, locked_at)
-    if not caption:
-        return
-    cap_p = doc.add_paragraph(caption)
-    cap_p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    try:
-        cap_p.style = "Caption"
-    except Exception:
-        for run in cap_p.runs:
-            run.italic = True
-            run.font.size = Pt(9)
-            run.font.color.rgb = RGBColor(100, 100, 100)
 
 
 def _is_sample_section_result(result: dict) -> bool:
@@ -341,6 +335,28 @@ def _group_results_for_export(
     return sections
 
 
+def _merge_cronbach_for_export(results: List[dict]) -> List[dict]:
+    cronbach_idx = [i for i, r in enumerate(results) if r.get("type") == "cronbach"]
+    if len(cronbach_idx) <= 1:
+        return results
+    from table_layout import merge_cronbach_results
+
+    merged = merge_cronbach_results([results[i] for i in cronbach_idx])
+    if not merged:
+        return results
+    rebuilt: List[dict] = []
+    cronbach_set = set(cronbach_idx)
+    inserted = False
+    for i, r in enumerate(results):
+        if i in cronbach_set:
+            if not inserted:
+                rebuilt.append(merged)
+                inserted = True
+            continue
+        rebuilt.append(r)
+    return rebuilt
+
+
 def build_word_document(
     results: List[dict],
     bulgular: Optional[Dict[str, str]] = None,
@@ -356,32 +372,19 @@ def build_word_document(
     style.font.name = "Times New Roman"
     style.font.size = Pt(12)
 
-    doc.add_heading("BULGULAR", level=1)
+    _add_centered_heading(doc, "BULGULAR")
     if intro:
         doc.add_paragraph(intro)
     doc.add_paragraph()
 
     resolved_labels = _merge_label_maps(label_map, custom_labels)
-    if methodology:
-        doc.add_heading("İstatistiksel Yöntem", level=2)
-        doc.add_paragraph()
-        for entry in methodology:
-            if not isinstance(entry, dict):
-                continue
-            decision_log = entry.get("decision_log") or entry
-            vars_ = entry.get("vars") or []
-            paragraph_text = format_methodology_paragraph(
-                decision_log, resolved_labels, vars_,
-            )
-            if paragraph_text:
-                doc.add_paragraph(paragraph_text)
-        doc.add_paragraph()
 
-    sections = _group_results_for_export(results, hypotheses)
+    export_results = _merge_cronbach_for_export(results)
+    sections = _group_results_for_export(export_results, hypotheses)
 
     for section_title, items in sections:
         if section_title:
-            doc.add_heading(section_title, level=2)
+            _add_centered_heading(doc, section_title)
             doc.add_paragraph()
         for i, result in items:
             export_result = dict(result)
@@ -393,14 +396,14 @@ def build_word_document(
             doc.add_paragraph()
             key = str(i)
             if bulgular and key in bulgular:
-                bulgu_text, bulgu_version, bulgu_locked_at = _parse_bulgu_entry(bulgular[key])
+                bulgu_text, _, _ = _parse_bulgu_entry(bulgular[key])
                 if bulgu_text:
+                    bulgu_text = _bulgu_decimal_comma(bulgu_text)
                     bulgu_p = doc.add_paragraph(bulgu_text)
-                    bulgu_p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    bulgu_p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
                     bulgu_p.paragraph_format.first_line_indent = Pt(0)
                     for run in bulgu_p.runs:
                         run.font.color.rgb = RGBColor(0, 0, 0)
-                    _add_bulgu_caption(doc, bulgu_version, bulgu_locked_at)
             doc.add_paragraph()
             spacer = doc.add_paragraph()
             spacer.paragraph_format.space_after = Pt(12)

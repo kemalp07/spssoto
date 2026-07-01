@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from word_export import _bulgu_caption, _parse_bulgu_entry, build_word_document
+from word_export import _parse_bulgu_entry, build_word_document
 
 
 def test_parse_bulgu_entry_structured():
@@ -27,11 +27,7 @@ def test_parse_bulgu_entry_legacy_string():
     assert locked is None
 
 
-def test_bulgu_caption_format():
-    assert _bulgu_caption(2, "2026-06-15T12:00:00.000Z") == "[Bulgu v2 · 2026-06-15]"
-
-
-def test_word_export_bulgu_caption_in_document():
+def test_word_export_bulgu_without_version_caption():
     doc = build_word_document(
         [{
             "type": "ttest",
@@ -50,4 +46,4 @@ def test_word_export_bulgu_caption_in_document():
     with zipfile.ZipFile(io.BytesIO(doc)) as zf:
         xml = zf.read("word/document.xml").decode("utf-8")
     assert "Test bulgusu" in xml
-    assert "Bulgu v1" in xml
+    assert "Bulgu v1" not in xml
